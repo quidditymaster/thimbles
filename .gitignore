@@ -1,5 +1,11 @@
-# large data files
+# Large Data Files
 data
 
-# compiled files
+# Project Files
+.project
+.pydevproject
+.settings
+
+# Compiled Files
 .py[c,w,f]
+

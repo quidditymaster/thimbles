@@ -1,0 +1,11 @@
+
+dependency policy:
+
+1) if the python module is included in the anaconda python distribution we don't treat it as a dependency
+2) if the module is not included in anaconda the absence of the package should be handled gracefully.
+   i) an import statement inside a try/except block
+   ii) call require("package_name") from any module 
+
+#TODO: make a .yaml dependency file and make the dependencies.py check for everything in the dependencies file
+#TODO?: make the dependency file tell you if something is core or tangential and what capabilities you will be missing out on if you omit it.
+#TODO: generate the dependencies.yaml file automatically via a script.

@@ -1,6 +1,6 @@
 import numpy as np
 import numpy.lib.recfunctions as np_recfunc
-from .utils import int_to_roman
+from .utils import int_to_roman, roman_to_int
 
 __all__ = ['periodic_table','solar_abundance','Abundances']
 
@@ -199,31 +199,31 @@ class PeriodicTable (object):
         else:
             raise TypeError("must receive either a floating value of the species or an array")
 
-    def _single_species_z (self,spe):
+    def _single_species_id (self,name):
+        """
+        Takes name, e.g. 'Fe I', and returns the id 26.1
         
-        if isinstance(spe,int):
-            return self[spe][0]
+        """
+        if isinstance(name,basestring):
+            sname = name.split()
+            if not len(sname):
+                return 0.0
+            elif len(sname) == 1:
+                return self[sname[0]][0]
+            elif len(sname) == 2:
+                el = self[sname[0]][0]
+                ion = sname[1]
+                ionz = roman_to_int(ion)
+                return el+(ionz-1)*0.1
+
+    def species_id (self,name):
+        if isinstance(name,basestring):
+            return self._single_species_id(name)
         
-        elif isinstance(spe,float):
-            el = self[spe][0]
-            
-            ionz = int(round((spe - round(spe-0.5))*10))+1
-            return el+" "+int_to_roman(ionz)
-        
+        elif isinstance(name,(list,tuple,np.ndarray)):    
+            return [self._single_species_id(s) for s in name]
         else:
-            return 'unknown'
-   
-        #     TODO : add something which will take input and return the Z for each 
-        #     def species_z (self,spe):
-        #         """
-        #         Takes a species id and returns species_id
-        #         
-        #         species_id := proton_number + 0.1*(ionization_state)
-        #         where the ionization_state is 0 for ground, 1 for singally, etc
-        #         
-        #         """       
-        #         
-        pass
+            raise TypeError("must receive either a string value of the species or an array")
 
     def __iter__ (self):
         return iter(self.table_data)

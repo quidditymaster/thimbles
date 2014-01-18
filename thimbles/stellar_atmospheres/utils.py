@@ -1,4 +1,4 @@
-import pdb #@UnusedImport
+import pdb  # @UnusedImport
 
 
 def int_to_roman(value):
@@ -47,14 +47,70 @@ def int_to_roman(value):
         raise TypeError("expected integer, got %s" % type(value))
     if not 0 < value < 4000:
         raise ValueError("Argument must be between 1 and 3999")   
-    ints = (1000,  900, 500, 400, 100,  90,  50,  40, 10,   9,  5,   4,  1)
-    nums = ('M',  'CM', 'D', 'CD','C', 'XC','L','XL','X','IX','V','IV','I')
+    ints = (1000,900,500,400,100,90,50,40,10,9,5,4,1)
+    nums = ('M','CM','D','CD','C','XC','L','XL','X','IX','V','IV','I')
     result = ""
     for i in range(len(ints)):
-        count   = int(value/ints[i])
-        result += nums[i]*count
-        value  -= ints[i]*count
+        count = int(value / ints[i])
+        result += nums[i] * count
+        value -= ints[i] * count
     return result
+
+def roman_to_int(value):
+    """
+    Convert a roman numeral to an integer.
+    
+    >>> r = range(1, 4000)
+    >>> nums = [int_to_roman(i) for i in r]
+    >>> ints = [roman_to_int(n) for n in nums]
+    >>> print r == ints
+    1
+    
+    >>> roman_to_int('VVVIV')
+    Traceback (most recent call last):
+     ...
+    ValueError: value is not a valid roman numeral: VVVIV
+    >>> roman_to_int(1)
+    Traceback (most recent call last):
+     ...
+    TypeError: expected string, got <type 'int'>
+    >>> roman_to_int('a')
+    Traceback (most recent call last):
+     ...
+    ValueError: value is not a valid roman numeral: A
+    >>> roman_to_int('IL')
+    Traceback (most recent call last):
+     ...
+    ValueError: value is not a valid roman numeral: IL
+    """
+    if type(value) != type(""):
+        raise TypeError,"expected string, got %s" % type(value)
+    value_upper = value.upper()
+    nums = ['M','D','C','L','X','V','I']
+    ints = [1000,500,100,50,10,5,1]
+    places = []
+    for c in value_upper:
+        if not c in nums:
+            raise ValueError,"value_upper is not a valid roman numeral: %s" % value_upper
+    for i in range(len(value_upper)):
+        c = value_upper[i]
+        value_ints = ints[nums.index(c)]
+        # If the next place holds a larger number, this value_ints is negative.
+        try:
+            nextvalue_ints = ints[nums.index(value[i + 1])]
+            if nextvalue_ints > value_ints:
+                value_ints *= -1
+        except IndexError:
+            # there is no next place.
+            pass
+        places.append(value_ints)
+    sum_ = 0
+    for n in places: sum_ += n
+    # Easiest test for validity...
+    if int_to_roman(sum_) == value_upper:
+        return sum_
+    else:
+        raise ValueError,'value is not a valid roman numeral: %s' % value
 
 class SpreadsheetCells (dict):
     """
@@ -83,7 +139,7 @@ class SpreadsheetCells (dict):
         self._check_set(y)
         if i in self:
             pdb.set_trace()
-            raise KeyError("Key already given"+str(i))
+            raise KeyError("Key already given" + str(i))
 
         super(SpreadsheetCells,self).__setitem__(i,y)
     

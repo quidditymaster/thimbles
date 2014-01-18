@@ -224,7 +224,6 @@ class FeatureFitWidget(QWidget):
         self.on_feature_change()
     
     def sliders_changed(self, intval):
-        self.parent.print_args(intval)
         #just ignore which slider caused the change get everything
         off = self.off_slider.value()
         gw = self.g_slider.value()

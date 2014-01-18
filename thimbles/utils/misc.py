@@ -811,3 +811,18 @@ def write_star_fits(star ,fname):
     phdu = fits.PrimaryHDU()
     hdul = fits.HDUList([phdu, wv_hdu, flux_hdu, inv_var_hdu, res_hdu])
     hdul.writeto(fname)
+    
+hcoverk = 1.4387751297851e8
+blconst = 1.191074728e24
+
+def blam(wavelength, temperature):
+    """blackbody intensity for wavelengths in angstroms note this does not
+    take into account the sampling derivative"""
+    return blconst*wavelength**-5.0/(np.exp(hcoverk/(temperature*wavelength))-1.0)
+
+def blackbody_spectrum(sampling_wavelengths, temperature,  normalize = True):
+    dlam_dx = scipy.gradient(sampling_wavelengths)
+    bbspec = blam(sampling_wavelengths, temperature)/dlam_dx
+    if normalize:
+        bbspec *= len(bbspec)/np.sum(bbspec)
+    return bbspec

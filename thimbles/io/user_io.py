@@ -15,7 +15,7 @@ from astropy.io import fits
 from ..utils.misc import inv_var_2_var, var_2_inv_var
 from .io import Information
 
-import pointsource
+import thimbles as tmb
 
 # ########################################################################### #
 
@@ -58,7 +58,7 @@ def read_user_defined (filepath,arg1,arg2='12',arg3='default'):
     return measurement_list,information
 
 def read_mike(filepath):
-    return pointsource.io.read_fits(filepath, band=1)
+    return tmb.io.read_fits(filepath, band=1)
 
 def read_hectochelle (filepath):
     # first thing always passed is the file path

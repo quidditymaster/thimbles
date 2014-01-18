@@ -1,0 +1,5 @@
+# large data files
+data
+
+# compiled files
+.py[c,w,f]

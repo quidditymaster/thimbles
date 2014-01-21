@@ -2,6 +2,7 @@ import sys
 
 import numpy as np
 import matplotlib
+import scipy.optimize
 matplotlib.use('Qt4Agg')
 try: 
     from PySide.QtCore import *
@@ -32,8 +33,11 @@ class AppForm(QMainWindow):
         
         self.layout = QGridLayout()
         
-        self.loaded_spectra, info = tmb.io.read_fits(options.spectrum_file)
         self.ldat = np.loadtxt(self.options.line_list, usecols=[0, 1, 2, 3])
+        self.loaded_spectra, info = tmb.io.read_fits(options.spectrum_file)
+        for spec in self.loaded_spectra:
+            spec.set_rv(options.rv)
+        self.cull_lines()
         self._init_features()
         self._init_feature_table()
         self._init_fit_widget()
@@ -45,37 +49,75 @@ class AppForm(QMainWindow):
         self.create_menu()
         #self.create_main_frame()
         self.create_status_bar()
+        #import pdb; pdb.set_trace()
+        self._connect()
+    
+    def _connect(self):
+        #connect all the events
+        self.fit_widget.slidersChanged.connect(self.update_row)
+        self.linelist_view.doubleClicked.connect(self.fit_widget.set_feature)
+    
+    def cull_lines(self):
+        min_wv = self.loaded_spectra[0].wv[0]
+        max_wv = self.loaded_spectra[0].wv[-1]
+        new_ldat = []
+        for feat_idx in range(len(self.ldat)):
+            cwv, cid, cep, cloggf = self.ldat[feat_idx]
+            if (min_wv + 0.1) < cwv < (max_wv-0.1):
+                new_ldat.append((cwv, cid, cep, cloggf))
+        self.ldat = np.array(new_ldat)
     
     def _init_features(self):
         self.features = []
         for feat_idx in range(len(self.ldat)):
             cwv, cid, cep, cloggf = self.ldat[feat_idx]
+            
+            bspec = self.loaded_spectra[0].bounded_sample((cwv-0.25, cwv+0.25))
+            wvs = bspec.wv
+            flux = bspec.flux
+            norm = bspec.norm
+            nflux = flux/norm
+            
             tp = tmb.features.AtomicTransition(cwv, cid, cloggf, cep)
-            lprof = tmb.line_profiles.Voigt(cwv, np.array([0.0, 0.01, 0.0]))
+            start_p = np.array([0.0, 0.1, 0.0])
+            lprof = tmb.line_profiles.Voigt(cwv, start_p)
             eq = 0.001
             nf = tmb.features.Feature(lprof, eq, 0.00, tp)
+            
+            def resids(pvec):
+                ew=pvec[0]
+                pr = lprof.get_profile(wvs, pvec[1:])
+                return (nflux - 1.0)+ew*pr
+            
+            guessv = np.hstack((0.05, start_p))
+            fit_res = fit_feature = scipy.optimize.leastsq(resids, guessv)
+            lprof.set_parameters(fit_res[0][1:])
+            nf.set_eq_width(fit_res[0][0]) 
             self.features.append(nf)
-
+    
+    def update_row(self, row_num):
+        left_idx = self.linelist_model.index(row_num, 0)
+        right_idx = self.linelist_model.index(row_num, self.linelist_model.columnCount())
+        self.linelist_model.dataChanged.emit(left_idx, right_idx)
+    
     def _init_fit_widget(self):
-        res_min_wv = self.loaded_spectra[0].wv[-1]
-        for f_idx in range(len(self.features)):
-            if self.features[f_idx].wv > res_min_wv:
-                break
-        self.fit_widget = FeatureFitWidget(self.loaded_spectra[0], self.features, f_idx+1, parent=self)
+        self.fit_widget = FeatureFitWidget(self.loaded_spectra[0], self.features, 0, self.options.fwidth, parent=self)
         self.layout.addWidget(self.fit_widget, 2, 0, 2, 5)
-
+    
     def _init_feature_table(self):
         drole = Qt.DisplayRole
         crole = Qt.CheckStateRole
-        wvcol = Column("wavelength", getter_dict = {drole: lambda x: "%10.3f" % x.wv})
-        spcol = Column("species", getter_dict = {drole: lambda x: "%10.3f" % x.species})
-        epcol = Column("excitation\npotential", {drole: lambda x:"%10.3f" % x.ep})
+        wvcol = Column("Wavelength", getter_dict = {drole: lambda x: "%10.3f" % x.wv})
+        spcol = Column("Species", getter_dict = {drole: lambda x: "%10.3f" % x.species})
+        epcol = Column("Excitation\nPotential", {drole: lambda x:"%10.3f" % x.ep})
         loggfcol = Column("log(gf)", {drole: lambda x: "%10.3f" % x.loggf})        
-        offsetcol = Column("offset", {drole: lambda x: "%10.3f" % x.get_offset()})
-        depthcol = Column("depth", {drole: lambda x: "%10.3f" % x.depth})
-        viewedcol = Column("viewed", {crole: lambda x: x.flags["viewed"]}, checkable=True)
+        offsetcol = Column("Offset", {drole: lambda x: "%10.3f" % x.get_offset()})
+        depthcol = Column("Depth", {drole: lambda x: "%10.3f" % x.depth})
+        ewcol = Column("Equivalent\nWidth", {drole: lambda x: "%10.3f" % x.eq_width})
+        viewedcol = Column("Viewed", {crole: lambda x: x.flags["viewed"]}, checkable=True)
         #ewcol = Column("depth"
-        columns = [wvcol, spcol, epcol, loggfcol, offsetcol, depthcol,
+        columns = [wvcol, spcol, epcol, loggfcol, offsetcol, 
+                   depthcol, ewcol,
                viewedcol]
         self.linelist_model = ConfigurableTableModel(self.features, columns)
         self.linelist_view = LineListView(parent=self)
@@ -144,6 +186,7 @@ if __name__ == "__main__":
     parser.add_argument("line_list", help="the path to a linelist file")
     parser.add_argument("-fwidth", "-fw",  type=float, default=6.0, 
                         help="the number of angstroms on either side of the current feature to display while fitting")
+    parser.add_argument("-rv", type=float, default=0.0, help="star radial velocity shift")
     options = parser.parse_args()
     
     main(options)

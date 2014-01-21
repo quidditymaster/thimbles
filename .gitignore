@@ -7,5 +7,5 @@ data
 .settings
 
 # Compiled Files
-.py[c,w,f]
+*.py[c,w,f]
 

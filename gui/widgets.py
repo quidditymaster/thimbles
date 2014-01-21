@@ -1,20 +1,22 @@
 import threading
 import numpy as np
 import matplotlib
-matplotlib.use('Qt4Agg')
-try: 
-    from PySide.QtCore import *
-    from PySide.QtGui import *
-    matplotlib.rcParams['backend.qt4'] = 'PySide'
-except ImportError:
-    from PyQt4.QtCore import *
-    from PyQt4.QtGui import *
-    matplotlib.rcParams['backend.qt4'] = 'PyQt4'
+#matplotlib.use('Qt4Agg')
+#try: 
+#from PySide.QtCore import *
+#    from PySide.QtGui import *
+#    matplotlib.rcParams['backend.qt4'] = 'PySide'
+#except ImportError:
+#    from PyQt4.QtCore import *
+#    from PyQt4.QtGui import *
+#    matplotlib.rcParams['backend.qt4'] = 'PyQt4'
 
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt4agg import NavigationToolbar2QTAgg as NavigationToolbar
 from matplotlib.figure import Figure
 
+from models import *
+from views import *
 import thimbles as tmb
 
 
@@ -75,10 +77,21 @@ class FloatSlider(QWidget):
         return self.min + self.slider.value()*(self.delta/self.n_steps)
     
     def set_value(self, val):
-        vfrac = (val-self.min)/self.delta
-        opt_idx = int(np.around(vfrac*self.n_steps))
-        self.slider.setValue(opt_idx)
-
+        try:
+            if val > self.max:
+                print "value above slider max, truncating"
+                val = self.max
+            elif val < self.min:
+                print "value below slider min, truncating"
+                val = self.min
+            elif val == np.nan:
+                print "value is nan, using minimum"
+                val = self.min
+            vfrac = (val-self.min)/self.delta
+            opt_idx = int(np.around(vfrac*self.n_steps))
+            self.slider.setValue(opt_idx)
+        except:
+            print "could not set slider value"
 
 class MatplotlibCanvas (FigureCanvas):
     """
@@ -251,8 +264,6 @@ class PrevNext(QWidget):
 
 class FeatureFitWidget(QWidget):
     slidersChanged = Signal(int)
-    nextFeature = Signal()
-    prevFeature = Signal()
     
     def __init__(self, spectrum, features, feature_idx, display_width, parent=None):
         super(FeatureFitWidget, self).__init__(parent)
@@ -263,29 +274,83 @@ class FeatureFitWidget(QWidget):
         self.feature = features[feature_idx]
         self.feature_idx = feature_idx
         
-        layout = QGridLayout()
+        self.lay = QGridLayout()
         
         self.mpl_wid = MatplotlibWidget(parent=parent)
         self.ax = self.mpl_wid.ax
-        layout.addWidget(self.mpl_wid, 0, 0, 2, 1)
+        self.lay.addWidget(self.mpl_wid, 1, 0, 2, 1)
         slider_orientation = Qt.Vertical
         self.off_slider = FloatSlider("offset", -0.15, 0.15, orientation=slider_orientation)
         self.d_slider = FloatSlider("depth", 0.0, 1.0, orientation=slider_orientation)
         self.g_slider = FloatSlider("sigma", 0.0, 1.0, orientation=slider_orientation)
         self.l_slider = FloatSlider("gamma", 0.0, 1.0, orientation=slider_orientation)
-        slider_grid = [(1, 1, 1, 1), (1, 2, 1, 1), (1, 3, 1, 1), (1, 4, 1, 1)]
+        slider_grid = [(2, 1, 1, 1), (2, 2, 1, 1), (2, 3, 1, 1), (2, 4, 1, 1)]
         slider_list = [self.off_slider, self.d_slider, self.g_slider, self.l_slider]
         for sl_idx in range(len(slider_list)):
-            layout.addWidget(slider_list[sl_idx], *slider_grid[sl_idx])
+            self.lay.addWidget(slider_list[sl_idx], *slider_grid[sl_idx])
         self.prev_next = PrevNext(duration=1.0, parent=self)
-        layout.addWidget(self.prev_next, 0, 1, 1, 4)
+        self.lay.addWidget(self.prev_next, 1, 1, 1, 4)
+        self._init_feature_table()
         self._init_plots()
         self._init_slider_vals()
-        self.setLayout(layout)
+        self._internal_connect()
+        self.setLayout(self.lay)
     
+        
     def _internal_connect(self):
         self._connect_sliders()
-        #self.prev_next.connect(self.set_feature)
+        self.slidersChanged.connect(self.update_row)
+        #print dir(self.linelist_view)
+        #print ""
+        #print self.linelist_view.selectionModel()
+        #print dir(self.linelist_view.selectionModel())
+        #self.linelist_view.selectionModel().currentRowChanged.connect(self.on_selection_change)
+        self.prev_next.next.connect(self.next_feature)
+        self.prev_next.prev.connect(self.prev_feature)
+    
+    def on_selection_change(self, row):
+        print "in on selection change", row
+        #print "in on_selection_change", selection
+        #print dir(selection)
+        
+    def next_feature(self):
+        #get our current index
+        #print self.linelist_view.selectionModel().currentSelection()
+        #self.linelist_view.setSelection()
+        self.feature_idx = min(self.feature_idx + 1, self.linelist_model.rowCount()-1) 
+        self.feature = self.features[self.feature_idx]
+        self.on_feature_changed()
+    
+    def prev_feature(self):
+        #self.linelist_view.currentSelection()
+        self.feature_idx = max(self.feature_idx - 1, 0)
+        self.feature = self.features[self.feature_idx]
+        self.on_feature_changed()
+    
+    def _init_feature_table(self):
+        drole = Qt.DisplayRole
+        crole = Qt.CheckStateRole
+        wvcol = Column("Wavelength", getter_dict = {drole: lambda x: "%10.3f" % x.wv})
+        spcol = Column("Species", getter_dict = {drole: lambda x: "%10.3f" % x.species})
+        epcol = Column("Excitation\nPotential", {drole: lambda x:"%10.3f" % x.ep})
+        loggfcol = Column("log(gf)", {drole: lambda x: "%10.3f" % x.loggf})        
+        offsetcol = Column("Offset", {drole: lambda x: "%10.3f" % x.get_offset()})
+        depthcol = Column("Depth", {drole: lambda x: "%10.3f" % x.depth})
+        ewcol = Column("Equivalent\nWidth", {drole: lambda x: "%10.3f" % x.eq_width})
+        viewedcol = Column("Viewed", {crole: lambda x: x.flags["viewed"]}, checkable=True)
+        #ewcol = Column("depth"
+        columns = [wvcol, spcol, epcol, loggfcol, offsetcol, 
+                   depthcol, ewcol, viewedcol]
+        self.linelist_model = ConfigurableTableModel(self.features, columns)
+        self.linelist_view = LineListView(parent=self)
+        self.linelist_view.setModel(self.linelist_model)
+        self.linelist_view.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.lay.addWidget(self.linelist_view, 0, 0, 1, 1)
+    
+    def update_row(self, row_num):
+        left_idx = self.linelist_model.index(row_num, 0)
+        right_idx = self.linelist_model.index(row_num, self.linelist_model.columnCount())
+        self.linelist_model.dataChanged.emit(left_idx, right_idx)
     
     def bounded_spec(self):
         feat_wv = self.feature.wv

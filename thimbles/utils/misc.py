@@ -70,7 +70,7 @@ def AngleDec (angle,unit=units.degree,raise_errors=False):
 
 def _invert(arr):
     return np.where(arr > 0, 1.0/(arr+(arr==0)), np.inf)
-         
+    
 def inv_var_2_var (inv_var):
     """
     Takes an inv_var and converts it to a variance. Carefully 
@@ -98,6 +98,25 @@ def var_2_inv_var (var):
     #inv_var[zeros] = fill
     #return inv_var
     return _invert(var)
+
+def clean_variances(variance):
+    """takes input variances which may include nan's 0's and negative values
+    and replaces those values with np.inf
+    """
+    bad_mask = np.isnan(variance)
+    bad_mask += variance <= 0
+    new_variance = np.where(bad_mask, np.inf, variance)
+    return new_variance
+
+def clean_inverse_variances(inverse_variance):
+    """takes input inverse variances which may include nan's, negative values
+    and np.inf and replaces those values with 0
+    """
+    bad_mask = np.isnan(inverse_variance)
+    bad_mask += inverse_variance < 0
+    bad_mask += inverse_variance == np.inf
+    new_variance = np.where(bad_mask, np.inf, inverse_variance)
+    return new_variance
 
 def reduce_output_shape (arr):
     shape = arr.shape
@@ -504,19 +523,23 @@ class NormFitResult:
     pass
 
 def approximate_normalization(spectrum,
-                              partition_scale=20,
+                              partition_scale=300,
                               reject_fraction=0.5, 
                               poly_order=2, 
                               mask_back_off=-1,
                               smart_partition=False, 
                               alpha=2.0,
                               beta=2.0,
+                              norm_hints=None,
                               overwrite=False,
                               min_stats=None,
                               ):
     """estimates a normalization curve for the input spectrum.
     spectrum: Spectrum
         a spectrum object
+    partition_scale: float
+        a rough scale of the smallest allowable level of structure to be fit
+        in pixels
     reject_fraction: float
         sets the feature detection cutoff at the value representing this fraction
         of all the feature troughs.
@@ -538,6 +561,9 @@ def approximate_normalization(spectrum,
         used only if smart_partition == True
         how expensive small block sizes are
         see partitioning.partitioned_polynomial_model
+    norm_hints: None or list of tuples
+        a list of 3 tuples (x, y, y_inv) which should be taken as continuum
+        measurements.
     overwrite: bool
         if True the normalization object in the input spectrum is replaced
         with the calculated normalization estimate (it all goes into the efficiency)
@@ -550,6 +576,8 @@ def approximate_normalization(spectrum,
     #import matplotlib.pyplot as plt
     #import pdb; pdb.set_trace()
     wavelengths = spectrum.get_wvs()
+    pix_delta = np.median(scipy.gradient(wavelengths))
+    pscale = partition_scale*pix_delta
     flux = spectrum.flux
     variance = spectrum.get_var()
     inv_var = spectrum.get_inv_var()
@@ -559,15 +587,21 @@ def approximate_normalization(spectrum,
                                        mask_back_off=mask_back_off, 
                                        min_stats=min_stats)
     fmask *= good_mask
-    mwv = wavelengths[fmask].copy()
-    mflux = flux[fmask].copy()
-    minv = inv_var[fmask]
+    if norm_hints == None:
+        mwv = wavelengths[fmask].copy()
+        mflux = flux[fmask].copy()
+        minv = inv_var[fmask]
+    else:
+        wvh, cfp, cfivar = zip(*norm_hints)
+        mwv = np.hstack((wavelengths[fmask].copy(), wvh))
+        mflux = np.hstack((flux[fmask].copy(), cfp))
+        minv = np.hstack((inv_var[fmask], cfivar))
     if smart_partition:
         try:
             opt_part, mvps = partitioning.partitioned_polynomial_model(mwv, mflux, minv, 
                     poly_order=(poly_order,),
                     grouping_column=0, 
-                    min_delta=partition_scale,
+                    min_delta=pscale,
                     alpha=alpha, beta=beta, epsilon=0.01)
             break_wvs = mwv[np.array(opt_part[1:-1], dtype=int)]
             use_simple_partition = False
@@ -577,7 +611,7 @@ def approximate_normalization(spectrum,
     else:
         use_simple_partition = True
     if use_simple_partition:
-        break_wvs = min_delta_bins(mwv, min_delta=partition_scale, target_n=poly_order)
+        break_wvs = min_delta_bins(mwv, min_delta=pscale, target_n=poly_order)
         #roughly evenly space the break points partition_scale apart
     pp_gen = piecewise_polynomial.RCPPB(poly_order=poly_order, control_points=break_wvs)
     ppol_basis = pp_gen.get_basis(mwv).transpose()
@@ -586,7 +620,7 @@ def approximate_normalization(spectrum,
     fit_coeffs = pseudo_huber_irls(ppol_basis, mflux, 
                       sigma=in_sig, 
                       gamma=3.0*med_sig, 
-                      max_iter=100, conv_thresh=1e-4)
+                      max_iter=10, conv_thresh=1e-4)
     n_polys = len(break_wvs) + 1
     n_coeffs = poly_order+1
     out_coeffs = np.zeros((n_polys, n_coeffs))
@@ -595,7 +629,7 @@ def approximate_normalization(spectrum,
         out_coeffs += c_coeffs*fit_coeffs[basis_idx]
     continuum_ppol = piecewise_polynomial.PiecewisePolynomial(out_coeffs, break_wvs, centers=pp_gen.centers, scales=pp_gen.scales, bounds=pp_gen.bounds)
     approx_norm = continuum_ppol(wavelengths)
-    res = NormFitResult
+    res = NormFitResult()
     res.norm = approx_norm
     res.norm_ppol = continuum_ppol
     res.min_stats = min_stats
@@ -811,7 +845,7 @@ def write_star_fits(star ,fname):
     phdu = fits.PrimaryHDU()
     hdul = fits.HDUList([phdu, wv_hdu, flux_hdu, inv_var_hdu, res_hdu])
     hdul.writeto(fname)
-    
+
 hcoverk = 1.4387751297851e8
 blconst = 1.191074728e24
 

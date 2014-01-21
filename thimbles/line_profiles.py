@@ -2,6 +2,8 @@ import scipy.special
 import numpy as np
 import scipy.optimize
 
+import thimbles as tmb
+
 sqrt2pi = np.sqrt(2*np.pi)
 
 def _gauss(wvs, center, g_width):
@@ -58,13 +60,13 @@ class LineProfile:
 
 class Voigt(LineProfile):
     
-    def __init__(self, center, line_parameters):
+    def __init__(self, center, param_vec):
         """center: the central wavelength
         line_parameters: a vector whose elements go
         offset, g_width, l_width = parameters
         """
         self.center = center
-        self.param_vec = line_parameters
+        self.param_vec = np.asarray(param_vec)
     
     def set_center(self, center):
         self.center = center
@@ -86,7 +88,7 @@ class Gaussian(LineProfile):
     
     def __init__(self, center, param_vec):
         self.center = center
-        self.param_vec = param_vec
+        self.param_vec = np.asarray(param_vec)
     
     def set_center(self, center):
         self.center = center
@@ -114,7 +116,7 @@ class HalfGaussian(LineProfile):
     def __init__(self, center, param_vec):
         self.center = center
         #offset, left_g_width, right_g_width = param_vec
-        self.param_vec = param_vec
+        self.param_vec = np.asarray(param_vec)
     
     def set_parameters(self, vec):
         """offset, g_width = vec"""
@@ -136,3 +138,42 @@ class HalfGaussian(LineProfile):
         avg_norm = 2.0/(l_integ + r_integ)
         sig_vec = np.where(wvs<self.center, self.left_g_width, self.right_g_width)
         return avg_norm*np.exp(-(wvs-self.center)**2/(2*sig_vec**2))
+
+
+def profile_fit(x, y, y_inv_var, center, profile, offset_sigma=None, additive_background=True):
+    """ fits a profile 
+    
+    x: ndarray
+        the x points
+    y: ndarray
+        the y points
+    y_inv_var: ndarray
+        the inverse variances associated with the y values
+    center: float
+        the central x value of the profile
+    profile: string or LineProfile
+        if a LineProfile object is given it's parameters will be modified to 
+        the best fit parameters. If 'voigt' or 'gaussian' is specified then 
+        a new instance of that profile type will be created and its parameters
+        fit.
+    offset_sigma: float or None
+        offsets of the profile are subjected to a gaussian prior centered
+        around zero with width parameter offset_sigma. If None then 
+        offset_sigma will be set to roughly a half pixel 0.5*x([1]-x[0]) 
+    """
+    if offset_sigma == None:
+        offset_sigma = 0.5*(x[1]-x[0]) 
+    if profile == "gaussian":
+        sig_start = 2.5*(x[1]-x[0])
+        profile = Gaussian(center, [0.0, sig_start])
+    elif profile == "voigt":
+        sig_start = 2.5*(x[1]-x[0])
+        profile = Voigt(center, [0.0, sig_start, 0.0])
+
+    tmb.modeling
+
+#def voigt_fit(x, y, y_error, center):
+#    return profile_fit(x, y, y_error, center, profile="voigt")
+#
+#def gauss_fit(x, y, y_error, center):
+#    return profile_fit(x, y, y_error, center, profile="gaussian")

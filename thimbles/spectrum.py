@@ -363,10 +363,10 @@ class WavelengthSolution(CoordinateBinning1d):
         return self.coordinates_to_indicies(shift_wvs)
     
     def set_rv(self, rv):
-        self.emitter_frame.set_v(rv)
+        self.emitter_frame.set_rv(rv)
     
     def get_rv(self):
-        self.emitter_frame.get_v()
+        self.emitter_frame.get_rv()
     
     
     #     def dx_dlam(self, wvs, frame="emitter"):        
@@ -402,7 +402,7 @@ class Spectrum(object):
         if inv_var == None:
             self.inv_var = (flux > 0.0)*np.ones(flux.shape, dtype=float)
             inv_var = misc.smoothed_mad_error(self, 1.0, overwrite_error=True)
-        self.inv_var = inv_var
+        self.inv_var = misc.clean_inverse_variances(inv_var)
         #the memory address of the last stored transform
         if norm == "auto":
             norm_res = misc.approximate_normalization(self, overwrite=True)
@@ -425,6 +425,9 @@ class Spectrum(object):
         return self.get_wvs(pixels=None,frame='emitter')
         """
         return self.get_wvs(pixels=None, frame='emitter')
+    
+    def set_rv(self, rv):
+        self.wv_soln.set_rv(rv)
     
     def get_wvs(self, pixels=None, frame="emitter"):    
         return self.wv_soln.get_wvs(pixels, frame)
@@ -505,6 +508,8 @@ class Spectrum(object):
             out_flux = self.flux[l_idx:u_idx+1]
             out_invvar = self.inv_var[l_idx:u_idx+1]
             out_norm = self.norm[l_idx:u_idx+1]
+        if len(out_flux) < 2:
+            return None
         return Spectrum(out_wvs, out_flux, out_invvar, norm=out_norm)
     
     def plot(self, axes=None, frame="emitter", **mpl_kwargs):

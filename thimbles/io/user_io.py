@@ -3,7 +3,7 @@
 # given here
 #
 
-__all__ = ['read_hectochelle', "read_mike"]
+__all__ = ['read_hectochelle', "read_mike", "read_elodie"]
 
 # ########################################################################### #
 # Import Modules
@@ -57,6 +57,20 @@ def read_user_defined (filepath,arg1,arg2='12',arg3='default'):
     
     return measurement_list,information
 
+def read_elodie(filepath):
+    hdul = fits.open(filepath)
+    flux = hdul[0].data
+    wvs = hdul[0].header["crval1"] + np.arange(len(flux))*hdul[0].header["cdelt1"]
+    rescaling_factor = np.median(flux[flux > 0])
+    variance = (hdul[2].data/rescaling_factor)**2
+    flux[np.isnan(flux)] = 0.0
+    flux /= rescaling_factor
+    inv_var = var_2_inv_var(variance)
+    info = Information()
+    info['filename'] = filepath
+    spec_list = [tmb.Spectrum(wvs, flux, inv_var)]
+    return spec_list, info
+
 def read_mike(filepath):
     return tmb.io.read_fits(filepath, band=1)
 
@@ -78,13 +92,8 @@ def read_hectochelle (filepath):
     wavelength = (np.arange(len(flux))-crpix)*cdelt + crval
     wavelength *= (1.0-bcv/299796458.0)
 
-    spectral_measurement = Spectrum(wavelength,flux,inv_var)
+    spectral_measurement = tmb.Spectrum(wavelength,flux,inv_var)
     measurement_list = [spectral_measurement]
     information = Information()
     information['filename'] = filepath
     return measurement_list,information
-
-    
-  
-    
-    

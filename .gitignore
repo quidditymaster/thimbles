@@ -9,3 +9,6 @@ data
 # Compiled Files
 *.py[c,w,f]
 
+#emacs old files
+*~
+

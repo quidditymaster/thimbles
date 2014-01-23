@@ -72,7 +72,7 @@ class FloatSlider(QWidget):
         lay.addWidget(label)
         lay.addWidget(self.slider)
         self.setLayout(lay)
-
+    
     def value(self):
         return self.min + self.slider.value()*(self.delta/self.n_steps)
     
@@ -97,6 +97,19 @@ class MatplotlibCanvas (FigureCanvas):
     """
     Class to represent the FigureCanvas widget
     
+    nrows: int
+      number of rows
+    ncols: int
+      number of columns
+    sharex: ["none" | "rows" | "columns" | "all"]
+      determines which plots in the grid share x axes.
+      "none" no x axis sharing
+      "rows" x axis shared by all plots in a row.
+      "columns" x axis shared by all plots in a column
+      "all" the x axis is shared between all plots
+    sharey: ["none" | "rows" | "columns" | "all"]
+      same as sharex for y axis sharing.
+    
     Attributes
     ----------
     fig : the handler for the matplotlib figure
@@ -113,11 +126,58 @@ class MatplotlibCanvas (FigureCanvas):
     
     """
     
-    def __init__(self):
+    def __init__(self, nrows, ncols, sharex, sharey):
         # setup Matplotlib Figure and Axis
         self.fig = Figure()
         super(MatplotlibCanvas,self).__init__(self.fig)
-        self.ax = self.fig.add_subplot(111)
+        assert nrows >= 1
+        assert ncols >= 1
+        self.nrows = nrows
+        self.ncols = ncols
+        ax_num = 1
+        self._axes = []
+        #import pdb; pdb.set_trace()
+        for col_idx in range(nrows):
+            for row_idx in range(ncols):
+                x_share_ax = None
+                y_share_ax = None
+                if sharex == "none":
+                    x_share_ax = None
+                elif sharex == "rows":
+                    if row_idx == 0:
+                        x_share_ax = None
+                    else:
+                        x_share_ax = self._axes[-col_idx]
+                elif sharex == "columns":
+                    if col_idx == 0:
+                        x_share_ax = None
+                    else:
+                        x_share_ax = self._axes[-row_idx*ncols]
+                elif sharex == "all":
+                    x_share_ax = self._axes[0]
+                else:
+                    raise Exception("don't recognize sharex behavior")
+                if sharey == "none":
+                    y_share_ax = None
+                elif sharey == "rows":
+                    if col_idx == 0:
+                        y_share_ax = None
+                    else:
+                        y_share_ax = self._axes[-col_idx]
+                elif sharey == "columns":
+                    if row_idx == 0:
+                        y_share_ax = None
+                    else:
+                        y_share_ax = self._axes[-row_idx*ncols]
+                elif sharey == "all":
+                    y_share_ax = self._axes[0]
+                else:
+                    raise Exception("don't recognize sharey behavior")
+                self._axes.append(self.fig.add_subplot(nrows, ncols, ax_num, sharex=x_share_ax, sharey=y_share_ax))
+                ax_num += 1
+        
+        #make a shortcut for the first (and usually only) axis
+        self.ax = self._axes[0]
         self._lock = threading.RLock()
         
         #import pdb; pdb.set_trace()
@@ -130,7 +190,15 @@ class MatplotlibCanvas (FigureCanvas):
         # QtGui.QSizePolicy.Expanding)
         # notify the system of updated policy
         #self.updateGeometry()
-
+    
+    def axis(self, row_idx, col_idx):
+        ax_num = self.ncols*row_idx + col_idx
+        return self._axes[ax_num]
+    
+    def set_ax(row_idx, col_idx):
+        """change which axis .ax refers to"""
+        self.ax = self.axis(row_idx, col_idx)
+    
     def draw(self):
         self.lock()
         super(MatplotlibCanvas, self).draw()
@@ -140,10 +208,10 @@ class MatplotlibCanvas (FigureCanvas):
         self.lock()
         super(MatplotlibCanvas, self).blit(bbox)
         self.unlock()
-
+    
     def lock(self):
         self._lock.acquire()
-        
+    
     def unlock(self):
         self._lock.release()
 
@@ -165,38 +233,43 @@ class MatplotlibWidget(QWidget):
     __1)__ adapted from S. Tosi, ``Matplotlib for Python Developers''
         Ed. Packt Publishing
         http://www.packtpub.com/matplotlib-python-development/book
-         
+        
     """
-    def __init__(self, parent=None, canvas=None):
+    def __init__(self, parent=None, nrows=1, ncols=1, mpl_toolbar=True,
+                 sharex="none", sharey="none"):
         #self.parent = parent
         # initialization of Qt MainWindow widget
         QWidget.__init__(self, parent)
         
         # set the canvas to the Matplotlib widget
-        if canvas==None:
-            canvas = MatplotlibCanvas()
-        self.canvas = canvas
-        
-        self.fig = canvas.fig
-        self.ax = self.canvas.ax
+        self.canvas = MatplotlibCanvas(nrows, ncols, sharex=sharex, sharey=sharey)
+        self.fig = self.canvas.fig
         
         # create a vertical box layout
         self.vboxlayout = QVBoxLayout()
         self.vboxlayout.addWidget(self.canvas)
-        self._init_toolbar()
+        if mpl_toolbar:
+            self.mpl_toolbar = NavigationToolbar(self.canvas,self)
+            self.mpl_toolbar.setWindowTitle("Plot")
+            self.vboxlayout.addWidget(self.mpl_toolbar)
         
         # set the layout to the vertical box
         self.setLayout(self.vboxlayout)
     
-    def _init_toolbar (self):
-        self.mpl_toolbar = NavigationToolbar(self.canvas,self)
-        self.mpl_toolbar.setWindowTitle("Plot")
-        self.vboxlayout.addWidget(self.mpl_toolbar)
-      
+    @property
+    def ax(self):
+        return self.canvas.ax
+    
+    def set_ax(self, row, column):
+        self.canvas.set_ax(row, column)
+    
+    def axis(self, row, column):
+        return self.canvas.axis(row, column)
+    
     def draw (self):
         self.canvas.draw()
 
-  
+
 class PrevNext(QWidget):
     prev = Signal()
     next = Signal()
@@ -276,9 +349,8 @@ class FeatureFitWidget(QWidget):
         
         self.lay = QGridLayout()
         
-        self.mpl_wid = MatplotlibWidget(parent=parent)
-        self.ax = self.mpl_wid.ax
-        self.lay.addWidget(self.mpl_wid, 1, 0, 2, 1)
+        self.mpl_fit = MatplotlibWidget(parent=parent, nrows=2, sharex="columns")
+        self.lay.addWidget(self.mpl_fit, 1, 0, 2, 1)
         slider_orientation = Qt.Vertical
         self.off_slider = FloatSlider("offset", -0.15, 0.15, orientation=slider_orientation)
         self.d_slider = FloatSlider("depth", 0.0, 1.0, orientation=slider_orientation)
@@ -296,7 +368,9 @@ class FeatureFitWidget(QWidget):
         self._internal_connect()
         self.setLayout(self.lay)
     
-        
+    def fit_axis(self, row):
+        return self.mpl_fit.axis(row, 0)
+    
     def _internal_connect(self):
         self._connect_sliders()
         self.slidersChanged.connect(self.update_row)
@@ -381,7 +455,7 @@ class FeatureFitWidget(QWidget):
         feat_wv = self.feature.wv
         xlim_min = feat_wv-self.display_width
         xlim_max = feat_wv+self.display_width
-        self.ax.set_xlim(xlim_min, xlim_max)
+        self.fit_axis(0).set_xlim(xlim_min, xlim_max)
         self.update_plots()
     
     def _connect_sliders(self):
@@ -402,19 +476,31 @@ class FeatureFitWidget(QWidget):
         feat_wv = self.feature.wv
         xlim_min = feat_wv-self.display_width
         xlim_max = feat_wv+self.display_width
-        self.ax.set_xlim(xlim_min, xlim_max)
+        self.fit_axis(0).set_xlim(xlim_min, xlim_max)
         bspec = self.bounded_spec()
-        self.data_line ,= self.ax.plot(bspec.wv, bspec.flux, c="b")
-        self.cont_line ,= self.ax.plot(bspec.wv, bspec.norm, c="g")
-        feature_model = self.feature.get_model_flux(bspec.wv)
-        self.model_line,= self.ax.plot(bspec.wv, feature_model*bspec.norm)
-        self.mpl_wid.canvas.draw()
+        self.data_line ,= self.fit_axis(0).plot(bspec.wv, bspec.flux, c="b")
+        self.cont_line ,= self.fit_axis(0).plot(bspec.wv, bspec.norm, c="g")
+        feature_model = self.feature.get_model_flux(bspec.wv)*bspec.norm
+        self.model_line,= self.fit_axis(0).plot(bspec.wv, feature_model)
+        
+        #import pdb; pdb.set_trace()
+        #and now for the residuals plot
+        inv_var = bspec.get_inv_var()
+        resids = inv_var*(feature_model-bspec.flux)
+        self.resid_line ,= self.fit_axis(1).plot(bspec.wv, resids, c="b")
+        
+        self.mpl_fit.draw()
     
     def update_plots(self):
         bspec = self.bounded_spec()
         self.data_line.set_data(bspec.wv, bspec.flux)
         bnorm = bspec.norm
         self.cont_line.set_data(bspec.wv, bnorm)
-        feature_model = self.feature.get_model_flux(bspec.wv)
-        self.model_line.set_data(bspec.wv, bnorm*feature_model)
-        self.mpl_wid.draw()
+        feature_model = self.feature.get_model_flux(bspec.wv)*bnorm
+        self.model_line.set_data(bspec.wv, feature_model)
+
+        inv_var = bspec.get_inv_var()
+        resids = (feature_model-bspec.flux)*inv_var
+        self.resid_line.set_data(bspec.wv, resids)
+
+        self.mpl_fit.draw()

@@ -39,7 +39,6 @@ class AppForm(QMainWindow):
             spec.set_rv(options.rv)
         self.cull_lines()
         self._init_features()
-        self._init_feature_table()
         self._init_fit_widget()
         
         self.main_frame.setLayout(self.layout)
@@ -47,15 +46,14 @@ class AppForm(QMainWindow):
         self.setCentralWidget(self.main_frame)
         
         self.create_menu()
-        #self.create_main_frame()
         self.create_status_bar()
         #import pdb; pdb.set_trace()
         self._connect()
     
     def _connect(self):
         #connect all the events
-        self.fit_widget.slidersChanged.connect(self.update_row)
-        self.linelist_view.doubleClicked.connect(self.fit_widget.set_feature)
+        #self.linelist_view.doubleClicked.connect(self.fit_widget.set_feature)
+        pass
     
     def cull_lines(self):
         min_wv = self.loaded_spectra[0].wv[0]
@@ -95,34 +93,9 @@ class AppForm(QMainWindow):
             nf.set_eq_width(fit_res[0][0]) 
             self.features.append(nf)
     
-    def update_row(self, row_num):
-        left_idx = self.linelist_model.index(row_num, 0)
-        right_idx = self.linelist_model.index(row_num, self.linelist_model.columnCount())
-        self.linelist_model.dataChanged.emit(left_idx, right_idx)
-    
     def _init_fit_widget(self):
         self.fit_widget = FeatureFitWidget(self.loaded_spectra[0], self.features, 0, self.options.fwidth, parent=self)
-        self.layout.addWidget(self.fit_widget, 2, 0, 2, 5)
-    
-    def _init_feature_table(self):
-        drole = Qt.DisplayRole
-        crole = Qt.CheckStateRole
-        wvcol = Column("Wavelength", getter_dict = {drole: lambda x: "%10.3f" % x.wv})
-        spcol = Column("Species", getter_dict = {drole: lambda x: "%10.3f" % x.species})
-        epcol = Column("Excitation\nPotential", {drole: lambda x:"%10.3f" % x.ep})
-        loggfcol = Column("log(gf)", {drole: lambda x: "%10.3f" % x.loggf})        
-        offsetcol = Column("Offset", {drole: lambda x: "%10.3f" % x.get_offset()})
-        depthcol = Column("Depth", {drole: lambda x: "%10.3f" % x.depth})
-        ewcol = Column("Equivalent\nWidth", {drole: lambda x: "%10.3f" % x.eq_width})
-        viewedcol = Column("Viewed", {crole: lambda x: x.flags["viewed"]}, checkable=True)
-        #ewcol = Column("depth"
-        columns = [wvcol, spcol, epcol, loggfcol, offsetcol, 
-                   depthcol, ewcol,
-               viewedcol]
-        self.linelist_model = ConfigurableTableModel(self.features, columns)
-        self.linelist_view = LineListView(parent=self)
-        self.linelist_view.setModel(self.linelist_model)
-        self.layout.addWidget(self.linelist_view, 0, 0, 2, 3)
+        self.layout.addWidget(self.fit_widget, 0, 0, 1, 1)
     
     def create_menu(self):
         self.file_menu = self.menuBar().addMenu("&File")

@@ -1,10 +1,9 @@
 import numpy as np
+import scipy.sparse as sparse
 import matplotlib.pyplot as plt
 
 class ParameterBag(object):
-    """a dummy class for conveniently passing arguments to functions in the FactorModel.
-    the parameter bag becomes a consistent object within the FactorModel and so also
-    provides a convenient space for the predictor functions to store results.
+    """a dummy class for conveniently passing around information.
     
     can be initialized with any keyword arguments which go into the namespace of this
     object under their passed in keywords.
@@ -18,11 +17,121 @@ class ParameterBag(object):
     par_bag = ParameterBag()
     par_bag.x = 3
     par_bag.y = 1
-    
     """
     def __init__(self, **kwargs):
         for key,value in kwargs.items():
             self.__dict__[key] = value
+
+
+class Predictor(object):
+    
+    def __init__(self, delta_func, sigma_func, gamma_func):
+        self.delta_func = delta_func
+        self.sigma_func = sigma_func
+        self.gamma_func = gamma_func
+    
+    def __call__(self, alpha, beta, pbag):
+        alpha_delta = self.delta_func(alpha, beta, pbag)
+        dsig = self.sigma_func(alpha, beta, pbag)
+        dgamma = self.gamma_func(alpha, beta, pbag)
+        return alpha_delta, dsig, dgamma
+
+class LocallyLinearModel(object):
+    """ 
+    """
+    
+    def __init__(self, alpha0, eval_func, op_func, predictors=None, alpha_eps=1e-7):
+        self.alpha = alpha0
+        self.eval_func = eval_func
+        self.op_func = op_func
+        self.alpha_eps
+        if predictors == None:
+            predictors = []
+        self.predictors = predictors
+    
+    def __call__(self, alpha, beta, pbag):
+        return self.eval_func(alpha, beta, pbag)
+    
+    def get_lop(self, alpha, beta, pbag):
+        """return a linear expansion of this operator given the current alpha
+        and expanded around the current beta (if this operator is truly linear
+        there is no beta dependence).
+        """
+        return self.op_func(alpha, beta, pbag)
+    
+    def get_differential_operators(self, alpha, beta, pbag):
+        delta_vecs = self.alpha_eps*np.eye(len(self.alpha))
+        delta_columns = []
+        curve_columns = []
+        central_lop = self.get_lop(alpha, beta, pbag)
+        for i in range(len(self.alpha)):
+            plus_op = self.get_op(alpha+delta_vecs[0], beta, pbag)
+            minus_op = self.get_op(alpha-delta_vecs[0], beta, pbag)
+            delta_op = (plus_op - minus_op)/(2*self.alpha_eps)
+            curve_op = (plus_op - 2*central_lop + minus_op)/(self.alpha_eps**2)
+            delta_col = delta_op*beta
+            curve_col = curve_op*beta
+            delta_columns.append(delta_col)
+        if len(delta_columns) == 0:
+            alpha_der = None
+            alpha_curve = None
+        else:
+            alpha_der = sparse.bmat(delta_columns)
+            alpha_curve = sparse.bmat(curve_columns)
+        #return a tuple of locally_linear_operator, alpha_derivative_operator, alpha_curvature_operator
+        return central_lop, alpha_der, alpha_curve
+        
+    
+    def evaluate_predictors(self, alpha, beta, pbag):
+        pred_deltas = []
+        pred_sigmas = []
+        pred_gammas = []
+        for predictor in self.predictors:
+            #predictor_allowed = True
+            #if predictor_min <= predictor.level <= predictor_max:
+            #    if not predictor.id_ in allowed_ids:
+            #        predictor_allowed=False
+            #if predictor.id_ in excluded_ids:
+            #    predictor_allowed=False
+            #if predictor_allowed:
+            if True:
+                pd, ps, pg = predictor(alpha, beta, pbag)
+                pred_deltas.append(pred_deltas)
+                pred_sigmas.append(pred_sigmas)
+                pred_gammas.append(pred_gammas)
+        return pred_deltas, pred_sigmas, pred_gammas
+
+class ProductDataModel(object):
+    
+    def __init__(self, models, base_beta, parameter_bag=None):
+        self.models = models
+        if parameter_bag == None:
+            parameter_bag = ParameterBag()
+        self.pbag = parameter_bag
+        self.base_beta=base_beta
+    
+    def build_fit_matrices(self):
+        base_mod = self.models[-1]
+        base_alpha = base_mod.alpha
+        prev_eval = base_mod(base_alpha, self.base_beta, self.pbag)
+        clop, calpha_der, calpha_curve = base_mod.get_differential_operators(base_alpha, self.base_beta, self.pbag)
+        accumulated_lop = clop
+        delta_alpha_lops = [calpha_der]
+        delta_alpha_curve = [calpha_curve]
+        for i in range(2, len(self.models)):
+            cmod = self.models[-i]
+            calpha = cmod.alpha
+            clop, calpha_der, calpha_curve = cmod.get_differential_operators(calpha, prev_eval, self.pbag)
+            prev_eval = cmod(calpha, prev_eval, self.pbag)
+            accumulated_lop = clop*accumulated_lop
+            for pidx in range(len(delta_alpha_lops)):
+                delta_alpha_lops[pidx] = clop*delta_alpha_lops[pidx]
+                delta_alpha_curve[pidx] = clop*delta_alpha_curve[pidx]
+            delta_alpha_lops.insert(0, calpha_der)
+            delta_alpha_curve.insert(0, calpha_curve)
+        delta_alpha_curve.insert(0, accumulated_lop)
+        fit_mat = sparse.bmat([delta_alpha_curve])
+
 
 class IdentityOperation(object):
     """an object which when used in a binary operation returns the other object
@@ -31,7 +140,7 @@ class IdentityOperation(object):
     def __mul__(self, other):
         return other
     
-    def __div__(self, toher):
+    def __div__(self, other):
         return other
     
     def __add__(self, other):
@@ -43,7 +152,7 @@ class IdentityOperation(object):
     def __rmul__(self, other):
         return other
     
-    def __rdiv__(self, toher):
+    def __rdiv__(self, other):
         return other
     
     def __radd__(self, other):
@@ -52,176 +161,6 @@ class IdentityOperation(object):
     def __rsub__(self, other):
         return other
 
-
-
-class FactorModel(object):
-    """represents a component model of a larger vector model expression
-    the component model is of the form 
-    
-    A_func(alpha, beta, param_bag)*beta + C_func(alpha, beta, param_bag)
-    
-    note: all functions called for in this model are assumed to take 3 arguments as 
-    parameters in the order.
-    
-    f(alpha, beta, param_bag)
-    
-    where the param_bag argument is a ParameterBag object belonging to this FactorModel.
-    
-    alpha0: ndarray or None
-        the non-linear model parameters to start with
-    beta0: ndarray or None
-        the linear model parameters to start with
-    A_func: function or None
-        a function that returns a component of the model matrix dependent on the alpha
-        parameters. if None there is no alpha dependence of the matrix component.
-    C_func: function or None
-        a function which takes c_func(alpha, *alpha_args) and returns a vector output.
-        If None there are no beta independent parameters in the model.
-    bag_parameters: dictionary
-        a collection of parameters to put in the ParameterBag which gets passed
-        to the provided functions. 
-    alpha_min: ndarray or None
-        the minimum allowed values of the alphas
-    alpha_max: ndarray or None
-        the maximum allowed values of the alphas
-    beta_min: ndarray or None
-        the minimum allowed values of the betas
-    beta_max: ndarray or None
-        the maximum allowed values of the betas
-    alpha_predictor: function or None
-        an optional function of the form alpha_predictor(alpha, beta, *alpha_args)
-        which returns a vector of predicted best alphas. This can be used to 
-        accelerate fit convergence using good heuristics or to enforce some sort
-        of constraints (e.g. smoothness) on the alpha parameters
-    beta_predictor: function or none
-        same as alpha_predictor but for beta vector.
-    epsilon: ndarray or float
-        the small offset to use in estimating the alpha derivatives if derivaitive_func is 
-        not supplied.
-    curvature fraction: float
-        when generating a linearized expansion of the FactorModel around the current
-        alpha and beta a term will be generated in the linear fit matrix to penalize
-        large deltas in the alpha and beta parameters. 
-    
-    """
-    def __init__(self, alpha0, beta0, 
-                 A_func=None,
-                 C_func=None,
-                 A_alpha_der=None, 
-                 C_alpha_der=None,
-                 A_alpha_curvature=None, 
-                 C_alpha_curvature=None, 
-                 parameter_bag = None,
-                 alpha_min=None, alpha_max=None, beta_min=None, beta_max=None, 
-                 alpha_predictors=None,
-                 beta_predictors=None,
-                 epsilon=1e-7, 
-                 curvature_fraction=0.1):
-        self.alpha = alpha0
-        self.beta = beta0
-        self.A_func = A_func
-        self.C_func = C_func
-        self.A_alpha_der=A_alpha_der
-        self.C_alpha_der=C_alpha_der
-        
-        if parameter_bag == None:
-            parameter_bag = ParameterBag()
-        self.parameter_bag = parameter_bag
-        if alpha_min != None:
-            raise NotImplemented
-        if alpha_max != None:
-            raise NotImplemented
-        if beta_min != None:
-            raise NotImplemented
-        if beta_max != None:
-            raise NotImplemented
-        self.alpha_max = alpha_max
-        self.alpha_min = alpha_min
-        self.beta_min = beta_min
-        self.beta_max = beta_max
-    
-    def get_A(self, alpha=None, beta=None):
-        if alpha == None:
-            alpha = self.alpha
-        if beta == None:
-            beta = self.beta
-        if self.A_func == None:
-            return None
-        else:
-            return self.A_func(alpha, beta, self.parameter_bag)
-    
-    def get_C(self, alpha=None, beta=None):
-        if alpha == None:
-            alpha = self.alpha
-        if beta == None:
-            beta = self.beta
-        if self.C_func == None:
-            return None
-        return self.C_func(alpha, beta, self.parameter_bag) 
-    
-    def __call__(self):
-        A = self.get_A()
-        C = self.get_C()
-        if (A != None):
-            if C != None:
-                return A*self.beta + C
-            else:
-                return A*self.beta
-        else:
-            return C
-    
-    def set_alpha(self, alpha):
-        #self.alpha = np.clip(alpha, self.alpha_min, self.alpha_max)
-        self.alpha = alpha
-    
-    def set_beta(self, beta):
-        #self.beta = np.clip(beta, self.beta_min, self.beta_max)
-        self.beta = beta
-    
-    def alpha_derivative_matrix(self):
-        if self.A_alpha_der == None:
-            if self.A_func == None:
-                mat_vecs_out = []
-                for alpha_idx in range(len(self.alpha)):
-                    #plus delta
-                    raise NotImplemented
-        else:
-            A_der_mat = self.A_alpha_der(self.alpha, self.beta, self.par_bag)
-        C_der_mat = self.C_alpha_der(self.alpha, self.beta, self.par_bag)
-        return scipy.sparse.bmat([[A_der_mat, C_der_mat]])
-    
-    def beta_derivative_matrix(self):
-        return self.get_A()
-    
-    def delta_fit_matrix(self):
-        alpha_der = self.alpha_derivative_matrix()
-        beta_der = self.beta_derivative_matrix()
-        return scipy.sparse.bmat([[alpha_der, beta_der]])
-    
-    def delta_regularization_matrix(self):
-        alpha_reg = scipy.sparse.identity(len(self.alpha))
-        beta_reg = scipy.sparse.identity(len(self.beta))
-        return scipy.sparse.bmat([[alpha_reg, None], [None, beta_reg]])
-    
-    def regularization_vector(self):
-        return np.zeros(len(self.alpha) + len(self.beta))
-    
-    def regularization_weights(self):
-        return 0.1*np.ones(len(self.alpha) + len(self.beta))
-    
-    def predictor_matrices(self):
-        return None
-
-class ScalarModel(FactorModel):
-    """a model which simply 
-    """
-    def __init__(self, init_value):
-        raise NotImplemented
-
-class ScaledVectorModel(FactorModel):
-    
-    def __init__(self):
-        raise NotImplemented
 
 class DataModel(object):
     """a model which combines the results of factor models to output 
@@ -253,25 +192,3 @@ class DataModel(object):
         self.inverse_variance = inverse_variance
         self.factor_models = factor_models
         self.model
-
-class ProductDataModel(DataModel):
-    """a data model which consists of factor models multiplied together.
-    """
-    def __init__(self, data, inverse_variance, factor_models, transform=None):
-        self.data = data
-        self.inverse_variance = inverse_variance
-        self.factor_models = factor_models
-        self.transform = transform
-    
-    def eval(self):
-        prod_res = self.factor_models[0]()
-        for fmod in self.factor_models:
-            prod_res *= fmod()
-        if transform != None:
-            return transform*prod_res
-        else:
-            return prod_res
-    
-    def fit_iteration(self, data, inverse_variance, factor_models):
-        resid_vec = data-self.eval()
-        

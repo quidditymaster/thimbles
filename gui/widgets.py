@@ -296,10 +296,18 @@ class PrevNext(QWidget):
         #connect stuff
         self.duration_le.editingFinished.connect(self.set_duration)
         self.timer.timeout.connect(self.on_timeout)
-        self.prev_btn.clicked.connect(self.emit_prev)
-        self.next_btn.clicked.connect(self.emit_next)
+        self.prev_btn.clicked.connect(self.on_prev_clicked)
+        self.next_btn.clicked.connect(self.on_next_clicked)
         self.play_toggle_btn.clicked.connect(self.toggle_pause)
+
+    def on_prev_clicked(self):
+        self.paused = True
+        self.emit_prev()
     
+    def on_next_clicked(self):
+        self.paused=True
+        self.emit_next()
+
     def emit_next(self):
         self.next.emit()
     
@@ -482,25 +490,42 @@ class FeatureFitWidget(QWidget):
         self.cont_line ,= self.fit_axis(0).plot(bspec.wv, bspec.norm, c="g")
         feature_model = self.feature.get_model_flux(bspec.wv)*bspec.norm
         self.model_line,= self.fit_axis(0).plot(bspec.wv, feature_model)
+        nac = bspec.norm[len(bspec.norm)//2]
+        self.top_marker_line ,= self.fit_axis(0).plot([feat_wv, feat_wv], [0.7*nac, 1.1*nac], c="r", lw=1.5) 
         
+        self.bottom_marker_line ,= self.fit_axis(1).plot([feat_wv, feat_wv], [-10.0, 10.0], c="r", lw=1.5) 
         #import pdb; pdb.set_trace()
         #and now for the residuals plot
         inv_var = bspec.get_inv_var()
-        resids = inv_var*(feature_model-bspec.flux)
-        self.resid_line ,= self.fit_axis(1).plot(bspec.wv, resids, c="b")
+        bkground_alpha = 0.5
+        self.zero_line ,= self.fit_axis(1).plot([bspec.wv[0], bspec.wv[-1]], [0, 0], c="k", alpha=bkground_alpha, lw=2.0)
+        sig_levels = [3]
+        self.sig_lines = [self.fit_axis(1).plot([bspec.wv[0], bspec.wv[-1]], [sl, sl], c="k", alpha=bkground_alpha)[0] for sl in sig_levels]
+        self.sig_lines.extend([self.fit_axis(1).plot([bspec.wv[0], bspec.wv[-1]], [-sl, -sl], c="k", alpha=bkground_alpha)[0] for sl in sig_levels])
         
+        #plot the model residuals. 
+        significance = np.sqrt(inv_var)*(feature_model-bspec.flux)
+        self.resid_line ,= self.fit_axis(1).plot(bspec.wv, significance, c="b")
+        self.fit_axis(1).set_ylim(-6, 6)
         self.mpl_fit.draw()
     
     def update_plots(self):
+        feat_wv = self.feature.wv
         bspec = self.bounded_spec()
         self.data_line.set_data(bspec.wv, bspec.flux)
         bnorm = bspec.norm
         self.cont_line.set_data(bspec.wv, bnorm)
         feature_model = self.feature.get_model_flux(bspec.wv)*bnorm
         self.model_line.set_data(bspec.wv, feature_model)
+        nac = bspec.norm[len(bspec.norm)//2]
+        self.top_marker_line.set_data([feat_wv, feat_wv], [0.7*nac, 1.1*nac])
+        self.bottom_marker_line.set_xdata([feat_wv, feat_wv])
 
         inv_var = bspec.get_inv_var()
-        resids = (feature_model-bspec.flux)*inv_var
-        self.resid_line.set_data(bspec.wv, resids)
-
+        significance = (feature_model-bspec.flux)*np.sqrt(inv_var)
+        self.resid_line.set_data(bspec.wv, significance)
+        self.zero_line.set_data([bspec.wv[0], bspec.wv[-1]], [0, 0])
+        for line in self.sig_lines:
+            line.set_xdata([bspec.wv[0], bspec.wv[-1]])
+        
         self.mpl_fit.draw()

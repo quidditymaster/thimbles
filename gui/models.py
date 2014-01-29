@@ -96,8 +96,71 @@ class ConfigurableTableModel(QAbstractTableModel):
         except:
             return False
 
-class LineListView(QTableView):
+
+
+class ItemGroup(object):
+
+    def __init__(self, group_name, group_indexes):
+        self.name = group_name
+        self.group_indexes = group_indexes
     
-    def __init__(self, parent=None):
-        super(LineListView, self).__init__(parent)
+    def rowCount(self):
+        return len(self.group_indexes)
+    
+    def data(self, index, role=Qt.DisplayRole):
+        row, column = index.row(), index.column()
+        if role == Qt.DisplayRole:
+            return "%d, %d, orig, %d" % (row, column, self.group_indexes[row])
+
+
+class GroupableItemModel(QAbstractItemModel):
+    
+    def __init__(self, data, groups):
+        super(GroupableItemModel, self).__init__()
+        self._data = data
+        self._groups = groups
+    
+    def rowCount(self, parent=QModelIndex()):
+        if parent == QModelIndex():
+            return len(self._groups)
+        else:
+            group_row = parent.row()
+            return self._groups[group_row].rowCount()
+    
+    def columnCount(self, parent=QModelIndex()):
+        return 1
+    
+    def index(row, column, parent=QModelIndex()):
+        if not self.hasIndex(row, column, parent):
+            return QModelIndex()
+        if parent == QModelIndex():
+            return self.createIndex(row, column, QModelIndex())
+        if childItem:
+
+    #def headerData(self, section, orientation, role):
+    #    if role == Qt.DisplayRole:
+    #        if orientation == Qt.Horizontal:
+    #            return self.columns[section].name
+    #
+    #def flags(self, index):
+    #    col = index.column()
+    #    return self.columns[col].qt_flag
+    #
+    def data(self, index, role=Qt.DisplayRole):
+        parent = index.parent()
+        row, col = index.row(), index.column()
+        if parent == QModelIndex():
+            return self._groups[row].name
+        else:
+            parent_row = index.parent().row()
+            return col_obj.get(data_obj, role)
+    
+    def setData(self, index, value, role=Qt.EditRole):
+        row, col = index.row(), index.column()
+        data_obj = self._data[row]
+        col_obj = self.columns[col]
+        try:
+            col_obj.set(data_obj, value, role)
+        except:
+            return False
 

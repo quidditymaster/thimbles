@@ -30,9 +30,14 @@ class AppForm(QMainWindow):
         self.layout = QGridLayout()
         
         self.ldat = np.loadtxt(self.options.line_list, usecols=[0, 1, 2, 3])
-        self.loaded_spectra, info = tmb.io.read_fits(options.spectrum_file)
-        for spec in self.loaded_spectra:
-            spec.set_rv(options.rv)
+        rfunc = eval("tmb.io.%s" % options.read_func)
+        #self.loaded_spectra, info = rfunc(options.spectrum_file)
+        loaded_spectra, info = rfunc(options.spectrum_file)
+        self.spec = loaded_spectra[options.order]
+        self.order_num = options.order
+        #for spec in self.loaded_spectra:
+        #    spec.set_rv(options.rv)
+        self.spec.set_rv(options.rv)
         self.cull_lines()
         self._init_features()
         self._init_fit_widget()
@@ -52,8 +57,8 @@ class AppForm(QMainWindow):
         pass
     
     def cull_lines(self):
-        min_wv = self.loaded_spectra[0].wv[0]
-        max_wv = self.loaded_spectra[0].wv[-1]
+        min_wv = self.spec.wv[0]
+        max_wv = self.spec.wv[-1]
         new_ldat = []
         for feat_idx in range(len(self.ldat)):
             cwv, cid, cep, cloggf = self.ldat[feat_idx]
@@ -66,7 +71,7 @@ class AppForm(QMainWindow):
         for feat_idx in range(len(self.ldat)):
             cwv, cid, cep, cloggf = self.ldat[feat_idx]
             
-            bspec = self.loaded_spectra[0].bounded_sample((cwv-0.25, cwv+0.25))
+            bspec = self.spec.bounded_sample((cwv-0.25, cwv+0.25))
             wvs = bspec.wv
             flux = bspec.flux
             norm = bspec.norm
@@ -90,7 +95,7 @@ class AppForm(QMainWindow):
             self.features.append(nf)
     
     def _init_fit_widget(self):
-        self.fit_widget = FeatureFitWidget(self.loaded_spectra[0], self.features, 0, self.options.fwidth, parent=self)
+        self.fit_widget = FeatureFitWidget(self.spec, self.features, 0, self.options.fwidth, parent=self)
         self.layout.addWidget(self.fit_widget, 0, 0, 1, 1)
     
     def create_menu(self):
@@ -153,9 +158,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument("spectrum_file", help="the path to a spectrum file")
     parser.add_argument("line_list", help="the path to a linelist file")
-    parser.add_argument("-fwidth", "-fw",  type=float, default=6.0, 
+    parser.add_argument("-fwidth", "-fw",  type=float, default=3.0, 
                         help="the number of angstroms on either side of the current feature to display while fitting")
+    parser.add_argument("-read_func", default="read_fits")
     parser.add_argument("-rv", type=float, default=0.0, help="star radial velocity shift")
+    parser.add_argument("-order", type=int, default=0, help="if there are multiple spectra specify which one to pull up")
     options = parser.parse_args()
     
     main(options)

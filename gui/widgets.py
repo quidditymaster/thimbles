@@ -322,6 +322,7 @@ class PrevNext(QWidget):
         self.next_btn.clicked.connect(self.on_next_clicked)
         self.play_toggle_btn.clicked.connect(self.toggle_pause)
 
+    
     def on_prev_clicked(self):
         self.paused = True
         self.emit_prev()
@@ -382,33 +383,55 @@ class FeatureFitWidget(QWidget):
         self.lay = QGridLayout()
         
         self.mpl_fit = MatplotlibWidget(parent=parent, nrows=2, sharex="columns")
-        self.lay.addWidget(self.mpl_fit, 1, 0, 2, 1)
+        self.lay.addWidget(self.mpl_fit, 1, 0, 3, 1)
         slider_orientation = Qt.Vertical
-        self.off_slider = FloatSlider("offset", -0.15, 0.15, orientation=slider_orientation)
-        self.d_slider = FloatSlider("depth", 0.0, 1.0, orientation=slider_orientation)
-        self.g_slider = FloatSlider("sigma", 0.0, 1.0, orientation=slider_orientation)
-        self.l_slider = FloatSlider("gamma", 0.0, 1.0, orientation=slider_orientation)
+        slider_n_steps = 200
+        self.off_slider = FloatSlider("offset", -0.15, 0.15, orientation=slider_orientation, n_steps=slider_n_steps)
+        self.d_slider = FloatSlider("depth", 0.0, 1.0, orientation=slider_orientation, n_steps=slider_n_steps)
+        self.g_slider = FloatSlider("sigma", 0.0, 1.0, orientation=slider_orientation, n_steps=slider_n_steps)
+        self.l_slider = FloatSlider("gamma", 0.0, 1.0, orientation=slider_orientation, n_steps=slider_n_steps)
         slider_grid = [(2, 1, 1, 1), (2, 2, 1, 1), (2, 3, 1, 1), (2, 4, 1, 1)]
         slider_list = [self.off_slider, self.d_slider, self.g_slider, self.l_slider]
         for sl_idx in range(len(slider_list)):
             self.lay.addWidget(slider_list[sl_idx], *slider_grid[sl_idx])
+        
+        #previous/next setup
         self.prev_next = PrevNext(duration=1.0, parent=self)
         self.lay.addWidget(self.prev_next, 1, 1, 1, 4)
+        
+        #output_file button
+        self.output_button = QPushButton("save measurements")
+        self.output_button.clicked.connect(self.save_measurements)
+        self.lay.addWidget(self.output_button, 3, 1, 1, 2)
+        
         self._init_feature_table()
         self._init_plots()
         self._init_slider_vals()
         self._internal_connect()
         self.setLayout(self.lay)
     
+    def save_measurements(self):
+        fname, file_filter = QFileDialog.getSaveFileName(self, "pick a file name for the output measurement line list")
+        widths = np.asarray([1000.0*f.eq_width for f in self.features])
+        np.savetxt(fname, widths)
+        
+    
+    @property
+    def hint_click_on(self):
+        return False
+    
     def handle_plot_click(self, eventl):
         event ,= eventl
-        print "handle plot click called"
+        if self.hint_click_on:
+            hwv = event.xdata
+            hflux = event.ydata
+            self.add_norm_hint(hwv, hflux)
     
     def add_norm_hint(self, wv, flux):
         self.norm_hint_wvs.append(wv)
         self.norm_hint_fluxes.append(flux) 
         #todo add a realistic error estimate for the hints
-        hint_tuple = self.norm_hint_wvs, self.norm_hint_fluxes, np.ones(self.norm_hint_wvs.shape)
+        hint_tuple = self.norm_hint_wvs, self.norm_hint_fluxes, np.ones(len(self.norm_hint_wvs), dtype=float)*10.0
         tmb.utils.misc.approximate_normalization(self.spectrum,norm_hints=hint_tuple,overwrite=True)
         self.update_plots()
     

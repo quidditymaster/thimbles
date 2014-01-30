@@ -136,6 +136,7 @@ class GroupableItemModel(QAbstractItemModel):
         if parent == QModelIndex():
             return self.createIndex(row, column, QModelIndex())
         if childItem:
+            pass
 
     #def headerData(self, section, orientation, role):
     #    if role == Qt.DisplayRole:

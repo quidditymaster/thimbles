@@ -16,7 +16,7 @@ from matplotlib.backends.backend_qt4agg import NavigationToolbar2QTAgg as Naviga
 from matplotlib.figure import Figure
 
 from models import *
-from views import *
+import views
 import thimbles as tmb
 
 
@@ -235,6 +235,10 @@ class MatplotlibWidget(QWidget):
         http://www.packtpub.com/matplotlib-python-development/book
         
     """
+    buttonPressed = Signal(list)
+    buttonReleased = Signal(list)
+    pickEvent = Signal(list)
+    
     def __init__(self, parent=None, nrows=1, ncols=1, mpl_toolbar=True,
                  sharex="none", sharey="none"):
         #self.parent = parent
@@ -255,6 +259,24 @@ class MatplotlibWidget(QWidget):
         
         # set the layout to the vertical box
         self.setLayout(self.vboxlayout)
+        
+        self.mpl_connect()
+    
+    def mpl_connect(self):
+        #print "mpl connect called"
+        #import pdb; pdb.set_trace()
+        self.canvas.callbacks.connect("button_press_event", self.emit_button_pressed)
+        self.canvas.callbacks.connect("button_release_event", self.emit_button_released)
+        self.canvas.callbacks.connect("pick_event", self.emit_pick_event)
+    
+    def emit_button_pressed(self, event):
+        self.buttonPressed.emit([event])
+    
+    def emit_button_released(self, event):
+        self.buttonReleased.emit([event])
+    
+    def emit_pick_event(self, event):
+        self.pickEvent.emit([event])
     
     @property
     def ax(self):
@@ -354,6 +376,8 @@ class FeatureFitWidget(QWidget):
         self.features = features
         self.feature = features[feature_idx]
         self.feature_idx = feature_idx
+        self.norm_hint_wvs = []
+        self.norm_hint_fluxes = []
         
         self.lay = QGridLayout()
         
@@ -376,10 +400,24 @@ class FeatureFitWidget(QWidget):
         self._internal_connect()
         self.setLayout(self.lay)
     
+    def handle_plot_click(self, eventl):
+        event ,= eventl
+        print "handle plot click called"
+    
+    def add_norm_hint(self, wv, flux):
+        self.norm_hint_wvs.append(wv)
+        self.norm_hint_fluxes.append(flux) 
+        #todo add a realistic error estimate for the hints
+        hint_tuple = self.norm_hint_wvs, self.norm_hint_fluxes, np.ones(self.norm_hint_wvs.shape)
+        tmb.utils.misc.approximate_normalization(self.spectrum,norm_hints=hint_tuple,overwrite=True)
+        self.update_plots()
+    
     def fit_axis(self, row):
         return self.mpl_fit.axis(row, 0)
     
     def _internal_connect(self):
+        self.mpl_fit.buttonPressed.connect(self.handle_plot_click)
+        
         self._connect_sliders()
         self.slidersChanged.connect(self.update_row)
         #print dir(self.linelist_view)
@@ -389,7 +427,7 @@ class FeatureFitWidget(QWidget):
         #self.linelist_view.selectionModel().currentRowChanged.connect(self.on_selection_change)
         self.prev_next.next.connect(self.next_feature)
         self.prev_next.prev.connect(self.prev_feature)
-    
+        
     def on_selection_change(self, row):
         print "in on selection change", row
         #print "in on_selection_change", selection
@@ -424,7 +462,7 @@ class FeatureFitWidget(QWidget):
         columns = [wvcol, spcol, epcol, loggfcol, offsetcol, 
                    depthcol, ewcol, viewedcol]
         self.linelist_model = ConfigurableTableModel(self.features, columns)
-        self.linelist_view = LineListView(parent=self)
+        self.linelist_view = views.LineListView(parent=self)
         self.linelist_view.setModel(self.linelist_model)
         self.linelist_view.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.lay.addWidget(self.linelist_view, 0, 0, 1, 1)

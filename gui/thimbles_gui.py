@@ -13,10 +13,6 @@ except ImportError:
     from PyQt4.QtGui import *
     matplotlib.rcParams['backend.qt4'] = 'PyQt4'
 
-from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt4agg import NavigationToolbar2QTAgg as NavigationToolbar
-from matplotlib.figure import Figure
-
 from  models import *
 from views import *
 from widgets import *

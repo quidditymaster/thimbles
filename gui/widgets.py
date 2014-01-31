@@ -390,8 +390,9 @@ class FeatureFitWidget(QWidget):
         self.d_slider = FloatSlider("depth", 0.0, 1.0, orientation=slider_orientation, n_steps=slider_n_steps)
         self.g_slider = FloatSlider("sigma", 0.0, 1.0, orientation=slider_orientation, n_steps=slider_n_steps)
         self.l_slider = FloatSlider("gamma", 0.0, 1.0, orientation=slider_orientation, n_steps=slider_n_steps)
-        slider_grid = [(2, 1, 1, 1), (2, 2, 1, 1), (2, 3, 1, 1), (2, 4, 1, 1)]
-        slider_list = [self.off_slider, self.d_slider, self.g_slider, self.l_slider]
+        self.cont_slider = FloatSlider("rel norm", 0.90, 1.10, orientation=slider_orientation, n_steps=slider_n_steps)
+        slider_grid = [(2, 1, 1, 1), (2, 2, 1, 1), (2, 3, 1, 1), (2, 4, 1, 1), (2, 5, 1, 1)]
+        slider_list = [self.off_slider, self.d_slider, self.g_slider, self.l_slider, self.cont_slider]
         for sl_idx in range(len(slider_list)):
             self.lay.addWidget(slider_list[sl_idx], *slider_grid[sl_idx])
         
@@ -412,9 +413,17 @@ class FeatureFitWidget(QWidget):
     
     def save_measurements(self):
         fname, file_filter = QFileDialog.getSaveFileName(self, "pick a file name for the output measurement line list")
-        widths = np.asarray([1000.0*f.eq_width for f in self.features])
-        np.savetxt(fname, widths)
-        
+        llout = tmb.stellar_atmospheres.moog_utils.write_moog_lines_in(fname)
+        print len(self.features)
+        for feat in self.features:
+            wv=feat.wv
+            spe=feat.species
+            loggf = feat.loggf
+            ep = feat.ep
+            ew = 1000*feat.eq_width
+            if feat.flags["use"]:
+                llout.add_line(wv, spe, ep, loggf, ew=ew)
+        llout.close()
     
     @property
     def hint_click_on(self):
@@ -508,7 +517,9 @@ class FeatureFitWidget(QWidget):
         gw = self.g_slider.value()
         lw = self.l_slider.value()
         depth = self.d_slider.value()
+        relc = self.cont_slider.value()
         self.feature.profile.set_parameters(np.array([off, gw, lw]))
+        self.feature.set_relative_continuum(relc)
         self.feature.set_depth(depth)
         self.update_plots()
         self.slidersChanged.emit(self.feature_idx)
@@ -532,14 +543,17 @@ class FeatureFitWidget(QWidget):
         self.g_slider.slider.valueChanged.connect(self.sliders_changed)
         self.l_slider.slider.valueChanged.connect(self.sliders_changed)
         self.d_slider.slider.valueChanged.connect(self.sliders_changed)
+        self.cont_slider.slider.valueChanged.connect(self.sliders_changed)
     
     def _init_slider_vals(self):
         off, gw, lw = self.feature.profile.get_parameters()
         d = self.feature.depth #always access depth before setting anything
+        relc = self.feature.relative_continuum
         self.off_slider.set_value(off)
         self.g_slider.set_value(gw)
         self.l_slider.set_value(lw)
         self.d_slider.set_value(d)
+        self.cont_slider.set_value(relc)
     
     def _init_plots(self):
         feat_wv = self.feature.wv

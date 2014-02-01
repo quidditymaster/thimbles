@@ -77,7 +77,7 @@ class FeatureFlags(object):
     
     def __init__(self):
         self.flags = {}
-        self.flags["usable"] =   False
+        self.flags["use"] = True
         self.flags["in_range"] = False
         self.flags["bad_data"] = False
         self.flags["bad_fit"]  = False

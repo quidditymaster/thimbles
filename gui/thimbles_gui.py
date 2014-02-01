@@ -83,10 +83,15 @@ class AppForm(QMainWindow):
             eq = 0.001
             nf = tmb.features.Feature(lprof, eq, 0.00, tp)
             
+            wv_del = (wvs[-1]-wvs[0])/float(len(wvs))
             def resids(pvec):
                 ew=pvec[0]
                 pr = lprof.get_profile(wvs, pvec[1:])
-                return (nflux - 1.0)+ew*pr
+                lsig = pvec[2]
+                sig_reg = 0
+                if lsig < 0.5*wv_del:
+                    sig_reg = 20.0*(lsig-0.5*wv_del)
+                return np.hstack(((nflux - 1.0)+ew*pr, sig_reg))
             
             guessv = np.hstack((0.05, start_p))
             fit_res = fit_feature = scipy.optimize.leastsq(resids, guessv)

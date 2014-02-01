@@ -466,17 +466,15 @@ class FeatureFitWidget(QWidget):
         #print dir(selection)
         
     def next_feature(self):
-        #get our current index
-        #print self.linelist_view.selectionModel().currentSelection()
-        #self.linelist_view.setSelection()
         self.feature_idx = min(self.feature_idx + 1, self.linelist_model.rowCount()-1) 
         self.feature = self.features[self.feature_idx]
+        self.linelist_view.selectRow(self.feature_idx)
         self.on_feature_changed()
     
     def prev_feature(self):
-        #self.linelist_view.currentSelection()
         self.feature_idx = max(self.feature_idx - 1, 0)
         self.feature = self.features[self.feature_idx]
+        self.linelist_view.selectRow(self.feature_idx)
         self.on_feature_changed()
     
     def _init_feature_table(self):
@@ -523,12 +521,6 @@ class FeatureFitWidget(QWidget):
         self.feature.set_depth(depth)
         self.update_plots()
         self.slidersChanged.emit(self.feature_idx)
-    
-    def set_feature(self, model_index):
-        feature_idx = model_index.row()
-        self.feature_idx = feature_idx
-        self.feature = self.features[feature_idx]
-        self.on_feature_changed()
     
     def on_feature_changed(self):
         self._init_slider_vals()

@@ -9,3 +9,7 @@ dependency policy:
 #TODO: make a .yaml dependency file and make the dependencies.py check for everything in the dependencies file
 #TODO?: make the dependency file tell you if something is core or tangential and what capabilities you will be missing out on if you omit it.
 #TODO: generate the dependencies.yaml file automatically via a script.
+
+
+packages policy:
+

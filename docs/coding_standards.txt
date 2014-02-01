@@ -1,11 +1,45 @@
+# Coding Guidelines for THIMBLES #
 
-dependency policy:
+These are guidelines for how to develop the THIMBLES code.
 
-1) if the python module is included in the anaconda python distribution we don't treat it as a dependency
-2) if the module is not included in anaconda the absence of the package should be handled gracefully.
-   i) an import statement inside a try/except block
-   ii) call require("package_name") from any module 
+
+
+-----------------------------------
+## General Guidelines ##
+
+
+-----------------------------------
+## Dependencies ##
+
+This covers packages THIMBLES depends on.
+
+
+* 1) if the python module is included in the anaconda python distribution we don't treat it as a dependency
+
+* 2) if the module is not included in anaconda the absence of the package should be handled gracefully.
+    ** i) an import statement inside a try/except block
+    ** ii) call require("package_name") from any module 
+
 
 #TODO: make a .yaml dependency file and make the dependencies.py check for everything in the dependencies file
 #TODO?: make the dependency file tell you if something is core or tangential and what capabilities you will be missing out on if you omit it.
 #TODO: generate the dependencies.yaml file automatically via a script.
+
+-----------------------------------
+## Testing ##
+
+Please include unit tests for any new functionality 
+
+How to:
+
+* 1) create a directory parallel to the module to test, called "tests" with empty __init__
+* 2) create a file in "tests" directory called "test_?.py" where ? is the specific module
+* 3) in "test_?.py" import unittest and then create a unittest class. In __name__ == "__main__" add a unittest.main()
+* 4) TO TEST: in the timbles/thimbles directory (main package directory) run this:
+    ** i) Note: Dylan had trouble with astropy and running this with python; however, ipython worked well
+
+    python -m unittest discover . 'test*py'
+    
+
+
+

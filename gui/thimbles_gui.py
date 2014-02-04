@@ -1,10 +1,12 @@
 import sys
 
+import os
 import numpy as np
 import matplotlib
 import scipy.optimize
 matplotlib.use('Qt4Agg')
 try: 
+    from PySide import QtCore,QtGui
     from PySide.QtCore import *
     from PySide.QtGui import *
     matplotlib.rcParams['backend.qt4'] = 'PySide'
@@ -18,11 +20,15 @@ from views import *
 from widgets import *
 
 import thimbles as tmb
+_resources_dir = os.path.join(os.path.dirname(__file__),"resources")
+
+
+# ########################################################################### #
 
 class AppForm(QMainWindow):
     
-    def __init__(self, options, parent=None):
-        QMainWindow.__init__(self, parent)
+    def __init__(self, options):
+        super(AppForm, self).__init__()
         self.setWindowTitle("Thimbles")
         self.main_frame = QWidget()        
         self.options = options
@@ -43,11 +49,13 @@ class AppForm(QMainWindow):
         self._init_fit_widget()
         
         self.main_frame.setLayout(self.layout)
-        
         self.setCentralWidget(self.main_frame)
         
-        self.create_menu()
-        self.create_status_bar()
+        #self.create_menu()
+        self._init_actions()
+        self._init_menus()
+        
+        self._init_status_bar()
         #import pdb; pdb.set_trace()
         self._connect()
     
@@ -105,16 +113,82 @@ class AppForm(QMainWindow):
         self.fit_widget = FeatureFitWidget(self.spec, self.features, 0, self.options.fwidth, parent=self)
         self.layout.addWidget(self.fit_widget, 0, 0, 1, 1)
     
-    def create_menu(self):
-        self.file_menu = self.menuBar().addMenu("&File")
-        quit_action = self.create_action("&Quit", slot=self.close, 
-                        shortcut="Ctrl+Q", tip="exit the application")
-        self.add_actions(self.file_menu, (None, None, quit_action))
-        
-        self.help_menu = self.menuBar().addMenu("&Help")
-        about_action = self.create_action("&About", slot=self.on_about)
-        self.add_actions(self.help_menu, (about_action,))
+    def save (self):
+        QMessageBox.about(self, "Save MSG", "SAVE THE DATA\nTODO")
+
+    def undo (self):
+        QMessageBox.about(self, "Undo", "UNDO THE DATA\nTODO")
     
+    def redo (self):
+        QMessageBox.about(self, "Redo", "REDO THE DATA\nTODO")
+
+    def _init_actions(self):
+
+        self.menu_actions = {}
+        
+        self.menu_actions['save'] = QtGui.QAction(QtGui.QIcon(_resources_dir+'/images/save.png'),
+                "&Save...", self, shortcut=QtGui.QKeySequence.Save,
+                statusTip="Save the current data",
+                triggered=self.save)
+
+        self.menu_actions['save as'] = QtGui.QAction(QtGui.QIcon(_resources_dir+'/images/save_as.png'),
+                "&Save As...", self, shortcut=QtGui.QKeySequence.SaveAs,
+                statusTip="Save the current data as....",
+                triggered=self.save)
+
+        self.menu_actions['undo'] = QtGui.QAction(QtGui.QIcon(_resources_dir+'/images/undo_24.png'),
+                "&Undo", self, shortcut=QtGui.QKeySequence.Undo,
+                statusTip="Undo the last editing action", triggered=self.undo)
+
+        self.menu_actions['redo'] =  QtGui.QAction(QtGui.QIcon(_resources_dir+'/images/redo_24.png'),
+                                                   "&Redo", self, shortcut=QtGui.QKeySequence.Redo,
+                                                   statusTip="Redo the last editing action", triggered=self.redo)
+
+        #         self.menu_actions['fullscreen'] = QtGui.QAction(None,"&Full Screen",self,shortcut="Ctrl+f",
+        #                                            statusTip="Run in full screen mode",triggered=self.full_screen)
+
+        self.menu_actions['quit'] = QtGui.QAction(QtGui.QIcon(_resources_dir+'/images/redo_24.png'),
+                                                   "&Quit", self, shortcut=QtGui.QKeySequence.Quit,
+                                                   statusTip="Quit the application", triggered=self.close)
+
+        self.menu_actions['about'] = QtGui.QAction(QtGui.QIcon("hello_world"),"&About", self,
+                                                    statusTip="Show the application's About box",
+                                                    triggered=self.on_about)
+
+        self.menu_actions['aboutQt'] = QtGui.QAction(QtGui.QIcon('hello_world'),"About &Qt", self,
+                                                     statusTip="Show the Qt library's About box",
+                                                     triggered=QtGui.qApp.aboutQt)
+    
+    def _init_menus(self):
+        get_items = lambda *keys: [self.menu_actions.get(k,None) for k in keys]
+        
+        # --------------------------------------------------------------------------- #
+        self.file_menu = self.menuBar().addMenu("&File")
+        items = get_items('quit','save','about','save as')
+        self.add_actions(self.file_menu, items)  
+
+        # --------------------------------------------------------------------------- #
+        self.edit_menu = self.menuBar().addMenu("&Edit")
+        items = get_items('undo','redo')
+        self.add_actions(self.edit_menu, items)
+        
+        # --------------------------------------------------------------------------- #
+        self.view_menu = self.menuBar().addMenu("&View")
+        self.toolbar_menu = self.view_menu.addMenu('&Toolbars')
+        self.tabs_menu = self.view_menu.addMenu("&Tabs")
+        
+        # --------------------------------------------------------------------------- #
+        self.menuBar().addSeparator()
+        
+        # --------------------------------------------------------------------------- #
+        self.help_menu = self.menuBar().addMenu("&Help")
+        items = get_items('about','aboutQt','')
+        self.add_actions(self.help_menu, items)
+
+    def _init_status_bar(self):
+        self.status_text = QLabel("startup")
+        self.statusBar().addWidget(self.status_text, 1)
+         
     def add_actions(self, target, actions):
         for action in actions:
             if action is None:
@@ -139,9 +213,6 @@ class AppForm(QMainWindow):
             action.setCheckable(True)
         return action
     
-    def create_status_bar(self):
-        self.status_text = QLabel("startup")
-        self.statusBar().addWidget(self.status_text, 1)
     
     def on_about(self):
         msg = """
@@ -152,11 +223,28 @@ class AppForm(QMainWindow):
         """
         QMessageBox.about(self, "about Thimbles GUI", msg)
 
+class MainApplication (QApplication):
+    """
+    TODO: write doc string
+    """
+    
+    def __init__ (self,options):
+        super(MainApplication,self).__init__([])
+        self.aboutToQuit.connect(self.on_quit)
+        screen_rect = self.desktop().screenGeometry()
+        size = screen_rect.width(), screen_rect.height()
+        # TODO: use size to make main window the full screen size
+        self.main_window = AppForm(options)
+        self.main_window.show()
+    
+    def on_quit (self):
+        pass
 
 def main(options):
-    app = QApplication([])
-    form = AppForm(options)
-    form.show()
+    try:
+        app = MainApplication(options)
+    except RuntimeError:
+        app = MainApplication.instance()
     sys.exit(app.exec_())
 
 if __name__ == "__main__":

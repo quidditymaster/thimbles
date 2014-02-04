@@ -88,6 +88,7 @@ class AppForm(QMainWindow):
                 ew=pvec[0]
                 pr = lprof.get_profile(wvs, pvec[1:])
                 lsig = pvec[2]
+                coff = pvec[1]
                 sig_reg = 0
                 if lsig < 0.5*wv_del:
                     sig_reg = 20.0*(lsig-0.5*wv_del)
@@ -98,6 +99,7 @@ class AppForm(QMainWindow):
             lprof.set_parameters(fit_res[0][1:])
             nf.set_eq_width(fit_res[0][0]) 
             self.features.append(nf)
+        import pdb; pdb.set_trace()
     
     def _init_fit_widget(self):
         self.fit_widget = FeatureFitWidget(self.spec, self.features, 0, self.options.fwidth, parent=self)

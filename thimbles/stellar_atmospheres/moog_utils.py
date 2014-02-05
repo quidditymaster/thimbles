@@ -1295,7 +1295,8 @@ EXAMPLE:
             else: 
                 fmt_string += " "*10
         
-        print >> self.file, fmt_string.format(*data)
+        out_str = fmt_string.format(*data) + "\n"
+        self.file.write(out_str)
     
     def close (self):
         """

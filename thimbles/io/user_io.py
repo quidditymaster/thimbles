@@ -49,7 +49,7 @@ def read_user_defined (filepath,arg1,arg2='12',arg3='default'):
     inv_var = []
     
     # then return a spectral measurement list and information
-    spectral_measurement = Spectrum(wavelength,flux,inv_var)
+    spectral_measurement = tmb.Spectrum(wavelength,flux,inv_var)
     measurement_list = []
     measurement_list.append(spectral_measurement)
     information = Information()

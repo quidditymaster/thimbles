@@ -22,7 +22,6 @@ from widgets import *
 import thimbles as tmb
 _resources_dir = os.path.join(os.path.dirname(__file__),"resources")
 
-
 # ########################################################################### #
 
 class AppForm(QMainWindow):
@@ -40,6 +39,7 @@ class AppForm(QMainWindow):
         #self.loaded_spectra, info = rfunc(options.spectrum_file)
         loaded_spectra, info = rfunc(options.spectrum_file)
         self.spec = loaded_spectra[options.order]
+        self.spec.approx_norm()
         self.order_num = options.order
         #for spec in self.loaded_spectra:
         #    spec.set_rv(options.rv)
@@ -56,12 +56,10 @@ class AppForm(QMainWindow):
         self._init_menus()
         
         self._init_status_bar()
-        #import pdb; pdb.set_trace()
         self._connect()
     
     def _connect(self):
         #connect all the events
-        #self.linelist_view.doubleClicked.connect(self.fit_widget.set_feature)
         pass
     
     def cull_lines(self):
@@ -104,10 +102,11 @@ class AppForm(QMainWindow):
             
             guessv = np.hstack((0.05, start_p))
             fit_res = fit_feature = scipy.optimize.leastsq(resids, guessv)
-            lprof.set_parameters(fit_res[0][1:])
-            nf.set_eq_width(fit_res[0][0]) 
+            fit = fit_res[0]
+            fit[2:] = np.abs(fit[2:])
+            lprof.set_parameters(fit[1:])
+            nf.set_eq_width(fit[0]) 
             self.features.append(nf)
-        import pdb; pdb.set_trace()
     
     def _init_fit_widget(self):
         self.fit_widget = FeatureFitWidget(self.spec, self.features, 0, self.options.fwidth, parent=self)
@@ -130,31 +129,31 @@ class AppForm(QMainWindow):
                 "&Save...", self, shortcut=QtGui.QKeySequence.Save,
                 statusTip="Save the current data",
                 triggered=self.save)
-
+        
         self.menu_actions['save as'] = QtGui.QAction(QtGui.QIcon(_resources_dir+'/images/save_as.png'),
                 "&Save As...", self, shortcut=QtGui.QKeySequence.SaveAs,
                 statusTip="Save the current data as....",
                 triggered=self.save)
-
+        
         self.menu_actions['undo'] = QtGui.QAction(QtGui.QIcon(_resources_dir+'/images/undo_24.png'),
                 "&Undo", self, shortcut=QtGui.QKeySequence.Undo,
                 statusTip="Undo the last editing action", triggered=self.undo)
-
+        
         self.menu_actions['redo'] =  QtGui.QAction(QtGui.QIcon(_resources_dir+'/images/redo_24.png'),
                                                    "&Redo", self, shortcut=QtGui.QKeySequence.Redo,
                                                    statusTip="Redo the last editing action", triggered=self.redo)
-
+        
         #         self.menu_actions['fullscreen'] = QtGui.QAction(None,"&Full Screen",self,shortcut="Ctrl+f",
         #                                            statusTip="Run in full screen mode",triggered=self.full_screen)
-
+        
         self.menu_actions['quit'] = QtGui.QAction(QtGui.QIcon(_resources_dir+'/images/redo_24.png'),
                                                    "&Quit", self, shortcut=QtGui.QKeySequence.Quit,
                                                    statusTip="Quit the application", triggered=self.close)
-
+        
         self.menu_actions['about'] = QtGui.QAction(QtGui.QIcon("hello_world"),"&About", self,
                                                     statusTip="Show the application's About box",
                                                     triggered=self.on_about)
-
+        
         self.menu_actions['aboutQt'] = QtGui.QAction(QtGui.QIcon('hello_world'),"About &Qt", self,
                                                      statusTip="Show the Qt library's About box",
                                                      triggered=QtGui.qApp.aboutQt)
@@ -164,27 +163,27 @@ class AppForm(QMainWindow):
         
         # --------------------------------------------------------------------------- #
         self.file_menu = self.menuBar().addMenu("&File")
-        items = get_items('quit','save','about','save as')
+        items = get_items('quit')#,'save','about','save as')
         self.add_actions(self.file_menu, items)  
 
         # --------------------------------------------------------------------------- #
-        self.edit_menu = self.menuBar().addMenu("&Edit")
-        items = get_items('undo','redo')
-        self.add_actions(self.edit_menu, items)
+        #self.edit_menu = self.menuBar().addMenu("&Edit")
+        #items = get_items('undo','redo')
+        #self.add_actions(self.edit_menu, items)
         
         # --------------------------------------------------------------------------- #
-        self.view_menu = self.menuBar().addMenu("&View")
-        self.toolbar_menu = self.view_menu.addMenu('&Toolbars')
-        self.tabs_menu = self.view_menu.addMenu("&Tabs")
+        #self.view_menu = self.menuBar().addMenu("&View")
+        #self.toolbar_menu = self.view_menu.addMenu('&Toolbars')
+        #self.tabs_menu = self.view_menu.addMenu("&Tabs")
         
         # --------------------------------------------------------------------------- #
-        self.menuBar().addSeparator()
+        #self.menuBar().addSeparator()
         
         # --------------------------------------------------------------------------- #
         self.help_menu = self.menuBar().addMenu("&Help")
         items = get_items('about','aboutQt','')
         self.add_actions(self.help_menu, items)
-
+    
     def _init_status_bar(self):
         self.status_text = QLabel("startup")
         self.statusBar().addWidget(self.status_text, 1)
@@ -194,25 +193,7 @@ class AppForm(QMainWindow):
             if action is None:
                 target.addSeparator()
             else:
-                target.addAction(action)
-    
-    def create_action(self, text, slot=None, shortcut = None,
-                      icon = None, tip = None, checkable = False,
-                      signal="triggered()"):
-        action = QAction(text, self)
-        if icon is not None:
-            action.setIcon(QIcon(":%s.png" % icon))
-        if shortcut is not None:
-            action.setShortcut(shortcut)
-        if tip is not None:
-            action.setToolTip(tip)
-            action.setStatusTip(tip)
-        if slot is not None:
-            self.connect(action, SIGNAL(signal), slot)
-        if checkable:
-            action.setCheckable(True)
-        return action
-    
+                target.addAction(action)    
     
     def on_about(self):
         msg = """

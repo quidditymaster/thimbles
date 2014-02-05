@@ -183,13 +183,3 @@ def generate_random_linelist (teff,wv_bounds=(4500,5500),species_params=None,fil
                 f.write(fmt.format(*row))    
     return linelist
 
-
-
-        
-
-    
-    
-    
-    
-    
-

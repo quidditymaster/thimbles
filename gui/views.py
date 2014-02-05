@@ -13,3 +13,6 @@ class LineListView(QTableView):
     
     def __init__(self, parent):
         super(LineListView, self).__init__(parent)
+
+    def minimumSizeHint(self):
+        return QSize(500, 150)

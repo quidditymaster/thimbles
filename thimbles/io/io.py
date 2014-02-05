@@ -1116,7 +1116,7 @@ def _core_read_fits (hdulist, hdu=0, band=0, observation_id='', get_data=False):
     #     if preferred_wlsoln is not None: 
     #         preferred_wlsoln = wavelength_solution_functions.get_func_name(preferred_wlsoln)
     # 
-        
+    
     if len(hdulist) > 1: 
         hdu = int(hdu)
         hdu = np.clip(hdu,0,len(hdulist)-1)

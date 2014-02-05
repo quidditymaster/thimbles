@@ -561,9 +561,10 @@ def approximate_normalization(spectrum,
         used only if smart_partition == True
         how expensive small block sizes are
         see partitioning.partitioned_polynomial_model
-    norm_hints: None or list of tuples
-        a list of 3 tuples (x, y, y_inv) which should be taken as continuum
-        measurements.
+    norm_hints: None or tuple of arrays
+        some suggestions for the norm which are entered into the fit.
+        (but not the partitioning)
+        wvs, continuum_fluxes, continuum_weights = norm_hints
     overwrite: bool
         if True the normalization object in the input spectrum is replaced
         with the calculated normalization estimate (it all goes into the efficiency)
@@ -587,15 +588,9 @@ def approximate_normalization(spectrum,
                                        mask_back_off=mask_back_off, 
                                        min_stats=min_stats)
     fmask *= good_mask
-    if norm_hints == None:
-        mwv = wavelengths[fmask].copy()
-        mflux = flux[fmask].copy()
-        minv = inv_var[fmask]
-    else:
-        wvh, cfp, cfivar = zip(*norm_hints)
-        mwv = np.hstack((wavelengths[fmask].copy(), wvh))
-        mflux = np.hstack((flux[fmask].copy(), cfp))
-        minv = np.hstack((inv_var[fmask], cfivar))
+    mwv = wavelengths[fmask].copy()
+    mflux = flux[fmask].copy()
+    minv = inv_var[fmask]
     if smart_partition:
         try:
             opt_part, mvps = partitioning.partitioned_polynomial_model(mwv, mflux, minv, 
@@ -611,12 +606,19 @@ def approximate_normalization(spectrum,
     else:
         use_simple_partition = True
     if use_simple_partition:
-        break_wvs = min_delta_bins(mwv, min_delta=pscale, target_n=poly_order)
+        break_wvs = min_delta_bins(mwv, min_delta=pscale, target_n=poly_order+1)
         #roughly evenly space the break points partition_scale apart
     pp_gen = piecewise_polynomial.RCPPB(poly_order=poly_order, control_points=break_wvs)
+    if norm_hints:
+        hint_wvs, hint_flux, hint_inv_var = norm_hints
+        mwv = np.hstack((mwv, hint_wvs))
+        mflux = np.hstack((mflux, hint_flux))
+        minv = np.hstack((minv, hint_inv_var))
+    
     ppol_basis = pp_gen.get_basis(mwv).transpose()
     in_sig = np.sqrt(minv)
     med_sig = np.median(in_sig)
+    print med_sig, "med sig"
     fit_coeffs = pseudo_huber_irls(ppol_basis, mflux, 
                       sigma=in_sig, 
                       gamma=3.0*med_sig, 

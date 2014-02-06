@@ -20,6 +20,9 @@ import views
 import thimbles as tmb
 
 
+class SpectraWidget(QDialog):
+    pass
+
 class SpectrumWidget(QWidget):
     
     def __init__(self, spectrum):
@@ -376,16 +379,17 @@ class PrevNext(QWidget):
         else:
             self.play()
 
-class FeatureFitWidget(QWidget):
+class FeatureFitWidget(QDialog):
     slidersChanged = Signal(int)
     
-    def __init__(self, spectrum, features, feature_idx, display_width, parent=None):
+    def __init__(self, spectra, features, feature_idx, feat_spec_idxs, display_width, parent=None):
         super(FeatureFitWidget, self).__init__(parent)
         
         self.display_width = display_width
-        self.spectrum = spectrum
+        self.spectra = spectra
         self.features = features
         self.feature = features[feature_idx]
+        self.feat_spec_idxs = feat_spec_idxs
         self.feature_idx = feature_idx
         self.norm_hint_wvs = []
         self.norm_hint_fluxes = []
@@ -426,20 +430,26 @@ class FeatureFitWidget(QWidget):
         self._internal_connect()
         self.setLayout(self.lay)
     
-    def save_measurements(self):
-        fname, file_filter = QFileDialog.getSaveFileName(self, "pick a file name for the output measurement line list")
+    def minimumSizeHint(self):
+        return QSize(500, 500)
+    
+    def save_feature_fits(self):
+        fname, file_filter = QFileDialog.getSaveFileName(self, "save features")
         import cPickle
         cPickle.dump(self.features, open(fname, "wb"))
-        #llout = tmb.stellar_atmospheres.moog_utils.write_moog_lines_in(fname)
-        #for feat in self.features:
-        #    wv=feat.wv
-        #    spe=feat.species
-        #    loggf = feat.loggf
-        #    ep = feat.ep
-        #    ew = 1000*feat.eq_width
-        #    if feat.flags["use"]:
-        #        llout.add_line(wv, spe, ep, loggf, ew=ew)
-        #llout.close()
+        
+    def save_measurements(self):
+        fname, file_filter = QFileDialog.getSaveFileName(self, "save measurements")
+        llout = tmb.stellar_atmospheres.moog_utils.write_moog_lines_in(fname)
+        for feat in self.features:
+            wv=feat.wv
+            spe=feat.species
+            loggf = feat.loggf
+            ep = feat.ep
+            ew = 1000*feat.eq_width
+            if feat.flags["use"]:
+                llout.add_line(wv, spe, ep, loggf, ew=ew)
+        llout.close()
     
     @property
     def hint_click_on(self):
@@ -525,7 +535,7 @@ class FeatureFitWidget(QWidget):
         self.linelist_view = views.LineListView(parent=self)
         self.linelist_view.setModel(self.linelist_model)
         self.linelist_view.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.lay.addWidget(self.linelist_view, 0, 0, 1, 1)
+        self.lay.addWidget(self.linelist_view, 0, 0, 1, 6)
     
     def update_row(self, row_num):
         left_idx = self.linelist_model.index(row_num, 0)
@@ -536,7 +546,7 @@ class FeatureFitWidget(QWidget):
         feat_wv = self.feature.wv
         min_wv = feat_wv-1.5*self.display_width
         max_wv = feat_wv+1.5*self.display_width
-        bspec = self.spectrum.bounded_sample((min_wv, max_wv))
+        bspec = self.spectra[self.feat_spec_idxs[self.feature_idx]].bounded_sample((min_wv, max_wv))
         return bspec
     
     def sliders_changed(self, intval):

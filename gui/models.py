@@ -58,6 +58,8 @@ class Column(object):
         if setter_func != None:
             isset = setter_func(data_obj, value)
             return isset
+        else:
+            return False
 
 class ConfigurableTableModel(QAbstractTableModel):
     
@@ -93,30 +95,112 @@ class ConfigurableTableModel(QAbstractTableModel):
         col_obj = self.columns[col]
         try:
             col_obj.set(data_obj, value, role)
-        except:
+            return True
+        except Exception as e:
+            print e
             return False
 
 
-
-class ItemGroup(object):
-
-    def __init__(self, group_name, group_indexes):
-        self.name = group_name
-        self.group_indexes = group_indexes
+class NameTypeTableModel(QAbstractTableModel):
     
-    def rowCount(self):
-        return len(self.group_indexes)
+    def __init__(self):
+        super(NameTypeTableModel, self).__init__()
+        self.names = []
+        self._data = []
+        self.types = []
+        self.headers = ["-------------------object name--------------", "---------------type---------------"]
+    
+    def addItem(self, name, type_, data):
+        nrows = self.rowCount()
+        self.beginInsertRows(QModelIndex(), nrows, nrows)
+        self.names.append(name)
+        self.types.append(type_)
+        self._data.append(data)
+        self.endInsertRows()
+
+    def internalData(self, row):
+        return self._data[row]
+    
+    def rowCount(self, parent=QModelIndex()):
+        return len(self._data)
+    
+    def columnCount(self, parent=QModelIndex()):
+        return 2
+    
+    def headerData(self, section, orientation, role):
+        if role == Qt.DisplayRole:
+            if orientation == Qt.Horizontal:
+                return self.headers[section]
+    
+    def flags(self, index):
+        fl = Qt.ItemIsEnabled | Qt.ItemIsSelectable
+        if index.column() == 0:
+            fl |= Qt.ItemIsEditable
+        return fl 
     
     def data(self, index, role=Qt.DisplayRole):
-        row, column = index.row(), index.column()
-        if role == Qt.DisplayRole:
-            return "%d, %d, orig, %d" % (row, column, self.group_indexes[row])
+        row, col = index.row(), index.column()
+        if col == 0:
+            return self.names[row]
+        elif col == 1:
+            return self.types[row]
+    
+    def setData(self, index, value, role=Qt.EditRole):
+        row, col = index.row(), index.column()
+        if role == Qt.EditRole:
+            if row == 0:
+                self.names[row] = value
 
+class TypedGroupableItemModel(QAbstractItemModel):
+    
+    def __init__(self, group_types=None):
+        super(TypedGroupableItemModel, self).__init__()
+        if group_types == None:
+            group_types = []
+        if "misc" not in [gt.name for gt in group_types]:
+            group_types.append(GroupType("misc", []))
+        self.group_types = {}
+        self.groups = {}
+        for gt in group_types:
+            self.group_types[gt.name] = gt
+            self.groups[gt.name] = []
+    
+    def rowCount(self, parent=QModelIndex()):
+        if parent==QModelIndex():
+            return len(self.group_types)
+        ip = parent.internalPointer()
+        return ip.rowCount()
+    
+    def columnCount(self, parent=QModelIndex()):
+        return 2
+    
+    def add_group(self, group, type_name):
+        self.groups[type_name].append(group)
+
+class GroupType(object):
+    
+    def __init__(self, type_name, columns):
+        self.name = type_name
+        self.columns = columns
+
+class ItemGroup(object):
+    
+    def __init__(self, name, items):
+        self.name = group_name
+        self.items = items
+    
+    def rowCount(self):
+        return len(self.items)
+
+class GroupItem(object):
+    
+    def __init__(self, name, data):
+        self.name = name
+        self.data = data
 
 class GroupableItemModel(QAbstractItemModel):
     
     def __init__(self, data, groups):
-        super(GroupableItemModel, self).__init__()
         self._data = data
         self._groups = groups
     

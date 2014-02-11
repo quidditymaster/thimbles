@@ -1,5 +1,6 @@
 import numpy as np
 #from .stellar_atmospheres import periodic_table
+import thimbles as tmb
 
 class AtomicTransition:
     """
@@ -82,19 +83,25 @@ class FeatureFlags(object):
         self.flags["bad_data"] = False
         self.flags["bad_fit"]  = False
         self.flags["viewed"] = False
-        self.flags["blend"] = False
-        self.flags["upper_limit"] = False
     
-    def set_true(self, flag_names):
+    def set_true(self, *flag_names):
+        if not len(flag_names):
+            flag_names = self.flags.keys()
+        
         for flag_name in flag_names:
             self.flags[flag_name] = True
     
-    def set_false(self, flag_names):
+    def set_false(self, *flag_names):
+        if not len(flag_names):
+            flag_names = self.flags.keys()
         for flag_name in flag_names:
             self.flags[flag_name] = False
     
     def __getitem__(self, index):
         return self.flags[index]
+    
+    def __setitem__(self, index, value):
+        self.flags[index] = value
 
 class Feature(object):
     
@@ -177,6 +184,7 @@ class Feature(object):
         return np.log10(self.eq_width/self.wv)
     
     def get_cog_point(self, theta):
-        x = self.trans_parameters.loggf-self.trans_parameters.ep*theta
+        solar_logeps = tmb.stellar_atmospheres.solar_abundance[self.species]["abundance"]
+        x = solar_logeps+self.trans_parameters.loggf-self.trans_parameters.ep*theta
         y = self.logrw
         return x, y

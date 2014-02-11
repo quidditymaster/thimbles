@@ -386,7 +386,7 @@ class WavelengthSolution(CoordinateBinning1d):
 class Spectrum(object):
     
     def __init__(self, wavelength_solution, flux, inv_var=None, 
-                 norm="auto",
+                 norm="ones",
                  name="",
                  **kwargs):
         """makes a spectrum from a wavelength solution, flux and optional inv_var
@@ -406,11 +406,17 @@ class Spectrum(object):
         #the memory address of the last stored transform
         if norm == "auto":
             norm_res = misc.approximate_normalization(self, overwrite=True)
+        elif norm == "ones":
+            self.norm = np.ones(len(self.wv))
         else:
             self.norm = norm
         self.name = name
         self._last_rebin_wv_soln_id = None
         self._last_rebin_transform = None
+    
+    def approx_norm(self):
+        #TODO: put extra controls in here
+        norm_res = misc.approximate_normalization(self, overwrite=True)
     
     def __repr__(self):
         wvs = self.wv

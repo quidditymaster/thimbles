@@ -20,6 +20,9 @@ import views
 import thimbles as tmb
 
 
+class SpectraWidget(QDialog):
+    pass
+
 class SpectrumWidget(QWidget):
     
     def __init__(self, spectrum):
@@ -305,9 +308,10 @@ class PrevNext(QWidget):
         self.duration_le = QLineEdit("%5.3f" % duration)
         self.timer = QTimer(self)
         self.timer.start(self.duration)
-        self.paused = True
         self.play_toggle_btn = QPushButton("Play/Pause")
-        
+        self.play_toggle_btn.setCheckable(True)
+        self.play_toggle_btn.setChecked(True)
+
         #add to layout
         layout.addWidget(self.prev_btn, 0, 0, 1, 1)
         layout.addWidget(self.next_btn, 0, 1, 1, 1)
@@ -322,15 +326,24 @@ class PrevNext(QWidget):
         self.next_btn.clicked.connect(self.on_next_clicked)
         self.play_toggle_btn.clicked.connect(self.toggle_pause)
 
+    @property
+    def paused(self):
+        return self.play_toggle_btn.isChecked()
     
+    def pause(self):
+        self.play_toggle_btn.setChecked(True)
+
+    def play(self):
+        self.play_toggle_btn.setChecked(False)
+
     def on_prev_clicked(self):
-        self.paused = True
+        self.pause()
         self.emit_prev()
     
     def on_next_clicked(self):
-        self.paused=True
+        self.pause()
         self.emit_next()
-
+    
     def emit_next(self):
         self.next.emit()
     
@@ -362,20 +375,21 @@ class PrevNext(QWidget):
     
     def toggle_pause(self):
         if self.paused:
-            self.paused = False
+            self.pause()
         else:
-            self.paused = True
+            self.play()
 
-class FeatureFitWidget(QWidget):
+class FeatureFitWidget(QDialog):
     slidersChanged = Signal(int)
     
-    def __init__(self, spectrum, features, feature_idx, display_width, parent=None):
+    def __init__(self, spectra, features, feature_idx, feat_spec_idxs, display_width, parent=None):
         super(FeatureFitWidget, self).__init__(parent)
         
         self.display_width = display_width
-        self.spectrum = spectrum
+        self.spectra = spectra
         self.features = features
         self.feature = features[feature_idx]
+        self.feat_spec_idxs = feat_spec_idxs
         self.feature_idx = feature_idx
         self.norm_hint_wvs = []
         self.norm_hint_fluxes = []
@@ -405,16 +419,28 @@ class FeatureFitWidget(QWidget):
         self.output_button.clicked.connect(self.save_measurements)
         self.lay.addWidget(self.output_button, 3, 1, 1, 2)
         
+        #use check box
+        self.use_cb = QCheckBox("Use line")
+        self.use_cb.setChecked(self.feature.flags["use"])
+        self.lay.addWidget(self.use_cb, 3, 3, 1, 1)
+        
         self._init_feature_table()
         self._init_plots()
         self._init_slider_vals()
         self._internal_connect()
         self.setLayout(self.lay)
     
+    def minimumSizeHint(self):
+        return QSize(500, 500)
+    
+    def save_feature_fits(self):
+        fname, file_filter = QFileDialog.getSaveFileName(self, "save features")
+        import cPickle
+        cPickle.dump(self.features, open(fname, "wb"))
+        
     def save_measurements(self):
-        fname, file_filter = QFileDialog.getSaveFileName(self, "pick a file name for the output measurement line list")
+        fname, file_filter = QFileDialog.getSaveFileName(self, "save measurements")
         llout = tmb.stellar_atmospheres.moog_utils.write_moog_lines_in(fname)
-        print len(self.features)
         for feat in self.features:
             wv=feat.wv
             spe=feat.species
@@ -452,19 +478,30 @@ class FeatureFitWidget(QWidget):
         
         self._connect_sliders()
         self.slidersChanged.connect(self.update_row)
-        #print dir(self.linelist_view)
-        #print ""
         #print self.linelist_view.selectionModel()
         #print dir(self.linelist_view.selectionModel())
         #self.linelist_view.selectionModel().currentRowChanged.connect(self.on_selection_change)
+        self.linelist_view.doubleClicked.connect(self.set_feature)
         self.prev_next.next.connect(self.next_feature)
         self.prev_next.prev.connect(self.prev_feature)
         
+        self.use_cb.stateChanged.connect(self.set_use)
+    
+    def set_use(self, state_val):
+        self.feature.flags["use"] = state_val > 0
+    
     def on_selection_change(self, row):
         print "in on selection change", row
         #print "in on_selection_change", selection
         #print dir(selection)
-        
+    
+    def set_feature(self, index):
+        row = index.row()
+        self.feature_idx = row
+        self.feature = self.features[self.feature_idx]
+        self.linelist_view.selectRow(self.feature_idx)
+        self.on_feature_changed()
+    
     def next_feature(self):
         self.feature_idx = min(self.feature_idx + 1, self.linelist_model.rowCount()-1) 
         self.feature = self.features[self.feature_idx]
@@ -486,16 +523,19 @@ class FeatureFitWidget(QWidget):
         loggfcol = Column("log(gf)", {drole: lambda x: "%10.3f" % x.loggf})        
         offsetcol = Column("Offset", {drole: lambda x: "%10.3f" % x.get_offset()})
         depthcol = Column("Depth", {drole: lambda x: "%10.3f" % x.depth})
-        ewcol = Column("Equivalent\nWidth", {drole: lambda x: "%10.3f" % x.eq_width})
-        viewedcol = Column("Viewed", {crole: lambda x: x.flags["viewed"]}, checkable=True)
+        sigcol = Column("sigma", {drole: lambda x: "% 10.3f" % x.profile.get_parameters()[1]})
+        gamcol = Column("gamma", {drole: lambda x: "% 10.3f" % x.profile.get_parameters()[2]})
+        ewcol = Column("Equivalent\nWidth", {drole: lambda x: "%10.2f" % (1000.0*x.eq_width)})
+        #viewedcol = Column("Viewed", getter_dict={crole: dummy_func}, setter_dict={crole: flag_setter_factory("viewed")}, checkable=True)
+        
         #ewcol = Column("depth"
         columns = [wvcol, spcol, epcol, loggfcol, offsetcol, 
-                   depthcol, ewcol, viewedcol]
+                   depthcol, sigcol, gamcol, ewcol]#, viewedcol]
         self.linelist_model = ConfigurableTableModel(self.features, columns)
         self.linelist_view = views.LineListView(parent=self)
         self.linelist_view.setModel(self.linelist_model)
         self.linelist_view.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.lay.addWidget(self.linelist_view, 0, 0, 1, 1)
+        self.lay.addWidget(self.linelist_view, 0, 0, 1, 6)
     
     def update_row(self, row_num):
         left_idx = self.linelist_model.index(row_num, 0)
@@ -506,7 +546,7 @@ class FeatureFitWidget(QWidget):
         feat_wv = self.feature.wv
         min_wv = feat_wv-1.5*self.display_width
         max_wv = feat_wv+1.5*self.display_width
-        bspec = self.spectrum.bounded_sample((min_wv, max_wv))
+        bspec = self.spectra[self.feat_spec_idxs[self.feature_idx]].bounded_sample((min_wv, max_wv))
         return bspec
     
     def sliders_changed(self, intval):
@@ -523,6 +563,10 @@ class FeatureFitWidget(QWidget):
         self.slidersChanged.emit(self.feature_idx)
     
     def on_feature_changed(self):
+        if self.feature.flags["use"]:
+            self.use_cb.setChecked(True)
+        else:
+            self.use_cb.setChecked(False)
         self._init_slider_vals()
         feat_wv = self.feature.wv
         xlim_min = feat_wv-self.display_width
@@ -587,7 +631,7 @@ class FeatureFitWidget(QWidget):
         nac = bspec.norm[len(bspec.norm)//2]
         self.top_marker_line.set_data([feat_wv, feat_wv], [0.7*nac, 1.1*nac])
         self.bottom_marker_line.set_xdata([feat_wv, feat_wv])
-
+        
         inv_var = bspec.get_inv_var()
         significance = (feature_model-bspec.flux)*np.sqrt(inv_var)
         self.resid_line.set_data(bspec.wv, significance)

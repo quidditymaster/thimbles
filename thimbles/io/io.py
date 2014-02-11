@@ -24,7 +24,9 @@ from ..spectrum import Spectrum, WavelengthSolution
 
 # ########################################################################### #
 
-__all__ = ['read','read_txt','read_fits']
+__all__ = ["read","read_txt","read_fits",
+           "query_fits_header","WavelengthSolutionCoefficients",
+           "wavelength_solution_functions","ExtractWavelengthCoefficients"]
 
 # ########################################################################### #
 
@@ -65,7 +67,7 @@ class query_fits_header:
 pass
 # ############################################################################# #
 # classes to store the coefficients and wavelength solution as well as to solve
-class WavelengthSolutionFunctions:
+class WavelengthSolutionFunctions (object):
     """
     A class which holds the wavelength solutions
     
@@ -247,7 +249,7 @@ class WavelengthSolutionFunctions:
     
 wavelength_solution_functions = WavelengthSolutionFunctions()
 
-class WavelengthSolutionCoefficients:
+class WavelengthSolutionCoefficients (object):
     """
     This class holds the coefficients as extracted from the fits header
     """
@@ -324,19 +326,22 @@ def pts_2_phys_pixels (pts,bzero=1,bscale=1):
     return pts
 
 def check_for_txt_format (filename,**np_kwargs):
-    try: txt_data = np.loadtxt(filename,unpack=True,dtype=float,**np_kwargs)
-    except: return False, None
-    return True, txt_data
+    try: 
+        txt_data = np.loadtxt(filename,unpack=True,dtype=float,**np_kwargs)
+        return True, txt_data
+    except: 
+        # TODO: What exception is this?
+        return False, None
+    
 
 pass
 # ############################################################################# #
 # functions to extract wavelength solution coefficients and equation type from
 # a fits header
 
-class ExtractWavelengthCoefficients:
+class ExtractWavelengthCoefficients (object):
  
     def __init__ (self,fits_header):
-        # TODO: type check fits_header
         self.header = fits_header
         
         # This is the order to resolve the coefficients in
@@ -376,10 +381,8 @@ class ExtractWavelengthCoefficients:
             wlcoeff = self[coeff_type]
             if len(wlcoeff) == 0: 
                 continue
-            
             if not all_:
                 return wlcoeff
-        
             cc[coeff_type] = wlcoeff
         return cc 
     
@@ -905,7 +908,6 @@ class ExtractWavelengthCoefficients:
                     # 1022              format(28x,1p4e13.5)
                     
                 if line[19:26] == 'D1,2,3:':
-                    log.debug("Found a SPECTRE HISTORY tag with D1,2,3:")
                     sline = line.split(":")
                     day = int(sline[0].split()[1])
                     month = int(sline[1])

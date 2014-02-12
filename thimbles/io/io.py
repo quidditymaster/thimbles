@@ -14,20 +14,22 @@ import warnings
 
 # 3rd Party
 import scipy
+import astropy
 from astropy.io import fits
-import cPickle as pickle
 import numpy as np
 
 # Internal
 from ..utils.misc import smoothed_mad_error
 from ..utils.misc import var_2_inv_var
 from ..spectrum import Spectrum, WavelengthSolution
+from ..metadata import MetaData
+
 
 # ########################################################################### #
 
-__all__ = ["read","read_txt","read_fits",
-           "query_fits_header","WavelengthSolutionCoefficients",
-           "wavelength_solution_functions","ExtractWavelengthCoefficients"]
+# __all__ = ["read","read_txt","read_fits",
+#            "query_fits_header","WavelengthSolutionCoefficients",
+#            "wavelength_solution_functions","ExtractWavelengthCoefficients"]
 
 # ########################################################################### #
 
@@ -334,7 +336,6 @@ def check_for_txt_format (filename,**np_kwargs):
         # TODO: What exception is this?
         return False, None
     
-
 pass
 # ############################################################################# #
 # functions to extract wavelength solution coefficients and equation type from
@@ -342,21 +343,53 @@ pass
 
 class ExtractWavelengthCoefficients (object):
  
+    resolve_wvsoln = ['spectre',
+                      'wv_0',
+                      # 'co_0',
+                      'w0',
+                      'wcs',
+                      'crvl',
+                      'ctype1',
+                      'linear',
+                      'no solution']
+ 
+ 
     def __init__ (self,fits_header):
         self.header = fits_header
         
+        results = [self.from_SPECTRE,
+                   self.from_makee_wv,
+                   self.from_w0,
+                   self.from_wcs,
+                   self.from_crvl,
+                   self.from_ctype1,
+                   self.from_pts,
+                   self.from_none]
         # This is the order to resolve the coefficients in
         self.resolve_coeffs = OrderedDict()
-        self.resolve_coeffs['spectre'] = self.from_SPECTRE
-        self.resolve_coeffs['wv_0'] = self.from_makee_wv
-        # self.resolve_coeffs['co_0'] = self.from_makee_co
-        self.resolve_coeffs['w0'] = self.from_w0
-        self.resolve_coeffs['wcs'] = self.from_wcs
-        self.resolve_coeffs['crvl'] = self.from_crvl
-        self.resolve_coeffs['ctype1'] = self.from_ctype1
-        self.resolve_coeffs['linear'] = self.from_pts 
-        self.resolve_coeffs['no solution'] = self.from_none           
-     
+        for key,value in zip(self.resolve_wvsoln,results):
+            self.resolve_coeffs[key] = value
+    
+    def check_preferred (self,preferred):
+        """
+        Checks if preferred is in the list of preferred values
+        
+        Parameters
+        ----------
+        preferred : None or {0}
+        
+        Raises
+        ------
+        ValueError : if preferred is not an acceptable value
+        
+        """.format(", ".format(self.resolve_wvsoln))
+        if preferred is None:
+            return None
+        if preferred.lower() in self.resolve_wvsoln:
+            return preferred.lower()
+        else:
+            raise ValueError("preferred not in "+", ".join(self.resolve_wvsoln))             
+        
     def __repr__ (self):
         output = "ExtractingWavelengthCoefficients\n"
         output += repr(self.header)
@@ -370,22 +403,20 @@ class ExtractWavelengthCoefficients (object):
             raise KeyError("Unknown coeff type")
         return self.resolve_coeffs[coeff_type]
       
-    def get_coeff (self,preferred=None,all_=False):
-        if preferred is not None:
-            try: 
-                return self[preferred]
-            except KeyError:
-                print "Unknown preferred type"
-
-        cc = []
-        for coeff_type in self:
-            wlcoeff = self[coeff_type]
-            if len(wlcoeff) == 0: 
-                continue
-            if not all_:
-                return wlcoeff
-            cc[coeff_type] = wlcoeff
-        return cc 
+    def get_coeffs (self,preferred=None,all_=False):
+        pref = self.check_preferred(preferred)
+        if pref is None:
+            cc = []
+            for coeff_type in self:
+                wlcoeff = self[coeff_type]
+                if len(wlcoeff) == 0: 
+                    continue
+                if not all_:
+                    return wlcoeff
+                cc[coeff_type] = wlcoeff
+            return cc             
+        else:
+            return self[pref]
     
     @property
     def from_ctype1 (self):
@@ -672,7 +703,7 @@ class ExtractWavelengthCoefficients (object):
         
         LTV_dimn = [1,1]
       
-        def get_order_wlsoln (ordi):
+        def get_order_wvsoln (ordi):
             if ordi not in order_coeff: 
                 if i == 0: return False
                 return True
@@ -759,7 +790,7 @@ class ExtractWavelengthCoefficients (object):
             return False
     
         for i in xrange(100):
-            if get_order_wlsoln(i): break
+            if get_order_wvsoln(i): break
             
         wlcoeff.extra = ['used header to get parameters and coefficients, function: '+equ_type+', to apply wl = function(pts)',order_coeff]
         return wlcoeff
@@ -966,18 +997,11 @@ class ExtractWavelengthCoefficients (object):
             spectre_history[tt1] = (extra_data,disp_type,coeff) 
                 
         return spectre_history
-            
-
-
-
-################################################################
-   
+        
 pass
 # ############################################################################# #
-# TODO: The functions below are incomplete until we have the exact 
-#     format for the measurementment list and information stuff
 
-def read_txt (filename, get_data=False,**np_kwargs):
+def read_txt (filename,**np_kwargs):
     """
     Readin text files with wavelength and data columns (optionally inverse varience)
     
@@ -985,20 +1009,14 @@ def read_txt (filename, get_data=False,**np_kwargs):
     ----------
     filename : string
         Gives the path to the text file
-    get_data : boolean
-        If 'True' then it will just return wavelengths, flux, and inv_var
-        Otherwise returns a Spectrum object
     np_kwargs : dictionary
         Contains keywords and values to pass to np.loadtxt
         This includes things such as skiprows, usecols, etc
     
     Returns
     -------
-    spectrum : Spectrum object 
+    spectrum : list of `thimbles.spectrum.Spectrum` objects 
         If get_data is False returns a Spectrum object
-    OR
-    data : wavelengths, flux, inv_var
-        if get_data is True then returns a tuple of numpy arrays
         
     Raises
     ------
@@ -1009,64 +1027,63 @@ def read_txt (filename, get_data=False,**np_kwargs):
     -----
     __1)__ Keywords txt_data, unpack, and dtype are forced for the
         np_kwargs.
-    
-    
-    
-    Examples
-    --------
-    >>>
-    >>>
-    >>>
-    
+        
     """ 
     #### check if file exists   ####### #############
     if not os.path.isfile(filename): 
-        raise IOError("File does not exist:'"+filename+"'")
+        raise IOError("File does not exist:'{}'".format(filename))
 
-    info = Information()
-    info['filename'] = os.path.abspath(filename)
+    metadata = MetaData()
+    metadata['filename'] = os.path.abspath(filename)
 
     # Allows for not repeating a loadtxt
-    if 'txt_data' in np_kwargs: 
-        txt_data = np_kwargs['txt_data']
-    else: 
-        txt_data = None
-    
+    txt_data = np_kwargs.pop('txt_data',None)    
     if txt_data is None:
-        if 'unpack' in np_kwargs: 
-            del np_kwargs['unpack']
-        if 'dtype' in np_kwargs: 
-            del np_kwargs['dtype']
+        np_kwargs.pop('unpack',None)
+        np_kwargs.pop('dtype',None)
         txt_data = np.loadtxt(filename,unpack=True,dtype=float,**np_kwargs)
     
     # check the input txt_data
     if txt_data.ndim == 1:
-        print "HeadsUp: NO WAVELENGTH DATA FOUND, USING FIRST COLUMN AS DATA"
+        warnings.warn("NO WAVELENGTH DATA FOUND, USING FIRST COLUMN AS DATA")
         data = txt_data 
-        wls = np.arange(len(data))+1
-        var = np.ones(len(data))
+        wvs = np.arange(len(data))+1
+        var = None
     elif txt_data.ndim == 2:
-        wls = txt_data[0]
+        wvs = txt_data[0]
         data = txt_data[1]
-        var = np.ones(len(data))
-    elif txt_data.ndim == 3: wls,data,var = txt_data
+        var = None
+    elif txt_data.ndim == 3: 
+        wvs,data,var = txt_data
+        
     elif txt_data.shape[0] > 2: 
-        print "HeadsUp: Found more than 3 columns in text file '"+filename+"' taking the first three to be wavelength, data, variance respectively"
-        wls,data,var = txt_data[:3]
-      
-    inv_var = var_2_inv_var(var)
-    if get_data:
-        return (wls,data,inv_var)
-    measurement_list = []
-    measurement_list.append(Spectrum(wls,data,inv_var))
+        warnings.warn("Found more than 3 columns in text file '"+filename+"' taking the first three to be wavelength, data, variance respectively")
+        wvs,data,var = txt_data[:3]
+        
+    if var is not None:        
+        inv_var = var_2_inv_var(var)
+    else:
+        inv_var = None
     
-    return measurement_list,info
-
+    return [Spectrum(wvs,data,inv_var,metadata=metadata)]
+    
 ############################################################################
 # readin is the main function for input
 
-def read_fits (filename, hdu=0, band=0, observation_id='', non_std_fits=False):
-    """
+def read_fits (filename, which_hdu=0, band=0, preferred_wvsoln=None):
+    if not os.path.isfile(filename): 
+        raise IOError("File does not exist:'{}'".format(filename))
+    
+    hdulist = fits.open(filename)
+    if len(hdulist) > 1 and isinstance(hdulist[1],astropy.io.fits.hdu.table.BinTableHDU):
+        return read_bintablehdu(hdulist[1])
+    
+    kws = dict(which_hdu=which_hdu,
+               band=band,
+               preferred_wvsoln=preferred_wvsoln)
+    return read_fits_hdu(hdulist,**kws)
+
+read_fits.__doc__ = """
     Takes a astropy.io.fits hdulist and then for a particular hdu and band
     extracts the wavelength and flux information
     
@@ -1074,132 +1091,73 @@ def read_fits (filename, hdu=0, band=0, observation_id='', non_std_fits=False):
     keywords which give coefficients for a wavelenth solution. It then 
     calculates the wavelengths based on that wavelength solution.
     
-    
     Parameters
     ----------
-    hdulist : astropy.io.fits.HDUList
+    hdulist : `astropy.io.fits.HDUList` or string
         A header unit list which contains all the header units
-    hdu : integer
-        Which hdu from the hdulist to use
+    which_hdu : integer
+        Which hdu from the hdulist to use, start counting at 0
     band : integer
         If the hdu has NAXIS3 != 0 then this will select which
         value that dimension should be
-    get_data : boolean
-        If 'True' then return tuple of (wl,data,inv_var) else return Spectrum
+    preferred_wvsoln : None or "{}"
         
     Returns
     -------
-    measurement_list or (wl,data,inv_var) : SpectralMeasurementList \
-                                            OR tuple of numpy arrays
-        Depending on the value of get_data this will return either
-        * SpectrumMeasurementList object 
-        * a tuple of numpy arrays corresponding to wavelength, flux, inv_var
-
+    spectra : list of `thimbles.spectrum.Spectrum` objects 
+    
     Raises
     ------
     IOError : If it encounters unknown KEYWORD options when looking
         for a wavelength solution
     
-    Notes
-    -----
-    none
-    
-    Examples
-    --------
-    >>>
-    >>>
-    >>>
-    
-    """ 
-    if not os.path.isfile(filename): 
-        raise IOError("File does not exist:'"+filename+"'")
-    #### now check how it behaves as a fits file
-    if non_std_fits: 
-        hdulist = fits.open(filename)
-    else:
-        # give standard fits readin a try
-        try: hdulist = fits.open(filename)
-        except: 
-            raise IOError("PYFITS DOES NOT LIKE THE FILE YOU GAVE ('"+filename+"'), TO SEE WHAT ERROR IT GIVES TRY: hdulist = fits.open('"+filename+"')")
-    # TODO: check if hdulist is a binary fits table or not and then call correct function
-    return _core_read_fits(hdulist,hdu,band,observation_id)
-  
-def _core_read_binary_fits (hdulist,observation_id=''):
-    # TODO: possibly have this also check if the hdulist is for a binary fits table
-    # and then check the keywords of the table match 'wl','wavelength','WAVELENGTH'
-    # 'FLUX','flux' etc and then read data in that way
-    pass   
-    
-def _core_read_fits (hdulist, hdu=0, band=0, observation_id='', get_data=False):
-    #     preferred_wlsoln=None 
-    #     # !! should also be able to input wavelength solution?
-    #     
-    #     if preferred_wlsoln is not None: 
-    #         preferred_wlsoln = wavelength_solution_functions.get_func_name(preferred_wlsoln)
-    # 
-    
-    if len(hdulist) > 1: 
-        hdu = int(hdu)
-        hdu = np.clip(hdu,0,len(hdulist)-1)
-    else: 
-        hdu = 0
+    """.format(", ".format(ExtractWavelengthCoefficients.resolve_wvsoln))
 
-    # specify the current header unit
-    header_unit = hdulist[hdu]
-    header = header_unit.header
-
-    apformat = query_fits_header(header,'APFORMAT')
-    if apformat.found: 
-        # TODO: though I think it's just the spec files
-        print "WARNING: I'M NOT SURE HOW TO DEAL WITH APFORMAT VALUES" 
-
+def read_fits_hdu (hdulist,which_hdu=0,band=0,preferred_wvsoln=None):
+    """
+    
+    """
+    hdu = hdulist[which_hdu]
+    header = hdu.header
+    if query_fits_header(header,'APFORMAT').found: 
+        warnings.warn(("Received keyword APFORMAT,"
+                       " no machinary to deal with this."
+                       " [thimbles.io.read_fits_hdu]"))
     # bzero = query_fits_header(header,"BZERO",noval=0)
     # bscale = query_fits_header(header,"BSCALE",noval=1)
-
+    
     ###### read in data ##############################################
-    data = header_unit.data
+    data = hdu.data
     
     # if there's no data return empty
     if data is None:
-        wl, data, inv_var = np.zeros(3).reshape((3,1))
-        if get_data: 
-            return (wl,data,inv_var)
-        else: 
-            return Spectrum(wl,data,inv_var)
+        warnings.warn("no data for header unit [thimbles.io.read_fits_hdu]")
+        wvs, flux = np.zeros(3).reshape((2,1))
+        return [Spectrum(wvs,flux)]
     
-    # hdu selection, band select, orders, pixels
-    while data.ndim > 3:
-        data = data[0]
+    # hdu selection, band select
     if data.ndim == 3:
-        # then there are bands
-        try: 
-            data = data[band]
-        except IndexError:
-            raise IndexError("Band "+str(band)+" out of range of the data")
+        data = data[band]
     elif data.ndim == 1:
         data = data.reshape((1,-1))
-    
     # now the data is ndim==2 with the first dimension as the orders
     # and the second being the data points
     
     ##### Calculate the wavelengths for the data
     # set up wavelength and inverse_variance
-    wv = np.ones(data.shape)
+    wvs = np.ones(data.shape)
     
     # get the wavelength coefficients
-    extract_wvcoeffs = ExtractWavelengthCoefficients(header_unit.header)
-    # TODO: allow user to edit which wavelength solution to use
-    preferred=None
-    wvcoeff = extract_wvcoeffs.get_coeff(preferred)
-
-    # TODO: make it possible to select specific order to read in
-    orders = xrange(data.shape[0])
+    extract_wvcoeffs = ExtractWavelengthCoefficients(hdu.header)
+    wvcoeff = extract_wvcoeffs.get_coeffs(preferred_wvsoln)
+    
+    idx_orders = xrange(len(data))
     
     # go through all the orders
     do_progress = True
     progressive_pt = 1 # this will advance and be used when there is no wavelength solution
     
-    for i in orders:
+    for i in idx_orders:
         # get the coefficients and function type    
         equ_type = wvcoeff.get_equation_type()
         if equ_type in ('none',None,'no solution') and do_progress: 
@@ -1207,43 +1165,107 @@ def _core_read_fits (hdulist, hdu=0, band=0, observation_id='', get_data=False):
             equ_type = 'pts'
         else: 
             coeff = wvcoeff.get_coeffs(i)
-            
         # pts[0] = 1 :: this was definitely the right thing to do for SPECTRE's 1-D output but may not be for other equations, may need pts[0]=0,  this may be for bzero,bscale
-        pts = np.arange(len(wv[i]))+1
+        pts = np.arange(len(wvs[i]))+1
         # apply function
-        wv[i] = wavelength_solution_functions(pts, coeff, equ_type)    
+        wvs[i] = wavelength_solution_functions(pts, coeff, equ_type)    
         progressive_pt += len(pts)
-    
+
     #=================================================================#
-    # return the data .OR. go on and create the spec_obj
-    if get_data: 
-        return (wl, data, inv_var)
-    
-    #=================================================================#
-    info = Information()
-    info['filepath']=os.path.abspath(hdulist.filename())
-    info['hdu_used']=hdu
-    info['band_used']=band
-    info['wavelength_coeffs'] = wvcoeff
-    for i,hdu in enumerate(hdulist):
-        info['header_'+str(i)]=hdulist[i].header    
+    metadata = MetaData()
+    metadata['filename'] = hdulist.filename
+    metadata['hdu_used']=which_hdu
+    metadata['band_used']=band
+    metadata['wavelength_coeffs'] = wvcoeff
+    metadata['header'] = deepcopy(hdu.header)
     
     rv = wvcoeff.get_rv() 
-    measurements = []
-    for i in orders:
-        wl_soln = WavelengthSolution(wv[i],rv=rv)
-        meas = Spectrum(wl_soln,data[i],observation_id=observation_id,order_id=i)
-        measurements.append(meas)
-    return measurements,info
+    
+    spectra = []
+    for i in idx_orders:
+        metadata['order'] = i
+        wl_soln = WavelengthSolution(wvs[i],rv=rv)
+        spectra.append(Spectrum(wl_soln,data[i],metadata=metadata))
+         
+    return spectra
 
-_core_read_fits.__doc__ = read_fits.__doc__
-
-def read_star (filename):
+def read_bintablehdu (bintablehdu,wvcolname=None,fluxcolname=None,varcolname=None):
     """
-    Readin a specified Star object save
+    Read in a fits binary fits table
+    
+    Parameters 
+    ----------
+    bintablehdu : `astropy.io.fits.BinTableHDU`
+    wvcolname : None or string 
+    fluxcolname : None or string
+    varcolname : None or string
+    
+    
     """
-    # TODO: write this
-    pass
+    metadata = MetaData()
+    guesses = dict(wvcol_guess = ['wavelength','wvs','wavelengths'],
+                   fluxcol_guess = ['flux','ergs','intensity'],
+                   var_guess = ['variance','varience'],
+                   inv_var_guess = ['inv_var','inverse variance','inverse varience'],
+                   sigma_guess = ['sigma','error'],
+                   )   
+    # include all uppercase and capitalized guesses too
+    items = guesses.items()     
+    for key,values in items:
+        guesses[key] += [v.upper() for v in values]
+        guesses[key] += [v.capitalize() for v in values]
+    
+    def get_key (set_key,options,guess_keys):
+        if set_key is not None:
+            return set_key
+        else:
+            for key in guess_keys:
+                if key in options:
+                    return key
+     
+    # read in data   
+    data = bintablehdu.data
+    options = data.dtype.names
+    
+    # get the keys
+    wvs_key = get_key(wvcolname,options,guesses['wvcol_guess'])
+    flux_key = get_key(fluxcolname,options,guesses['fluxcol_guess'])
+    
+    sig_key = get_key(None,options,guesses['sigma_guess'])
+    var_key = get_key(varcolname,options,guesses['var_guess'])
+    inv_var_key = get_key(None,options,guesses['inv_var_guess'])
+    
+    # check that these keys are essential
+    if wvs_key is None or flux_key is None:
+        raise ValueError("No keys which make sense for wavelengths or flux")
+    wvs = data[wvs_key]
+    flux = data[flux_key]
+    
+    # check for error keys
+    if sig_key is not None:
+        var = data[sig_key]**2
+        inv_var = var_2_inv_var(var)
+    elif var_key is not None:
+        inv_var = var_2_inv_var(data[var_key])
+    elif inv_var_key is not None:
+        inv_var = data[inv_var_key]
+    else:
+        inv_var = None
+    
+    # store the spectra 
+    spectra = []
+    if wvs.ndim == 2:
+        for i in xrange(len(wvs)):
+            if inv_var is not None:
+                ivar = inv_var[i]
+            else:
+                ivar = None
+            spectra.append(Spectrum(wvs[i],flux[i],ivar,metadata=metadata))
+    elif wvs.ndim == 1:
+        spectra.append(Spectrum(wvs,flux,inv_var))
+    else:
+        raise ValueError("Don't know how to deal with data ndim={}".format(wvs.ndim))
+    return spectra
 
 pass
 # ############################################################################# #
@@ -1251,9 +1273,10 @@ pass
 
 def read (filename,**kwargs):
     """
-    TODO: add doc string
+    General read 
     
     **kwargs are passed either to read_txt or read_fits depending
+    
     """
     f = open(filename,'r')
     header_line = f.readline()
@@ -1329,7 +1352,7 @@ def read_many_fits (filelist,relative_paths=False):
     #============================================================#
     # now with list_of_files import all the objects
     spectral_measurements = []
-    all_info = Information()    
+    all_info = MetaData()    
     for fname in list_of_files:
         # the code was doing something funny, this is the work around
         if fname[0] == "'" and fname[-1] == "'": 
@@ -1363,11 +1386,11 @@ def read_apogee (filename,use_row=1,get_telluric=False,**read_kwargs):
     -------
     data_meas : SpectralMeasurementList
         A list of all the measurements made
-    data_info : Information
+    data_info : MetaData
         An information dictionary about the data
     tell_meas : SpectralMeasurementList (optional if get_telluric)
         A list of measurements for the Telluric
-    tell_info : Information (optional if get_telluric)
+    tell_info : MetaData (optional if get_telluric)
         An information dictionary about the telluric
     
 
@@ -1508,20 +1531,20 @@ def read_fits_makee (filename,varience_filename=None,output_list=False,verbose=F
 
                 if ffname.find("_Flux.fits") != -1: 
                     print "flux file:"+ccdir+'/fits/'+ffname
-                    objs[ccdir] = readin(fname,preferred_disp=preferred_disp,disp_type=disp_type,non_std_fits=non_std_fits,verbose=verbose)
+                    objs[ccdir] = read_fits(fname,preferred_disp=preferred_disp,disp_type=disp_type,non_std_fits=non_std_fits,verbose=verbose)
 
                 elif ffname.find("_Var.fits") != -1:
                     print "variance file:"+ccdir+'/fits/'+ffname
-                    tmp_obj = readin(fname,preferred_disp=preferred_disp,disp_type=disp_type,non_std_fits=non_std_fits,verbose=verbose)
+                    tmp_obj = read_fits(fname,preferred_disp=preferred_disp,disp_type=disp_type,non_std_fits=non_std_fits,verbose=verbose)
                     inv_vars[ccdir] = obj_var_2_inv_var(tmp_obj)
 
 
     else:
         print "Reading in flux file:"+fname
-        objs['file'] = readin(filename,preferred_disp=preferred_disp,disp_type=disp_type,non_std_fits=non_std_fits,verbose=verbose)
+        objs['file'] = read_fits(filename,preferred_disp=preferred_disp,disp_type=disp_type,non_std_fits=non_std_fits,verbose=verbose)
 
         if varience_filename is not None:
-            inv_var = readin(varience_filename,preferred_disp=preferred_disp,disp_type=disp_type,non_std_fits=non_std_fits,verbose=verbose)
+            inv_var = read_fits(varience_filename,preferred_disp=preferred_disp,disp_type=disp_type,non_std_fits=non_std_fits,verbose=verbose)
             inv_vars['file'] = obj_var_2_inv_var(inv_var)
 
 
@@ -1572,17 +1595,20 @@ def read_fits_makee (filename,varience_filename=None,output_list=False,verbose=F
         obj.edit.sort_orders()
         return obj
 
-def read_fits_hst (filename,get_data=False):
+def read_fits_hst (filename):
     """
     This function is designed to read in Hubble Space Telescope Archive x1d data
     
     """
     format_error = "Unexpected HST format for fits file. Please use the X1D"
     
-    try: hdulist = fits.open(filename)
-    except: raise ValueError(format_error)
+    try: 
+        hdulist = fits.open(filename)
+    except: 
+        raise ValueError(format_error)
     
-    if len(hdulist) != 2: raise ValueError(format_error)
+    if len(hdulist) != 2: 
+        raise ValueError(format_error)
 
     hdu = hdulist[1] # the data table
     
@@ -1591,7 +1617,10 @@ def read_fits_hst (filename,get_data=False):
     var = hdu.data['ERROR']**2
     inv_var = var_2_inv_var(var)
     
-    if get_data: return (wl,flux,inv_var)
+    
+     
+     
+     
      
     spec_obj = eyeSpec_spec(wl,flux,inv_var,hdu.header)
     
@@ -1607,11 +1636,6 @@ def read_fits_hst (filename,get_data=False):
 pass
 # ############################################################################# #
 # output functions, perhaps part of 
-
-def save_spectrum (spectrum,filename=None,unique_name=True,clobber=False):
-    fsuffix = '.spec' #'.pkl'
-    # save the spectrum object. perhaps should be part of the object itself
-    pass
 
 def save_spectrum_txt (spectrum,filename):
     """
@@ -1646,190 +1670,6 @@ def save_spectrum_txt (spectrum,filename):
     """
     
     pass
-
-
-class Information (dict):
-    """
-    A class for holding information about an object
-    """
-    
-    def __init__ (self,*args,**kwargs):
-        super(Information,self).__init__(*args,**kwargs)
-    
-    def __repr__ (self):
-        reprout = 'Information {'
-        if len(self) == 0:
-            return reprout + "}"
-        reprout += "\n"
-        for key in self:
-            value = str(repr(self[key])).split("\n")
-            reprout += " "+str(key)+" : "
-            reprout += value[0].strip()+"\n"
-            if len(value) > 1: 
-                reprout += " "*(len(key))+"    ...\n"
-        reprout += "}\n"
-        return reprout
-    
-    def __str__ (self):
-        return super(Information,self).__repr__()
-    
-    def _type_check_other (self,other):
-        if not isinstance(other,dict):
-            raise TypeError("other must be a subclass of dict")
-    
-    def __add__ (self,other):
-        return self.combine(other,key_conflicts='raise')
-            
-    def __iadd__ (self,other):
-        self._type_check_other(other)
-        for key in other:
-            if self.has_key(key):
-                continue
-            self[key] = other[key]
-        return self    
-        
-    def combine (self,other,key_conflicts='ignore',return_=False):
-        """
-        Combine two Information dictionaries together. 
-        
-        
-        Parameters
-        ----------
-        other : dict subclass
-            Any dictionary object will work including other Information Dictionaries
-        key_conflicts : 'ignore' (default), 'merge', 'warn', 'raise'
-            Defined the method to handle key conflicts
-            * ignore : if key is in conflict, keep the current key with no warning
-            * merge : convert key to string and add integers until unique key is found
-            * warn : print a warning message for key conflicts. Keep current key
-            * raise : raise error message for key conflicts.
-        return_ : boolean
-            If True then it will keep the data in place and return a copy with
-            with the concatenation
-                    
-        Returns
-        -------
-        info : Information 
-            Returns an information object with keys and information 
-            concatenated from the two
-        
-        
-        Raises
-        ------
-        KeyError : If key_conflicts=='raise' is True and conflicts exist between two keys
-        
-        
-        Notes
-        -----
-        __1)__ If a key is in conflict but the data the key refers to is the same then
-            no messages or errors will be raised
-        
-        
-        Special cases
-        -------------
-        add operator : info1 + info2
-            This will raise errors for key conflicts between the two 
-        iadd operator : info1 += info2
-            This will ignore key conflicts 
-            and always takes info1 keys as default
-            
-        """
-        self._type_check_other(other)
-        def errmsg (key):
-            return "Warning: key conflict '"+str(key)+"'"
-        
-        key_conflicts = key_conflicts.lower()
-        if return_:
-            out = self.copy()
-        else:
-            out = self
-        
-        if key_conflicts=='merge':
-            for key in other:
-                if self.has_key(key) and self[key]==other[key]:
-                    continue
-                i = 0   
-                base_key = deepcopy(key)
-                while self.has_key(key):            
-                    key = str(base_key)+"_"+str(i)
-                    i += 1    
-                out[key] = other[base_key]
-            return out
-        # else:
-        for key in other:
-            if self.has_key(key):
-                # if the data's the same don't worry about it
-                if self[key]==other[key]:
-                    continue
-                # resolve conflicts 
-                if key_conflicts=='raise':
-                    raise KeyError(errmsg(key))
-                elif key_conflicts=='warn':
-                    print(errmsg(key))
-                else:
-                    continue
-            out[key] = other[key]
-        
-        if return_:
-            return out
-
-    def copy (self):
-        return deepcopy(self)
-    
-    def header_list(self):
-        """returns a list of the values belonging to keys beginning header_ """
-        keys = self.keys()
-        headers = []
-        for key in keys:
-            try:
-                keystart = key[:7]
-                if keystart == "header_":
-                    headers.append(self[key])
-            except:
-                pass
-        return headers
-            
-    def guess_ra_dec(self, headers=None):
-        if headers == None:
-            headers = self.header_list()
-        ra, dec = None, None
-        for hdr in headers:
-            try:
-                rastr = hdr["RA"]
-                decstr = hdr["DEC"]
-                ra = Angle(rastr + " hour")
-                dec = Angle(decstr + " degree")
-                break
-            except:
-                pass
-        return ra, dec
-    
-    def guess_observation_time(self, headers=None):
-        if headers == None:
-            headers = self.header_list()
-        obs_time = None
-        for hdr in headers:
-            try:
-                obs_time = hdr["ut"]
-                break
-            except:
-                pass
-        return obs_time
-    
-    def guess_airmass(self, headers):
-        if headers == None:
-            headers = self.header_list()
-        airmass = None
-        for hdr in headers:
-            try:
-                airmass = hdr["airmass"]
-                break
-            except:
-                pass
-        return airmass
-    
-    def guess_object_name(self):
-        return None
 
 
 

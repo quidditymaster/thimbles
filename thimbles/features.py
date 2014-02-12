@@ -22,8 +22,6 @@ class AtomicTransition:
         The VanDer Waals Damping constant for the transition
     d0 : float
         The dissociation energy for the transition
-    info : Information
-        An information object which holds extra info about the transition
     
     Raises
     ------
@@ -43,7 +41,7 @@ class AtomicTransition:
     
     """
     
-    def __init__ (self,wavelength,id_,loggf,ep,vwdamp=0,d0=0,info=None):
+    def __init__ (self,wavelength,id_,loggf,ep,vwdamp=0,d0=0):
         self.wv = wavelength
         # if id_ is given as string (e.g. 'Fe I') then this will get the 
         # appropriate id
@@ -54,7 +52,6 @@ class AtomicTransition:
         self.ep = ep
         self.vwdamp = vwdamp
         self.d0 = d0
-        pass
     
     @property
     def molecular_weight(self):
@@ -72,7 +69,6 @@ class AtomicTransition:
                format(self.loggf,'5.2f'),
                format(self.ep,'5.2f'))
         return "  ".join(out)
-
 
 class FeatureFlags(object):
     

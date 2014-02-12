@@ -423,6 +423,16 @@ class Spectrum(object):
         #TODO: put extra controls in here
         norm_res = misc.approximate_normalization(self, overwrite=True)
     
+    def __equal__ (self,other):
+        if not isinstance(other,Spectrum):
+            return False
+        
+        checks = [np.all(other.wv==self.wv),
+                  np.all(other.flux==self.flux),
+                  np.all(other.inv_var==self.inv_var),
+                  other.metadata==self.metadata]
+        return np.all(checks)
+    
     def __repr__(self):
         wvs = self.wv
         last_wv = wvs[-1]

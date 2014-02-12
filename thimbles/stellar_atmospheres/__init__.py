@@ -1,12 +1,12 @@
 # the code in this directory deals with stellar atmospheres
 
-# !! todo take the code fro moog and makekurucz and include it in __path__[0]+"/core/"
+# TODO: take the code for moog and makekurucz and include it in __path__[0]+"/core/"
 
 #===============================================================================#
 ######################## USER SETUP #############################################
 
 executables = {'moog'      :'/Applications/astro/Moog/MOOG',
-               'moog07'    :"/uufs/astro.utah.edu/common/astro_data/products/moog2007-3/MOOG",
+               'moog07'    :'/uufs/astro.utah.edu/common/astro_data/products/moog2007-3/MOOG',
                'moogsilent':'/Applications/astro/Moog/MOOGSILENT',
                
                # LTE atmosphere code
@@ -23,10 +23,10 @@ from moog import synth as moog_synth
 from moog import ewfind as moog_ewfind
 from moog import run_ewfind, ewfind_model
 
-from moog_utils import (get_model_name, read_moog_linelist, write_moog_par, write_moog_lines_in,  #@UnusedImport
-                            parse_synth_summary_out, parse_synth_standard_out, parse_abfind_summary_out,  #@UnusedImport
-                            process_moog_synth_output, crop_data_table) #@UnusedImport
-
 import utils
+from utils import (get_model_name, read_moog_linelist, write_moog_par, write_moog_lines_in, 
+                            parse_synth_summary_out, parse_synth_standard_out, parse_abfind_summary_out,  
+                            process_moog_synth_output, crop_data_table) 
+
 from .solar_abundance_core import *
 

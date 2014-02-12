@@ -9,7 +9,10 @@ from astropy.io import fits
 
 # Internal
 import thimbles
-from thimbles.io import ExtractWavelengthCoefficients, read_txt, read_bintablehdu, read, read_fits
+from thimbles.io import (ExtractWavelengthCoefficients, 
+                         read_txt, read,
+                         read_many_fits)
+from thimbles.utils.misc import var_2_inv_var
 
 resources_path = os.path.join(os.path.dirname(thimbles.__file__),"resources/test_data")
 
@@ -78,16 +81,48 @@ class TestReadFunctions (unittest.TestCase):
         
         filepath = os.path.join(resources_path,"hst_bintable_example.fits")
         spectra = read(filepath)
-        pass
+        
+        self.assertEqual(len(spectra),3, "wrong number of orders read")
+        
+        hdulist = fits.open(filepath)
+        hdu1 = hdulist[1]
+        
+        for i in xrange(3):
+            
+            self.assertEqual(hdulist[0].header,spectra[i].metadata['header0'],"primary headers not equal")
+            self.assertEqual(hdulist[1].header,spectra[i].metadata['header1'],"secondary headers not equal")
+            
+            
+            self.assert_(np.all(hdu1.data['WAVELENGTH'][i]==spectra[i].wv),
+                         "wavelengths are not equal for hst data")
+
+            self.assert_(np.all(hdu1.data['FLUX'][i]==spectra[i].flux),
+                         "flux are not equal for hst data")
         
         
+            inv_var = var_2_inv_var(hdu1.data['ERROR'][i]**2)
+            self.assert_(np.all(inv_var==spectra[i].inv_var),
+                         "inverse variance are not equal for hst data")      
+
+    def test_spectre_save (self):
+        filepath = os.path.join(resources_path,"spectre_save.fits")
+        spectre_answer = np.loadtxt(os.path.join(resources_path,"spectre_save.txt"))
         
+        spec = read(filepath)[0]
+        
+        wvequal = np.all(np.abs(spec.wv-spectre_answer[:,0])<0.000249)
+        fluxequal = np.all(np.abs(spec.flux-spectre_answer[:,1]<5.3e-9))
+        
+        self.assert_(wvequal,"wavelengths not equal to SPECTRE")
+        self.assert_(fluxequal,"flux values equal to SPECTRE")
     
-       
-    
+    def test_read_many_fits (self):
+        filepath = os.path.join(resources_path,"spectre_save.fits")
+        nspec = 3
+        filelist = [filepath for _ in xrange(nspec)]
+        spectra = read_many_fits(filelist)
         
-        
-        
-        
+        self.assertEqual(len(spectra), nspec, "wrong number of output spectra")
+                
         
         

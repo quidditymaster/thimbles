@@ -1,4 +1,4 @@
-#this is the place to put dialogs for selecting
+import os
 
 from PySide.QtGui import *
 from PySide.QtCore import *
@@ -33,44 +33,62 @@ class LoadDialog(QDialog):
         lay.addWidget(self.type_dd, 2, 1, 1, 1)
         
         self.function_dd = QComboBox()
-        spec_io_names = [f for f in dir(tmb.io) if "read_" in f]
+        self.function_label = QLabel("readin function")
+        lay.addWidget(self.function_label, 3, 0, 1, 1)
+        lay.addWidget(self.function_dd, 3, 1, 1, 1)
+        spec_io_names = [f for f in dir(tmb.io) if "read" in f]
         spec_io_funcs = map(lambda x: eval("tmb.io." + x), spec_io_names)
         
         ll_io_names = ["loadtxt"]
         ll_io_funcs = [lambda x: np.loadtxt(x, usecols=[0, 1, 2, 3])]
-        self.function_dd.addItems(spec_io_names)
+        
+        self.loading_functions = {}
+        self.loading_function_names = {}
+        self.loading_functions["spectra"] = spec_io_funcs
+        self.loading_functions["line list"] = ll_io_funcs
+        self.loading_function_names["spectra"] = spec_io_names
+        self.loading_function_names["line list"] = ll_io_names
+        
+        self.on_type_changed()
         
         self.load_btn = QPushButton("Load")
         self.cancel_btn = QPushButton("Cancel")
         lay.addWidget(self.load_btn, 4, 2, 1, 1)
         lay.addWidget(self.cancel_btn, 4, 1, 1, 1)
         
-        self.load_func = tmb.io.read_fits
-        
-        tt = [("spectra", spec_io_funcs),
-              ("line list", ll_io_funcs)
-            ] 
-        
         #do the event connections
+        self.function_dd.currentIndexChanged.connect(self.on_function_changed)
+        self.type_dd.currentIndexChanged.connect(self.on_type_changed)
         self.browse_btn.clicked.connect(self.on_browse)
         self.load_btn.clicked.connect(self.on_load)
         self.cancel_btn.clicked.connect(self.on_cancel)
-
+        
         #set the layout
         self.setLayout(lay)
-
+        
         self.new_row = None
     
     def on_browse(self):
         fname, filters = QFileDialog.getOpenFileName(self, "select file path")
         if fname:
             self.file_le.setText(fname)
+        if not self.name_le.text():
+            base_name = os.path.basename(fname)
+            self.name_le.setText(base_name)
     
-    def on_set_type(self):
-        pass
+    def on_type_changed(self):
+        self.cur_type_id = self.type_dd.currentText()
+        self.function_dd.clear()
+        func_names = self.loading_function_names[self.cur_type_id]
+        self.function_dd.addItems(func_names)
+        self.on_function_changed()
+    
+    def on_function_changed(self):
+        cur_type = self.cur_type_id
+        function_index = self.function_dd.currentIndex()
+        self.load_func = self.loading_functions[cur_type][function_index]
     
     def on_cancel(self):
-        print "self.reject", self.reject
         self.reject()
     
     def on_load(self):
@@ -78,12 +96,16 @@ class LoadDialog(QDialog):
             fname = self.file_le.text()
             loaded_obj = self.load_func(fname)
             row_name = self.name_le.text()
-            self.new_row = SpectraRow(loaded_obj, row_name)
-            self.accept()
         except:
             qmb = QMessageBox()
             qmb.setText("There was a problem reading the file")
             qmb.exec_()
+            return
+        if self.type_dd.currentText() == "spectra":
+            self.new_row = SpectraRow(loaded_obj, row_name)
+        elif self.type_dd.currentText() == "line list":
+            self.new_row = LineListRow(loaded_obj, row_name)
+        self.accept()
     
     def get_row(self):
         self.exec_()

@@ -139,13 +139,11 @@ class FeaturesRow(MainTableRow):
         self.widget = None
     
     def on_double_click(self):
-        if self.widget == None:
-            spec, features, feat_spec_idxs = self.data
-            fw = FeatureFitWidget(spec, features, 0, feat_spec_idxs, 3.0, None)
-            self.widget = fw
-            self.widget.show()
-        else:
-            self.widget.show()
+        print "feature double click"
+        spec, features, feat_spec_idxs, fwidth = self.data
+        fw = FeatureFitWidget(spec, features, 0, feat_spec_idxs, fwidth, None)
+        self.widget = fw
+        self.widget.show()
     
 class MainTableModel(QAbstractTableModel):
     

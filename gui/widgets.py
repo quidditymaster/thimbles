@@ -15,7 +15,10 @@ from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt4agg import NavigationToolbar2QTAgg as NavigationToolbar
 from matplotlib.figure import Figure
 
-from models import *
+from PySide.QtGui import *
+from PySide.QtCore import *
+
+import models
 import views
 import thimbles as tmb
 
@@ -517,21 +520,21 @@ class FeatureFitWidget(QDialog):
     def _init_feature_table(self):
         drole = Qt.DisplayRole
         crole = Qt.CheckStateRole
-        wvcol = Column("Wavelength", getter_dict = {drole: lambda x: "%10.3f" % x.wv})
-        spcol = Column("Species", getter_dict = {drole: lambda x: "%10.3f" % x.species})
-        epcol = Column("Excitation\nPotential", {drole: lambda x:"%10.3f" % x.ep})
-        loggfcol = Column("log(gf)", {drole: lambda x: "%10.3f" % x.loggf})        
-        offsetcol = Column("Offset", {drole: lambda x: "%10.3f" % x.get_offset()})
-        depthcol = Column("Depth", {drole: lambda x: "%10.3f" % x.depth})
-        sigcol = Column("sigma", {drole: lambda x: "% 10.3f" % x.profile.get_parameters()[1]})
-        gamcol = Column("gamma", {drole: lambda x: "% 10.3f" % x.profile.get_parameters()[2]})
-        ewcol = Column("Equivalent\nWidth", {drole: lambda x: "%10.2f" % (1000.0*x.eq_width)})
+        wvcol = models.Column("Wavelength", getter_dict = {drole: lambda x: "%10.3f" % x.wv})
+        spcol = models.Column("Species", getter_dict = {drole: lambda x: "%10.3f" % x.species})
+        epcol = models.Column("Excitation\nPotential", {drole: lambda x:"%10.3f" % x.ep})
+        loggfcol = models.Column("log(gf)", {drole: lambda x: "%10.3f" % x.loggf})        
+        offsetcol = models.Column("Offset", {drole: lambda x: "%10.3f" % x.get_offset()})
+        depthcol = models.Column("Depth", {drole: lambda x: "%10.3f" % x.depth})
+        sigcol = models.Column("sigma", {drole: lambda x: "% 10.3f" % x.profile.get_parameters()[1]})
+        gamcol = models.Column("gamma", {drole: lambda x: "% 10.3f" % x.profile.get_parameters()[2]})
+        ewcol = models.Column("Equivalent\nWidth", {drole: lambda x: "%10.2f" % (1000.0*x.eq_width)})
         #viewedcol = Column("Viewed", getter_dict={crole: dummy_func}, setter_dict={crole: flag_setter_factory("viewed")}, checkable=True)
         
         #ewcol = Column("depth"
         columns = [wvcol, spcol, epcol, loggfcol, offsetcol, 
                    depthcol, sigcol, gamcol, ewcol]#, viewedcol]
-        self.linelist_model = ConfigurableTableModel(self.features, columns)
+        self.linelist_model = models.ConfigurableTableModel(self.features, columns)
         self.linelist_view = views.LineListView(parent=self)
         self.linelist_view.setModel(self.linelist_model)
         self.linelist_view.setSelectionBehavior(QAbstractItemView.SelectRows)

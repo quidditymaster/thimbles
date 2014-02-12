@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 from  models import *
 from views import *
 from widgets import *
+from dialogs import *
 
 import thimbles as tmb
 _resources_dir = os.path.join(os.path.dirname(__file__),"resources")
@@ -41,7 +42,7 @@ class AppForm(QMainWindow):
         
         for sfile_name in options.spectra_files:
             try:
-                spec_list, spec_inf = self.rfunc(sfile_name)
+                spec_list = self.rfunc(sfile_name)
                 if options.norm == "auto":
                     for spec in spec_list:
                         spec.approx_norm()
@@ -59,6 +60,7 @@ class AppForm(QMainWindow):
                 ldat = np.loadtxt(options.line_list ,skiprows=1, usecols=[0, 1, 2, 3])
                 base_name = os.path.basename(options.line_list)
                 ll_row = LineListRow(ldat, base_name)
+                self.main_table_model.addRow(ll_row)
             except Exception as e:
                 print "there was an error reading file %s" % options.line_list
                 print e
@@ -150,7 +152,7 @@ class AppForm(QMainWindow):
         self.main_table_view.doubleClicked.connect(self.on_double_click)
         self.div_btn.clicked.connect(self.on_div)
         self.eq_btn.clicked.connect(self.on_eq)
-        self.load_btn.clicked.connect(self.on_load_spectrum)
+        self.load_btn.clicked.connect(self.on_load)
         self.fit_features_btn.clicked.connect(self.on_fit_features)
     
     def get_row(self, row):
@@ -216,36 +218,42 @@ class AppForm(QMainWindow):
             if row.type_id == "spectra":
                 spec = row.data
                 spec_name = row.name
-            elif self.main_table_model.types[row] == "line list":
+            elif row.type_id == "line list":
                 ll = row.data
                 ll_name = row.name
         if spec != None and ll != None:
+            print ll
+            print spec
             culled, feat_spec_idxs = self.cull_lines(spec, ll)
             if len(culled) == 0:
                 print "no features survived the culling! check your wavelength solution"
                 return
             fit_features = self.initial_feature_fit(spec, culled, feat_spec_idxs)
-            frow = FeaturesRow(fit_features, "")
             features_name = "%s %s features" % (spec_name, ll_name)
-            self.main_table_model.addRow((spec, fit_features, feat_spec_idxs, options.fwidth)) 
+            frow = FeaturesRow((spec, fit_features, feat_spec_idxs, options.fwidth), features_name)
+            self.main_table_model.addRow(frow)
     
     def on_set_rv(self):
         pass
     
-    def on_load_spectrum(self):
-        fname, filters = QFileDialog.getOpenFileName(self, "load spectrum")
-        lspec, inf = self.rfunc(fname)
-        try:
-            spec_list, spec_inf = self.rfunc(fname)
-            if options.norm == "auto":
-                for spec in spec_list:
-                    spec.approx_norm()
-            base_name = os.path.basename(fname)
-            self.main_table_model.addItem(base_name, "spectra", lspec)
-        except Exception as e:
-            print "there was an error reading file %s" % fname
-            print e 
-    
+    def on_load(self):
+        ld = LoadDialog()
+        new_row = ld.get_row()
+        if isinstance(new_row, MainTableRow):
+            self.main_table_model.addRow(new_row)
+        #fname, filters = QFileDialog.getOpenFileName(self, "load spectrum")
+        #try:
+        #    spec_list = self.rfunc(fname)
+        #    if options.norm == "auto":
+        #        for spec in spec_list:
+        #            spec.approx_norm()
+        #except Exception as e:
+        #    print "there was an error reading file %s" % fname
+        #    print e
+        #    return
+        #base_name = os.path.basename(fname)
+        #srow = SpectraRow(spec_list, base_name)
+        #self.main_table_model.addRow(srow)
     
     def cull_lines(self, spectra, ldat):
         new_ldat = []

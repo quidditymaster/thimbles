@@ -4,6 +4,11 @@ import os
 import numpy as np
 from copy import deepcopy
 
+# ########################################################################### #
+
+__all__ = ["get_bounds","get_choice","yesno","get_filename"]
+
+# ########################################################################### #
 
 def get_bounds (prompt,lower_too=False,default=(0,1e20),display_help='No Help Available'):
     while True:
@@ -70,7 +75,6 @@ def get_choice (choices,question="Please pick one :",default=0,prompt=None):
         
         print("Please enter one of these choices : "+choices_string)
 
-
 def get_yes_no (choice):
     if choice is None:
         return None
@@ -83,7 +87,7 @@ def get_yes_no (choice):
     elif choice in ('yes','ye','y'):
         return 'yes'
 
-def yesno (question="Please choose:",default_answer='n',prompt=None,return_bool=True):
+def yesno (question="Please choose:",default_answer='n',prompt=None):
     """
     Prompt for a yes or no question and return True or False respectively    
     
@@ -96,18 +100,12 @@ def yesno (question="Please choose:",default_answer='n',prompt=None,return_bool=
     prompt : string or None
         If given this supersedes the prompt built using question and uses
         this string directly in the raw_input call 
-    return_bool : boolean
-        It True then will return only True or False if Yes or No respectively
-        else it will return 'yes'/'no' for any yes/no equivalent answers 
-        otherwise returns the specific string given
         
     Returns
     -------
     yesno : boolean
         Returns 'True' for a 'yes' to the prompt and 'False' for a 'no'
-    
-    
-    
+        
     Notes
     -----
     __1)__ If default answer is given then the ('yes','no') will become ('yes',['no']) 

@@ -5,9 +5,8 @@
 import numpy as np
 import os
 import subprocess
-from ..utils.prompt_user import get_filename #@UnresolvedImport
-from ..stellar_atmospheres import executables #@UnresolvedImport
-from .moog_utils import get_model_name, Batom
+from .utils import get_filename,get_model_name, Batom
+from . import executables 
 
 pass
 #=============================================================================#

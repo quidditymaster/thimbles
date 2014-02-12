@@ -10,6 +10,7 @@ import os
 import time
 from copy import deepcopy
 from collections import OrderedDict, Iterable
+import warnings
 
 # 3rd Party
 import scipy
@@ -24,7 +25,9 @@ from ..spectrum import Spectrum, WavelengthSolution
 
 # ########################################################################### #
 
-__all__ = ['read','read_txt','read_fits']
+__all__ = ["read","read_txt","read_fits",
+           "query_fits_header","WavelengthSolutionCoefficients",
+           "wavelength_solution_functions","ExtractWavelengthCoefficients"]
 
 # ########################################################################### #
 
@@ -65,7 +68,7 @@ class query_fits_header:
 pass
 # ############################################################################# #
 # classes to store the coefficients and wavelength solution as well as to solve
-class WavelengthSolutionFunctions:
+class WavelengthSolutionFunctions (object):
     """
     A class which holds the wavelength solutions
     
@@ -247,7 +250,7 @@ class WavelengthSolutionFunctions:
     
 wavelength_solution_functions = WavelengthSolutionFunctions()
 
-class WavelengthSolutionCoefficients:
+class WavelengthSolutionCoefficients (object):
     """
     This class holds the coefficients as extracted from the fits header
     """
@@ -324,19 +327,22 @@ def pts_2_phys_pixels (pts,bzero=1,bscale=1):
     return pts
 
 def check_for_txt_format (filename,**np_kwargs):
-    try: txt_data = np.loadtxt(filename,unpack=True,dtype=float,**np_kwargs)
-    except: return False, None
-    return True, txt_data
+    try: 
+        txt_data = np.loadtxt(filename,unpack=True,dtype=float,**np_kwargs)
+        return True, txt_data
+    except: 
+        # TODO: What exception is this?
+        return False, None
+    
 
 pass
 # ############################################################################# #
 # functions to extract wavelength solution coefficients and equation type from
 # a fits header
 
-class ExtractWavelengthCoefficients:
+class ExtractWavelengthCoefficients (object):
  
     def __init__ (self,fits_header):
-        # TODO: type check fits_header
         self.header = fits_header
         
         # This is the order to resolve the coefficients in
@@ -376,10 +382,8 @@ class ExtractWavelengthCoefficients:
             wlcoeff = self[coeff_type]
             if len(wlcoeff) == 0: 
                 continue
-            
             if not all_:
                 return wlcoeff
-        
             cc[coeff_type] = wlcoeff
         return cc 
     
@@ -875,12 +879,12 @@ class ExtractWavelengthCoefficients:
             return wlcoeff # old SPECTRE-stype dispersion information
 
         #==========================================================================#
-        spectre_history, _history_lines = self.get_SPECTRE_history()            
+        spectre_history = self.get_SPECTRE_history()   
         # if you found history lines use one with the most recent data                
         if len(spectre_history) > 0:
             most_recent = sorted(spectre_history.keys())[-1]
                 
-            extra_data, disp_type, coeff = spectre_history[most_recent][1:]
+            extra_data, disp_type, coeff = spectre_history[most_recent]
             
             wlcoeff.extra = extra_data
             wlcoeff.set_equation_type(disp_type)
@@ -890,62 +894,79 @@ class ExtractWavelengthCoefficients:
         return wlcoeff
         
     def get_SPECTRE_history (self):
-        history_lines = []
-        spectre_history = {}
-        kount = 0
-        histories = self.header['HISTORY']
-        for i in xrange(len(histories)):
-            line=str(histories[i]).rstrip()
-            if line[0:8] == 'HISTORY ':
-                history_lines.append(line)
-                
-                if line[23:28] == 'DISP=':
-                    raise StandardError("!! NEED TO RESOLVE HOW TO READ THIS TYPE OF DISPERSION FROM SPECTRE")                    
-                    #                   read (head(k+1:k+80),1022) (disp(i),i=1,4)
-                    # 1022              format(28x,1p4e13.5)
-                    
-                if line[19:26] == 'D1,2,3:':
-                    log.debug("Found a SPECTRE HISTORY tag with D1,2,3:")
-                    sline = line.split(":")
-                    day = int(sline[0].split()[1])
-                    month = int(sline[1])
-                    year = int(sline[2].split()[0])
-                    timetag = time.mktime((year,month,day,0,0,kount,0,0,0))
-                    kount += 1
+    
+        histories = self.header['HISTORY']   
+        get_spectre_d = lambda x: x[11:17]
+        
+        def parse_timetag (hist_line):
+            date_str = hist_line[:10]
+            day,month,year = [int(s) for s in date_str.split(":")]
+            timetag = time.mktime((year,month,day,0,0,0,0,0,0))
+            return timetag
             
-                    coeff = np.zeros(9)
-                    line = line.replace('D','e')
-                    coeff[:3] = np.array([line[26:44],line[44:62],line[62:80]],dtype=float)
-    
-                    line2= str(histories[i+1]).rstrip().replace('D','e')
-                    if line2[0:8] != 'HISTORY ': 
-                        raise IOError('EXPECTED NEXT LINE TO HAVE TAG HISTORY')
-                    coeff[3:6] = np.array([line2[26:44],line2[44:62],line2[62:80]],dtype=float)
-    
-                    line3= str(histories[i+2]).rstrip().replace('D','e')
-                    if line3[0:8] != 'HISTORY ': 
-                        raise IOError('EXPECTED NEXT LINE TO HAVE TAG HISTORY')
-                    disp_info = np.array([line3[26:44],line3[44:62],line3[62:80]],dtype=float)
-    
-                    # cheby poly may need disp_info[0]
-                    # disp_info[0] == c(7)
-                    # disp_info[1] == c(8)
-                    # from SPECTRE: 
-                    # c20    p = (point - c(6))/c(7)
-                    # c      xpt = (2.*p-(c(9)+c(8)))/(c(9)-c(8))
-                    if disp_info[2] == 1: disp_type = 'chebyshev poly'
-                    elif disp_info[2] == 2: disp_type = 'legrendre poly'
-                    elif disp_info[2] == 3:
-                        print "WARNING: check the output, I think I may need to use disp_info[1] "
-                        # from SPECTRE: s = (point-1.)/(real(npt)-1.)*c(8)
-                        # c(8) == disp_info[1] ==> true
-                        disp_type = 'spline3'
-                    else: disp_type = 'poly' # but likely the orders > 1 have coefficients zero
-                    extra_data= ['used header to get SPECRE HISTORY tags, function:'+disp_type+', to apply wl=function(pts)',[line,line2,line3]]
-                    
-                    spectre_history[timetag] = (line,extra_data,disp_type,coeff)
-        return spectre_history, history_lines
-    
+        def parse_coefficients (hist_line):
+            coeffs = hist_line[18:36],hist_line[36:54],hist_line[54:]
+            coeffs = [float(c.replace("D","e")) for c in coeffs]
+            return coeffs
+            
+        spectre_history = {}    
+        for i,hist_line in enumerate(histories):
+            ds1 = get_spectre_d(hist_line) 
+            if ds1 != 'D1,2,3':
+                continue
+            
+            if i+2 >= len(histories):
+                continue
+            
+            # get the current and next two history lines
+            hl1 = hist_line
+            hl2 = histories[i+1]
+            hl3 = histories[i+2]
+            
+            # check tags
+            ds2 = get_spectre_d(hl2)
+            ds3 = get_spectre_d(hl3)
+            if ds2 != "D4,5,6" or ds3 != "D7,8,9":
+                warnings.warn("Expected next two history lines "
+                              "to have D4,5,6 and D7,8,9")
+                continue
+                
+            # check time stamp
+            tt1 = parse_timetag(hl1)
+            tt2 = parse_timetag(hl2)
+            tt3 = parse_timetag(hl3)
+            if not (tt1==tt2 and tt2==tt3):
+                # time for these tags must be the same
+                continue 
+        
+            c1 = parse_coefficients(hl1)
+            c2 = parse_coefficients(hl2)
+            disp_info = parse_coefficients(hl3)
+            coeff = c1+c2 
+            
+            # cheby poly may need disp_info[0]
+            # disp_info[0] == c(7)
+            # disp_info[1] == c(8)
+            # from SPECTRE: 
+            # c20    p = (point - c(6))/c(7)
+            # c      xpt = (2.*p-(c(9)+c(8)))/(c(9)-c(8))
+            if disp_info[2] == 1: 
+                disp_type = 'chebyshev poly'
+            elif disp_info[2] == 2: 
+                disp_type = 'legrendre poly'
+            elif disp_info[2] == 3:
+                warnings.warn("check the output, I think I may need to use disp_info[1]  (timbles.io.io.ExtractWavelengthCoefficients) ")
+                # from SPECTRE: s = (point-1.)/(real(npt)-1.)*c(8)
+                # c(8) == disp_info[1] ==> true
+                disp_type = 'spline3'
+            else: 
+                disp_type = 'poly' # but likely the orders > 1 have coefficients zero
+       
+            extra_data= ['used header to get SPECRE HISTORY tags, function:'+disp_type+', to apply wl=function(pts)',[hl1,hl2,hl3]]
+            spectre_history[tt1] = (extra_data,disp_type,coeff) 
+                
+        return spectre_history
+            
 
 
 

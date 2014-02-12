@@ -115,7 +115,7 @@ class MainTableRow(object):
 class SpectraRow(MainTableRow):
     
     def __init__(self, data, name="some spectra"):
-        super(SpectraRow, self).__init__(self, data, name)
+        super(SpectraRow, self).__init__(data, name)
         self.type_id = "spectra"
     
     def on_double_click(self):
@@ -128,13 +128,13 @@ class SpectraRow(MainTableRow):
 class LineListRow(MainTableRow):
 
     def __init__(self, data, name="some line list"):
-        super(LineListRow, self).__init__(self, data, name)
+        super(LineListRow, self).__init__(data, name)
         self.type_id = "line list"
 
 class FeaturesRow(MainTableRow):
     
     def __init__(self, data, name="some features"):
-        super(FeaturesRow, self).__init__(self, data, name)
+        super(FeaturesRow, self).__init__(data, name)
         self.type_id = "features"
         self.widget = None
     
@@ -156,10 +156,10 @@ class MainTableModel(QAbstractTableModel):
         self.rows = rows
         self.header_text = ["----------object name--------", "------type-------"]
     
-    def rowCount(self):
+    def rowCount(self, parent=QModelIndex()):
         return len(self.rows)
     
-    def columnCount(self):
+    def columnCount(self, parent=QModelIndex()):
         return 2
     
     def headerData(self, section, orientation, role):

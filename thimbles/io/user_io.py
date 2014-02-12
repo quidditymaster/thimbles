@@ -63,9 +63,11 @@ def read_elodie(filepath):
     wvs = hdul[0].header["crval1"] + np.arange(len(flux))*hdul[0].header["cdelt1"]
     rescaling_factor = np.median(flux[flux > 0])
     variance = (hdul[2].data/rescaling_factor)**2
-    flux[np.isnan(flux)] = 0.0
+    nan_flux_mask = np.isnan(flux)
+    flux[nan_flux_mask] = 0.0
     flux /= rescaling_factor
     inv_var = var_2_inv_var(variance)
+    inv_var[nan_flux_mask] = 0.0
     info = Information()
     info['filename'] = filepath
     spec_list = [tmb.Spectrum(wvs, flux, inv_var)]

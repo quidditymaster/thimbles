@@ -9,11 +9,13 @@ except ImportError:
     from PyQt4.QtCore import *
     from PyQt4.QtGui import *
     matplotlib.rcParams['backend.qt4'] = 'PyQt4'
+import matplotlib.pyplot as plt
 
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt4agg import NavigationToolbar2QTAgg as NavigationToolbar
 from matplotlib.figure import Figure
 
+from widgets import *
 
 class Column(object):
     
@@ -100,6 +102,107 @@ class ConfigurableTableModel(QAbstractTableModel):
             print e
             return False
 
+class MainTableRow(object):
+    
+    def __init__(self, data, name="horse with no name"):
+        self.data = data
+        self.name = name
+        self.type_id = "misc"
+    
+    def on_double_click(self):
+        pass
+
+class SpectraRow(MainTableRow):
+    
+    def __init__(self, data, name="some spectra"):
+        super(SpectraRow, self).__init__(self, data, name)
+        self.type_id = "spectra"
+    
+    def on_double_click(self):
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        for i in range(len(self.data)):
+            ax.plot(self.data[i].wv, self.data[i].flux, c="b")
+        plt.show()
+
+class LineListRow(MainTableRow):
+
+    def __init__(self, data, name="some line list"):
+        super(LineListRow, self).__init__(self, data, name)
+        self.type_id = "line list"
+
+class FeaturesRow(MainTableRow):
+    
+    def __init__(self, data, name="some features"):
+        super(FeaturesRow, self).__init__(self, data, name)
+        self.type_id = "features"
+        self.widget = None
+    
+    def on_double_click(self):
+        if self.widget == None:
+            spec, features, feat_spec_idxs = self.data
+            fw = FeatureFitWidget(spec, features, 0, feat_spec_idxs, 3.0, None)
+            self.widget = fw
+            self.widget.show()
+        else:
+            self.widget.show()
+    
+class MainTableModel(QAbstractTableModel):
+    
+    def __init__(self, rows=None):
+        super(MainTableModel, self).__init__()
+        if rows == None:
+            rows = []
+        self.rows = rows
+        self.header_text = ["----------object name--------", "------type-------"]
+    
+    def rowCount(self):
+        return len(self.rows)
+    
+    def columnCount(self):
+        return 2
+    
+    def headerData(self, section, orientation, role):
+        if role == Qt.DisplayRole:
+            if orientation == Qt.Horizontal:
+                return self.header_text[section]
+    
+    def addRow(self, row):
+        if isinstance(row, MainTableRow):
+            nrows = self.rowCount()
+            self.beginInsertRows(QModelIndex(), nrows, nrows)
+            self.rows.append(row)
+            self.endInsertRows()
+        else:
+            raise ValueError
+    
+    def addRows(self, rows):
+        nrows = self.rowCount()
+        nrows_add = len(rows)
+        self.beginInsertRows(QModelIndex(), nrows, nrows+nrows_add)
+        self.rows.extend(rows)
+        self.endInsertRows()
+    
+    def flags(self, index):
+        fl = Qt.ItemIsEnabled | Qt.ItemIsSelectable
+        if index.column() == 0:
+            fl |= Qt.ItemIsEditable
+        return fl 
+    
+    def data(self, index, role=Qt.DisplayRole):
+        row, col = index.row(), index.column()
+        if col == 0:
+            return self.rows[row].name
+        elif col == 1:
+            return self.rows[row].type_id
+    
+    def setData(self, index, value, role=Qt.EditRole):
+        row, col = index.row(), index.column()
+        if role == Qt.EditRole:
+            if row == 0:
+                self.rows[row].name = value
+                return True
+        return False
 
 class NameTypeTableModel(QAbstractTableModel):
     

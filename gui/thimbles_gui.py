@@ -34,11 +34,8 @@ class AppForm(QMainWindow):
         self.main_frame = QWidget()        
         self.options = options
         
-        self.attendant_widgets = []
-        
         self.layout = QHBoxLayout()
-        
-        self.main_table_model = NameTypeTableModel()
+        self.main_table_model = MainTableModel()
         
         self.rfunc = eval("tmb.io.%s" % options.read_func)
         
@@ -51,7 +48,8 @@ class AppForm(QMainWindow):
                 for spec in spec_list:
                     spec.set_rv(options.rv)
                 base_name = os.path.basename(sfile_name)
-                self.main_table_model.addItem(base_name, "spectra", spec_list)
+                spec_row = SpectraRow(spec_list, base_name)
+                self.main_table_model.addRow(spec_row)
             except Exception as e:
                 print "there was an error reading file %s" % sfile_name
                 print e
@@ -60,7 +58,7 @@ class AppForm(QMainWindow):
             try:
                 ldat = np.loadtxt(options.line_list ,skiprows=1, usecols=[0, 1, 2, 3])
                 base_name = os.path.basename(options.line_list)
-                self.main_table_model.addItem(base_name, "line list", ldat)
+                ll_row = LineListRow(ldat, base_name)
             except Exception as e:
                 print "there was an error reading file %s" % options.line_list
                 print e
@@ -78,10 +76,7 @@ class AppForm(QMainWindow):
         self.layout.addWidget(self.main_table_view)
         
         #import pdb; pdb.set_trace()
-
-        #self.main_table_view.resizeColumnsToContents()
-        #self.obj_list_wid.itemDoubleClicked.connect(self.print_args)
-        
+                
         op_gb = self._init_operations_groups()
         self.layout.addWidget(op_gb)
         
@@ -158,20 +153,13 @@ class AppForm(QMainWindow):
         self.load_btn.clicked.connect(self.on_load_spectrum)
         self.fit_features_btn.clicked.connect(self.on_fit_features)
     
+    def get_row(self, row):
+        return self.main_table_model.rows[row]
+    
     def on_double_click(self, index):
-        row = index.row()
-        if self.main_table_model.types[row] == "spectra":
-            data = self.main_table_model.internalData(row)
-            fig = plt.figure()
-            plt.subplot(111)
-            for i in range(len(data)):
-                plt.plot(data[i].wv, data[i].flux, c="b")
-            plt.show()
-        if self.main_table_model.types[row] == "fit features":
-            spec, features, feat_spec_idxs = self.main_table_model.internalData(row)
-            fw = FeatureFitWidget(spec, features, 0, feat_spec_idxs, self.options.fwidth, None)
-            self.attendant_widgets.append(fw)
-            fw.show()
+        row_index = index.row()
+        row_object = self.get_row(row_index)
+        row_object.on_double_click()
     
     def on_div(self):
         smod = self.main_table_view.selectionModel()
@@ -223,19 +211,23 @@ class AppForm(QMainWindow):
         row1, row2 = selrows[0].row(), selrows[1].row()
         spec = None
         ll = None
-        for row in [row1, row2]:
-            if self.main_table_model.types[row] == "spectra":
-                spec = self.main_table_model.internalData(row)
-                spec_name = self.main_table_model.names[row]
-                #print "spec", spec
+        for row_index in [row1, row2]:
+            row = self.get_row(row_index)
+            if row.type_id == "spectra":
+                spec = row.data
+                spec_name = row.name
             elif self.main_table_model.types[row] == "line list":
-                ll = self.main_table_model.internalData(row)
-                ll_name = self.main_table_model.names[row]
-                #print "ll", ll
+                ll = row.data
+                ll_name = row.name
         if spec != None and ll != None:
             culled, feat_spec_idxs = self.cull_lines(spec, ll)
+            if len(culled) == 0:
+                print "no features survived the culling! check your wavelength solution"
+                return
             fit_features = self.initial_feature_fit(spec, culled, feat_spec_idxs)
-        self.main_table_model.addItem("%s %s features" % (spec_name, ll_name), "fit features", (spec, fit_features, feat_spec_idxs)) 
+            frow = FeaturesRow(fit_features, "")
+            features_name = "%s %s features" % (spec_name, ll_name)
+            self.main_table_model.addRow((spec, fit_features, feat_spec_idxs, options.fwidth)) 
     
     def on_set_rv(self):
         pass
@@ -249,9 +241,9 @@ class AppForm(QMainWindow):
                 for spec in spec_list:
                     spec.approx_norm()
             base_name = os.path.basename(fname)
-            self.main_table_model.addItem(base_name, "spectra", spec_list)
+            self.main_table_model.addItem(base_name, "spectra", lspec)
         except Exception as e:
-            print "there was an error reading file %s" % sfile_name
+            print "there was an error reading file %s" % fname
             print e 
     
     

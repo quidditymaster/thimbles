@@ -442,7 +442,7 @@ class FeatureFitWidget(QDialog):
         
     def save_measurements(self):
         fname, file_filter = QFileDialog.getSaveFileName(self, "save measurements")
-        llout = tmb.stellar_atmospheres.moog_utils.write_moog_lines_in(fname)
+        llout = tmb.stellar_atmospheres.utils.moog_utils.write_moog_lines_in(fname)
         for feat in self.features:
             wv=feat.wv
             spe=feat.species

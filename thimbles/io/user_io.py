@@ -69,7 +69,7 @@ def read_elodie(filepath):
     info = MetaData()
     info['filename'] = filepath
     spec_list = [tmb.Spectrum(wvs, flux, inv_var)]
-    return spec_list, info
+    return spec_list
 
 def read_mike(filepath):
     return tmb.io.read_fits(filepath, band=1)

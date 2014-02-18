@@ -7,7 +7,7 @@ from models import *
 import thimbles as tmb
 
 class LoadDialog(QDialog):
-
+    
     def __init__(self, parent=None):
         super(LoadDialog, self).__init__(parent)
         self.initUI()
@@ -40,8 +40,15 @@ class LoadDialog(QDialog):
         spec_io_funcs = map(lambda x: eval("tmb.io." + x), spec_io_names)
         
         ll_io_names = ["loadtxt"]
-        ll_io_funcs = [lambda x: np.loadtxt(x, usecols=[0, 1, 2, 3])]
         
+        def skipload(x):
+            try:
+                res = np.loadtxt(x, usecols=[0, 1, 2, 3])
+            except:
+                res = np.loadtxt(x, usecols=[0, 1, 2, 3], skiprows=1)
+            return res
+        
+        ll_io_funcs = [skipload] 
         self.loading_functions = {}
         self.loading_function_names = {}
         self.loading_functions["spectra"] = spec_io_funcs

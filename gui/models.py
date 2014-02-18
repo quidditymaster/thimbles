@@ -108,6 +108,7 @@ class MainTableRow(object):
         self.data = data
         self.name = name
         self.type_id = "misc"
+        self.widgets = {}
     
     def on_double_click(self):
         pass

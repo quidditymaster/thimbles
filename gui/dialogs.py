@@ -111,6 +111,75 @@ class LoadDialog(QDialog):
         self.exec_()
         return self.new_row
 
+
+
+class RVSettingDialog(QDialog):
+
+    def __init__(self, spectra, parent=None):
+        super(RVSettingDialog, self).__init__(parent)
+        self.spectra = spectra
+        self.current_rv = spectra[0].get_rv()
+        self.original_rv = self.current_rv
+        self.initUI()
+    
+    def reset_rv_text(self):
+        rvtext = "%5.3f" % self.current_rv
+        self.rv_le.setText(rvtext)
+    
+    def initUI(self):
+        self.rv_label = QLabel("radial velocity")
+        self.units_label = QLabel("Km/S")
+        self.rv_le = QLineEdit("", self)
+        self.reset_rv_text()
+        self.apply_btn = QPushButton("Apply")
+        self.cancel_btn = QPushButton("Cancel")
+        self.finish_btn = QPushButton("finish")
+        
+        #do the layout
+        lay = QGridLayout()
+        
+        #row1
+        lay.addWidget(self.rv_label, 0, 0, 1, 1)
+        lay.addWidget(self.rv_le, 0, 1, 1, 1)
+        lay.addWidget(self.units_label, 0, 2, 1, 1)
+        
+        #row2
+        lay.addWidget(self.cancel_btn, 1, 0, 1, 1)
+        lay.addWidget(self.apply_btn, 1, 1, 1, 1)
+        lay.addWidget(self.finish_btn, 1, 2, 1, 1)
+        
+        #connect
+        self.rv_le.editingFinished.connect(self.on_rv_le_changed)
+        self.apply_btn.clicked.connect(self.on_apply)
+        self.cancel_btn.clicked.connect(self.on_cancel)
+        self.finish_btn.clicked.connect(self.on_finish)
+        
+        self.setLayout(lay)
+    
+    def on_rv_le_changed(self):
+        try:
+            new_rv_val = float(self.rv_le.text())
+            self.current_rv = new_rv_val
+        except ValueError:
+            pass
+        self.reset_rv_text()
+    
+    def set_rv(self):
+        self.show()
+    
+    def on_apply(self):
+        for spectrum in self.spectra:
+            spectrum.set_rv(self.current_rv)
+    
+    def on_cancel(self):
+        for spectrum in self.spectra:
+            spectrum.set_rv(self.original_rv)
+        self.reject()
+    
+    def on_finish(self):
+        self.on_apply()
+        self.accept()
+
 if __name__ == "__main__":
     qap = QApplication([])
     

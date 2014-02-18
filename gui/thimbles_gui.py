@@ -17,10 +17,10 @@ except ImportError:
     matplotlib.rcParams['backend.qt4'] = 'PyQt4'
 
 import matplotlib.pyplot as plt
-from  models import *
-from views import *
-from widgets import *
-from dialogs import *
+import models
+import views
+import widgets
+import dialogs
 
 import thimbles as tmb
 _resources_dir = os.path.join(os.path.dirname(__file__),"resources")
@@ -36,7 +36,7 @@ class AppForm(QMainWindow):
         self.options = options
         
         self.layout = QHBoxLayout()
-        self.main_table_model = MainTableModel()
+        self.main_table_model = models.MainTableModel()
         
         self.rfunc = eval("tmb.io.%s" % options.read_func)
         
@@ -49,7 +49,7 @@ class AppForm(QMainWindow):
                 for spec in spec_list:
                     spec.set_rv(options.rv)
                 base_name = os.path.basename(sfile_name)
-                spec_row = SpectraRow(spec_list, base_name)
+                spec_row = models.SpectraRow(spec_list, base_name)
                 self.main_table_model.addRow(spec_row)
             except Exception as e:
                 print "there was an error reading file %s" % sfile_name
@@ -59,7 +59,7 @@ class AppForm(QMainWindow):
             try:
                 ldat = np.loadtxt(options.line_list ,skiprows=1, usecols=[0, 1, 2, 3])
                 base_name = os.path.basename(options.line_list)
-                ll_row = LineListRow(ldat, base_name)
+                ll_row = models.LineListRow(ldat, base_name)
                 self.main_table_model.addRow(ll_row)
             except Exception as e:
                 print "there was an error reading file %s" % options.line_list
@@ -69,7 +69,7 @@ class AppForm(QMainWindow):
         self.partial_result = None
         self.current_operation = None
 
-        self.main_table_view = NameTypeTableView(self)
+        self.main_table_view = views.NameTypeTableView(self)
         self.main_table_view.setModel(self.main_table_model)
         self.main_table_view.setColumnWidth(0, 200)
         self.main_table_view.setColumnWidth(1, 200)
@@ -115,11 +115,13 @@ class AppForm(QMainWindow):
         btn_grid = QGridLayout()
         self.load_btn = QPushButton("load")
         self.norm_btn = QPushButton("norm")
+        self.rv_btn = QPushButton("set rv")
         self.fit_features_btn = QPushButton("fit features")
         #self.tell_btn = QPushButton("extract telluric")
         btn_grid.addWidget(self.load_btn, 0, 0, 1, 1)
         btn_grid.addWidget(self.norm_btn, 1, 0, 1, 1)
-        btn_grid.addWidget(self.fit_features_btn, 2, 0, 1, 1)
+        btn_grid.addWidget(self.rv_btn, 2, 0, 1, 1)
+        btn_grid.addWidget(self.fit_features_btn, 3, 0, 1, 1)
         #btn_grid.addWidget(self.tell_btn, 1, 0, 1, 1)
         op_box.setLayout(btn_grid)
         return op_box
@@ -150,10 +152,12 @@ class AppForm(QMainWindow):
     
     def _connect(self):
         self.main_table_view.doubleClicked.connect(self.on_double_click)
+        self.rv_btn.clicked.connect(self.on_set_rv)
         self.div_btn.clicked.connect(self.on_div)
         self.eq_btn.clicked.connect(self.on_eq)
         self.load_btn.clicked.connect(self.on_load)
         self.fit_features_btn.clicked.connect(self.on_fit_features)
+        self.norm_btn.clicked.connect(self.on_norm)
     
     def get_row(self, row):
         return self.main_table_model.rows[row]
@@ -230,30 +234,35 @@ class AppForm(QMainWindow):
                 return
             fit_features = self.initial_feature_fit(spec, culled, feat_spec_idxs)
             features_name = "%s %s features" % (spec_name, ll_name)
-            frow = FeaturesRow((spec, fit_features, feat_spec_idxs, options.fwidth), features_name)
+            frow = models.FeaturesRow((spec, fit_features, feat_spec_idxs, options.fwidth), features_name)
             self.main_table_model.addRow(frow)
     
     def on_set_rv(self):
-        pass
+        smod = self.main_table_view.selectionModel()
+        selrows = smod.selectedRows()
+        if len(selrows) != 1:
+            return
+        row = self.get_row(selrows[0].row())
+        if row.type_id == "spectra":
+            rvdialog = dialogs.RVSettingDialog(row.data, self)
+            row.widgets["rv"] = rvdialog
+            rvdialog.set_rv()
+    
+    def on_norm(self):
+        smod = self.main_table_view.selectionModel()
+        selrows = smod.selectedRows()
+        row_idxs = [r.row() for r in selrows]
+        row_objs = [self.get_row(idx) for idx in row_idxs]
+        for row in row_objs:
+            if row.type_id == "spectra":
+                for spec in row.data:
+                    spec.approx_norm()
     
     def on_load(self):
-        ld = LoadDialog()
+        ld = dialogs.LoadDialog()
         new_row = ld.get_row()
-        if isinstance(new_row, MainTableRow):
+        if isinstance(new_row, models.MainTableRow):
             self.main_table_model.addRow(new_row)
-        #fname, filters = QFileDialog.getOpenFileName(self, "load spectrum")
-        #try:
-        #    spec_list = self.rfunc(fname)
-        #    if options.norm == "auto":
-        #        for spec in spec_list:
-        #            spec.approx_norm()
-        #except Exception as e:
-        #    print "there was an error reading file %s" % fname
-        #    print e
-        #    return
-        #base_name = os.path.basename(fname)
-        #srow = SpectraRow(spec_list, base_name)
-        #self.main_table_model.addRow(srow)
     
     def cull_lines(self, spectra, ldat):
         new_ldat = []
@@ -316,7 +325,7 @@ class AppForm(QMainWindow):
         return features
     
     def _init_fit_widget(self):
-        self.fit_widget = FeatureFitWidget(self.spec, self.features, 0, self.options.fwidth, parent=self)
+        self.fit_widget = widgets.FeatureFitWidget(self.spec, self.features, 0, self.options.fwidth, parent=self)
         self.layout.addWidget(self.fit_widget, 0, 0, 1, 1)
     
     def save (self):

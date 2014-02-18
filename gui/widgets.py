@@ -22,7 +22,6 @@ import models
 import views
 import thimbles as tmb
 
-
 class SpectraWidget(QDialog):
     pass
 

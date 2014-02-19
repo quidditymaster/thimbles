@@ -121,9 +121,12 @@ class SpectraRow(MainTableRow):
     
     def on_double_click(self):
         fig = plt.figure()
+        print self.data
+        print "len of data", len(self.data)
         ax = fig.add_subplot(111)
         for i in range(len(self.data)):
             ax.plot(self.data[i].wv, self.data[i].flux, c="b")
+            ax.plot(self.data[i].wv, self.data[i].norm, c="g")
         plt.show()
 
 class LineListRow(MainTableRow):

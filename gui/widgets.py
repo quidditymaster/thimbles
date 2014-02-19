@@ -381,7 +381,7 @@ class PrevNext(QWidget):
         else:
             self.play()
 
-class FeatureFitWidget(QDialog):
+class FeatureFitWidget(QWidget):
     slidersChanged = Signal(int)
     
     def __init__(self, spectra, features, feature_idx, feat_spec_idxs, display_width, parent=None):
@@ -574,6 +574,11 @@ class FeatureFitWidget(QDialog):
         xlim_min = feat_wv-self.display_width
         xlim_max = feat_wv+self.display_width
         self.fit_axis(0).set_xlim(xlim_min, xlim_max)
+        bspec = self.bounded_spec()
+        ymin, ymax = np.min(bspec.flux), np.max(bspec.flux)
+        ydelta = ymax-ymin
+        extra_frac = 0.05
+        self.fit_axis(0).set_ylim(ymin-extra_frac*ydelta, ymax+extra_frac*ydelta)
         self.update_plots()
     
     def _connect_sliders(self):

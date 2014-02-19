@@ -262,6 +262,9 @@ class AppForm(QMainWindow):
         ld = dialogs.LoadDialog()
         new_row = ld.get_row()
         if isinstance(new_row, models.MainTableRow):
+            print "new row"
+            print new_row
+            print "data", new_row.data
             self.main_table_model.addRow(new_row)
     
     def cull_lines(self, spectra, ldat):

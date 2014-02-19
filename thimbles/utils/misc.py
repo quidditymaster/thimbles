@@ -522,14 +522,37 @@ def min_delta_bins(x, min_delta, target_n=1):
 class NormFitResult:
     pass
 
+
+def layered_median_mask(arr, n_layers=3, first_layer_width=31, last_layer_width=11, rejection_sig=2.0):
+    marr = np.asarray(arr)
+    assert n_layers > 1
+    assert first_layer_width >= 1
+    assert last_layer_width >= 1
+    layer_widths = np.array(np.linspace(first_layer_width, last_layer_width, n_layers), dtype=int)
+    mask = np.ones(marr.shape, dtype=bool)
+    for layer_idx in range(n_layers):
+        lw = layer_widths[layer_idx]
+        masked_arr = marr[mask]
+        filtered = filters.median_filter(masked_arr, lw)
+        local_mad = filters.median_filter(np.abs(masked_arr-filtered), lw)
+        mask[mask] = masked_arr >= (filtered - rejection_sig*1.4*local_mad)
+    return mask
+
+def layered_median_normalization(spectra):
+    for spec in spectra:
+        pass
+
+
+
+
 def approximate_normalization(spectrum,
                               partition_scale=300,
                               reject_fraction=0.5, 
-                              poly_order=2, 
+                              poly_order=3, 
                               mask_back_off=-1,
                               smart_partition=False, 
-                              alpha=2.0,
-                              beta=2.0,
+                              alpha=4.0,
+                              beta=4.0,
                               norm_hints=None,
                               overwrite=False,
                               min_stats=None,
@@ -583,11 +606,15 @@ def approximate_normalization(spectrum,
     variance = spectrum.get_var()
     inv_var = spectrum.get_inv_var()
     good_mask = inv_var > 0
-    min_stats, fmask = detect_features(flux, variance, 
-                                       reject_fraction=reject_fraction,
-                                       mask_back_off=mask_back_off, 
-                                       min_stats=min_stats)
-    fmask *= good_mask
+    #min_stats, fmask = detect_features(flux, variance, 
+    #                                   reject_fraction=reject_fraction,
+    #                                   mask_back_off=mask_back_off, 
+    #                                   min_stats=min_stats)
+    #fmask *= good_mask
+    
+    #generate a layered median mask.
+    fmask = layered_median_mask(flux, 4, 51, 11, 1.0)*good_mask
+    
     mwv = wavelengths[fmask].copy()
     mflux = flux[fmask].copy()
     minv = inv_var[fmask]
@@ -606,7 +633,7 @@ def approximate_normalization(spectrum,
     else:
         use_simple_partition = True
     if use_simple_partition:
-        break_wvs = min_delta_bins(mwv, min_delta=pscale, target_n=poly_order+1)
+        break_wvs = min_delta_bins(mwv, min_delta=pscale, target_n=20*(poly_order+1)+10)
         #roughly evenly space the break points partition_scale apart
     pp_gen = piecewise_polynomial.RCPPB(poly_order=poly_order, control_points=break_wvs)
     if norm_hints:

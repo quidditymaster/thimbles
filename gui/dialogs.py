@@ -187,6 +187,22 @@ class RVSettingDialog(QDialog):
         self.on_apply()
         self.accept()
 
+class NormalizationDialog(QDialog):
+    
+    def __init__(self, spectra, parent=None):
+        super(NormalizationDialog, self).__init__(parent=parent)
+        self.spectra = spectra
+        self.initUI()
+    
+    def initUI(self):
+        #set up the widgets
+        self.algorithm_label = QLabel("algorithms")
+        self.algorithm_dd = QComboBox()
+        algos = "layered median PHIRLS"
+        self.algorithm_dd.addItems()
+
+
+
 if __name__ == "__main__":
     qap = QApplication([])
     

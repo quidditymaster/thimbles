@@ -311,11 +311,12 @@ class AppForm(QMainWindow):
             def resids(pvec):
                 ew=pvec[0]
                 pr = lprof.get_profile(wvs, pvec[1:])
-                lsig = pvec[2]
-                coff = pvec[1]
+                ew, off, g_sig, l_sig = pvec
                 sig_reg = 0
-                if lsig < 0.5*wv_del:
-                    sig_reg = 20.0*(lsig-0.5*wv_del)
+                if g_sig < 0.5*wv_del:
+                    sig_reg += 20.0*np.abs(g_sig-0.5*wv_del)
+                if np.abs(l_sig) > 1.0*wv_del:
+                    sig_reg += 100.0*np.abs((l_sig-1.0*wv_del))
                 return np.hstack(((nflux - 1.0)+ew*pr, sig_reg))
             
             guessv = np.hstack((0.05, start_p))
@@ -459,6 +460,7 @@ if __name__ == "__main__":
     parser.add_argument("-rv", type=float, default=0.0, help="optional radial velocity shift to apply")
     #parser.add_argument("-order", type=int, default=0, help="if there are multiple spectra specify which one to pull up")
     parser.add_argument("-norm", default="ones", help="how to normalize the spectra on readin options are ones and auto' ")
+    parser.add_argument("-gaussian", "-g", action="store_true", help="force pure gaussian fits")
     options = parser.parse_args()
     
     main(options)

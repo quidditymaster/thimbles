@@ -428,18 +428,18 @@ class FeatureFitWidget(QWidget):
     
     def save_measurements(self):
         fname, file_filter = QFileDialog.getSaveFileName(self, "pick a file name for the output measurement line list")
-        import cPickle
-        cPickle.dump(self.features, open(fname, "wb"))
-        #llout = tmb.stellar_atmospheres.moog_utils.write_moog_lines_in(fname)
-        #for feat in self.features:
-        #    wv=feat.wv
-        #    spe=feat.species
-        #    loggf = feat.loggf
-        #    ep = feat.ep
-        #    ew = 1000*feat.eq_width
-        #    if feat.flags["use"]:
-        #        llout.add_line(wv, spe, ep, loggf, ew=ew)
-        #llout.close()
+        #import cPickle
+        #cPickle.dump(self.features, open(fname, "wb"))
+        llout = tmb.stellar_atmospheres.moog_utils.write_moog_lines_in(fname)
+        for feat in self.features:
+            wv=feat.wv
+            spe=feat.species
+            loggf = feat.loggf
+            ep = feat.ep
+            ew = 1000*feat.eq_width
+            if feat.flags["use"]:
+                llout.add_line(wv, spe, ep, loggf, ew=ew)
+        llout.close()
     
     @property
     def hint_click_on(self):

@@ -1,16 +1,18 @@
 # these are functions which are useful for dealing with MOOG, independent of the MOOG executable
 
-import pdb #@UnusedImport
+# Standard Library
 import os, time, re
 from copy import deepcopy
 from datetime import datetime
+
+# 3rd Party
 import numpy as np
 import numpy.lib.recfunctions as np_recfunc 
-import xlwt
-from .utils import int_to_roman, SpreadsheetCells
 
-from ..utils.prompt_user import yesno, get_filename, get_choice
-from ..utils.matching import get_matches
+# Internal
+from .misc import int_to_roman, SpreadsheetCells
+from .prompt_user import yesno, get_filename, get_choice
+from .matching import get_matches
 
 pass
 #####################################################################################################################

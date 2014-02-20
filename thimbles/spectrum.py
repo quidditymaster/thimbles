@@ -14,6 +14,8 @@ import matplotlib.pyplot as plt
 from .utils import resampling
 from .utils import misc
 from .utils.misc import inv_var_2_var
+from .metadata import MetaData
+
 
 # ########################################################################### #
 
@@ -366,7 +368,7 @@ class WavelengthSolution(CoordinateBinning1d):
         self.emitter_frame.set_rv(rv)
     
     def get_rv(self):
-        self.emitter_frame.get_rv()
+        return self.emitter_frame.get_rv()
     
     
     #     def dx_dlam(self, wvs, frame="emitter"):        
@@ -386,9 +388,7 @@ class WavelengthSolution(CoordinateBinning1d):
 class Spectrum(object):
     
     def __init__(self, wavelength_solution, flux, inv_var=None, 
-                 norm="ones",
-                 name="",
-                 **kwargs):
+                 norm="ones", name="", metadata=None):
         """makes a spectrum from a wavelength solution, flux and optional inv_var
         """
         if isinstance(wavelength_solution, WavelengthSolution):
@@ -396,7 +396,7 @@ class Spectrum(object):
         else:
             #TODO proper error handling for odd inputs
             self.wv_soln = WavelengthSolution(wavelength_solution)
-        self.kwargs = kwargs
+        
         # TODO: check that the dimensions of the inputs match
         self.flux = flux
         if inv_var == None:
@@ -413,16 +413,31 @@ class Spectrum(object):
         self.name = name
         self._last_rebin_wv_soln_id = None
         self._last_rebin_transform = None
+        
+        if metadata is None:
+            self.metadata = MetaData()
+        else:
+            self.metadata = MetaData(metadata)
     
     def approx_norm(self):
         #TODO: put extra controls in here
         norm_res = misc.approximate_normalization(self, overwrite=True)
     
+    def __equal__ (self,other):
+        if not isinstance(other,Spectrum):
+            return False
+        
+        checks = [np.all(other.wv==self.wv),
+                  np.all(other.flux==self.flux),
+                  np.all(other.inv_var==self.inv_var),
+                  other.metadata==self.metadata]
+        return np.all(checks)
+    
     def __repr__(self):
         wvs = self.wv
         last_wv = wvs[-1]
         first_wv = wvs[0]
-        return "spectrum % 8.3f to % 8.3f" % (first_wv, last_wv)
+        return "<`thimbles.Spectrum` ({0:8.3f},{1:8.3f})>".format(first_wv, last_wv)
     
     @property
     def wv(self):
@@ -434,6 +449,9 @@ class Spectrum(object):
     
     def set_rv(self, rv):
         self.wv_soln.set_rv(rv)
+    
+    def get_rv(self):
+        return self.wv_soln.get_rv()
     
     def get_wvs(self, pixels=None, frame="emitter"):    
         return self.wv_soln.get_wvs(pixels, frame)

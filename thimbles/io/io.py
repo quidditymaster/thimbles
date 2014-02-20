@@ -9,34 +9,36 @@ import re
 import os
 import time
 from copy import deepcopy
-from collections import OrderedDict, Iterable
+from collections import Iterable
+import warnings
 
 # 3rd Party
 import scipy
+import astropy
 from astropy.io import fits
-import cPickle as pickle
 import numpy as np
 
 # Internal
-from ..utils.misc import smoothed_mad_error
 from ..utils.misc import var_2_inv_var
 from ..spectrum import Spectrum, WavelengthSolution
+from ..metadata import MetaData
+
 
 # ########################################################################### #
+
 
 __all__ = ["read","read_txt","read_fits",
            "query_fits_header","WavelengthSolutionFunctions",
            "ExtractWavelengthCoefficients"
-           ]
+           "read","read_txt","read_fits","read_fits_hdu","read_bintablehdu",
+           "read_many_fits"]
 
 # ########################################################################### #
 
-# NOTE: Could also check for 'END' card and/or 'NAXIS  ='
-_fits_re = re.compile("[SIMPLE  =,XTENSION=]"+"."*71+"BITPIX  =")
 
 pass
 # ############################################################################ #
-class query_fits_header:
+class query_fits_header (object):
     """ 
     This class looks through a fits header object and formats queries into useable formats
     
@@ -65,10 +67,36 @@ class query_fits_header:
     def __repr__ (self):
         return self.val
 
-pass
-# ############################################################################# #
-# classes to store the coefficients and wavelength solution as well as to solve
-class WavelengthSolutionFunctions:
+def pts_2_phys_pixels (pts,bzero=1,bscale=1):
+    """
+    convert points to wavelength in Angstroms via the wavelength solution
+    
+    Parameters
+    ----------
+    pts : array
+        contains the points used to convert element-by-element to wavelength
+    
+    bzero : float
+        from the header file which gives the starting point for the physical pixels
+    bscale : float
+        from the header file which gives the scaling for the physical pixels
+        pts = bzero + pts*bscale
+    
+    
+    bzero = query_fits_header(header,'BZERO',noval=1) # for scaled integer data, here is the zero point
+    bscale = query_fits_header(header,'BSCALE',noval=0) # for scaled integer data, here is the multiplier
+    
+    I'm pretty sure fits uses these when it reads in the data so I don't need to
+   
+    """
+    if bzero != 0 or bscale !=1:
+        raise StandardError(("I don't know exactly what to do with bzero!=1 "
+                             "or bscale!=0 :<{}><{}>".format(bzero,bscale)))
+    pts = bzero + pts*bscale
+    # should return [1,2,3,......,#pts]
+    return pts
+
+class WavelengthSolutionFunctions (object):
     """
     A class which holds the wavelength solutions
     
@@ -136,16 +164,21 @@ class WavelengthSolutionFunctions:
         
         """
         ft = function_type
-        if ft == 'no solution': coeff = [0,1]
+        if ft == 'no solution': 
+            coeff = [0,1]
                 
         pts,coeff,no_solution = self._check_pts_coeff(pts,coeff)        
-        if no_solution: ft = 'no solution'
+        if no_solution: 
+            ft = 'no solution'
         
         if ft not in self._function_types:
-            if default_function: ft = 'no solution'
-            else:raise ValueError("Unknown function type:"+str(function_type))
+            if default_function: 
+                ft = 'no solution'
+            else:
+                raise ValueError("Unknown function type:"+str(function_type))
         
-        if ft is 'pts': return self.wl_soln_pts(pts)
+        if ft is 'pts': 
+            return self.wl_soln_pts(pts)
         
         func = self._function_types[ft][1]
         return func(pts,coeff)
@@ -154,8 +187,10 @@ class WavelengthSolutionFunctions:
         return (self._function_types.keys())
     
     def get_func_name (self,name):
-        if name not in self._function_types: raise ValueError("Unknown function type:"+name)
-        else: return name
+        if name not in self._function_types: 
+            raise ValueError("Unknown function type:"+name)
+        else: 
+            return name
     
     def _check_pts_coeff (self,pts,coeff):
         no_solution = False
@@ -250,143 +285,145 @@ class WavelengthSolutionFunctions:
     
 wavelength_solution_functions = WavelengthSolutionFunctions()
 
-class WavelengthSolutionCoefficients:
+class WavelengthSolutionCoefficients (object):
     """
     This class holds the coefficients as extracted from the fits header
-    """
     
+    """
     def __init__ (self, equ_type='none' , extra='none'):
         """
         equ_type correpsonds to the WavelengthSolutionFunctions
-        coeffs correponds to the function but for a polynomial
-             coeffs = c
+        coefficients correponds to the function but for a polynomial
+             coefficients = c
              y = c[0]+c[1]*x+c[2]*x**2+c[3]*c**3+....
         extra     extra info from the extraction process
         """
         self.equ_type = self.set_equation_type(equ_type)
-        self.coeffs = []
-        self.extra = str(extra)
-        self._rv = 0.0
+        self.coefficients = []
+        self.extra = extra
+        self.rv = 0.0
     
     def __len__ (self):
-        return len(self.coeffs)
+        return len(self.coefficients)
     
     def add_coeffs (self,coeff,index=None):
         if index is None: 
-            self.coeffs.append(coeff)
+            self.coefficients.append(coeff)
         else: 
             self.coeff[index] = coeff
         
     def get_coeffs (self,index=None):
-        if index not in xrange(len(self.coeffs)): 
-            index = len(self.coeffs)-1
-        return self.coeffs[index]
+        if index not in xrange(len(self.coefficients)): 
+            index = len(self.coefficients)-1
+        return self.coefficients[index]
     
     def get_equation_type (self):
         return deepcopy(self.equ_type)
     
     def set_equation_type (self,equ_type):
         self.equ_type = wavelength_solution_functions.get_func_name(equ_type)
-    
-    def get_extra_info (self):
-        return deepcopy(self.extra)
 
-    def set_rv (self,rv):
-        self._rv = float(rv)
-        
-    def get_rv (self):
-        return self._rv
-
-pass
-# ############################################################################# #
-# misc functions which could be used
-def pts_2_phys_pixels (pts,bzero=1,bscale=1):
+class ExtractWavelengthCoefficients (object):
     """
-    convert points to wavelength in Angstroms via the wavelength solution
-    INPUT:
-    pts : array, contains the points used to convert element-by-element to wavelength
+    An object for extracting wavelengths from a fits header
+
+    The way that a wavelength solution (function from pixel space to 
+    wavelengths) has many different formats. This attempts to use the header to
+    check many formats and extract coefficients and function type for the 
+    wavelength solution. 
     
-    bzero : float, from the header file which gives the starting point for the physical pixels
-    bscale : float, from the header file which gives the scaling for the physical pixels
-            pts = bzero + pts*bscale
+    Ambiguities exist when several formats are specified. These are resolved in 
+    the order set by class attribute resolve_wvsoln
+    
+    Parameters
+    ----------
+    fits_header : `astropy.io.fits.header.Header`
+    
+
     
     
-    bzero = query_fits_header(header,'BZERO',noval=1) # for scaled integer data, here is the zero point
-    bscale = query_fits_header(header,'BSCALE',noval=0) # for scaled integer data, here is the multiplier
-    
-    I'm pretty sure fits uses these when it reads in the data so I don't need to
-   
     """
-    if bzero != 0 or bscale !=1:
-        print "Whoops, I don't know exactly what to do with bzero!=1 or bscale!=0 :<",bzero,"><",bscale,">"
-        #pts +=1
+
+    resolve_wvsoln = ['spectre',
+                      'wv_0',
+                      # 'co_0',
+                      'w0',
+                      'wcs',
+                      'crvl',
+                      'ctype1',
+                      'linear',
+                      'no solution']
     
-    pts = bzero + pts*bscale
-
-    # should return [1,2,3,......,#pts]
-    return pts
-
-def check_for_txt_format (filename,**np_kwargs):
-    try: txt_data = np.loadtxt(filename,unpack=True,dtype=float,**np_kwargs)
-    except: return False, None
-    return True, txt_data
-
-pass
-# ############################################################################# #
-# functions to extract wavelength solution coefficients and equation type from
-# a fits header
-
-class ExtractWavelengthCoefficients:
- 
     def __init__ (self,fits_header):
-        # TODO: type check fits_header
         self.header = fits_header
         
+        results = [self.from_SPECTRE,
+                   self.from_makee_wv,
+                   self.from_w0,
+                   self.from_wcs,
+                   self.from_crvl,
+                   self.from_ctype1,
+                   self.from_pts,
+                   self.from_none]
+        
         # This is the order to resolve the coefficients in
-        self.resolve_coeffs = OrderedDict()
-        self.resolve_coeffs['spectre'] = self.from_SPECTRE
-        self.resolve_coeffs['wv_0'] = self.from_makee_wv
-        # self.resolve_coeffs['co_0'] = self.from_makee_co
-        self.resolve_coeffs['w0'] = self.from_w0
-        self.resolve_coeffs['wcs'] = self.from_wcs
-        self.resolve_coeffs['crvl'] = self.from_crvl
-        self.resolve_coeffs['ctype1'] = self.from_ctype1
-        self.resolve_coeffs['linear'] = self.from_pts 
-        self.resolve_coeffs['no solution'] = self.from_none           
-     
+        self.wvsoln_func = {}
+        for key,value in zip(self.resolve_wvsoln,results):
+            self.wvsoln_func[key] = value
+    
+    def check_preferred (self,preferred):
+        """
+        Checks if preferred is in the list of preferred values
+        
+        Parameters
+        ----------
+        preferred : None or {0}
+        
+        Raises
+        ------
+        ValueError : if preferred is not an acceptable value
+        
+        """.format(", ".format(self.resolve_wvsoln))
+        if preferred is None:
+            return None
+        if preferred.lower() in self.resolve_wvsoln:
+            return preferred.lower()
+        else:
+            raise ValueError("preferred not in "+", ".join(self.resolve_wvsoln))             
+        
     def __repr__ (self):
         output = "ExtractingWavelengthCoefficients\n"
         output += repr(self.header)
         return output
 
     def __iter__ (self):
-        return iter(self.resolve_coeffs)
+        return iter(self.wvsoln_func.iteritems())
       
     def __getitem__ (self,coeff_type):
-        if coeff_type not in self.resolve_coeffs:
+        if coeff_type not in self.wvsoln_func:
             raise KeyError("Unknown coeff type")
-        return self.resolve_coeffs[coeff_type]
+        return self.wvsoln_func[coeff_type]()
       
-    def get_coeff (self,preferred=None,all_=False):
-        if preferred is not None:
-            try: 
-                return self[preferred]
-            except KeyError:
-                print "Unknown preferred type"
-
-        cc = []
-        for coeff_type in self:
-            wlcoeff = self[coeff_type]
-            if len(wlcoeff) == 0: 
-                continue
-            
-            if not all_:
-                return wlcoeff
+    def get_coeffs (self,preferred=None,all_=False):
+        # return all wavelength solution objects
+        if all_:
+            return {key:wvfunc() for key,wvfunc in self.wvsoln_func}
         
-            cc[coeff_type] = wlcoeff
-        return cc 
+        # check and return preferred wavelength solution
+        pref = self.check_preferred(preferred)
+        if pref is not None:
+            return self[pref]
+        
+        # resolve wavelength solution
+        for wvsoln_name in self.resolve_wvsoln:
+            wvcoeff = self.wvsoln_func[wvsoln_name]()
+            if not len(wvcoeff):
+                continue
+            return wvcoeff
     
-    @property
+    pass
+    # --------------------------------------------------------------------------- #
+    
     def from_ctype1 (self):
         """
         Finds keywords CTYPE1, CRVAL1, CRPIX1, and CDELT1 and extracts the
@@ -417,7 +454,6 @@ class ExtractWavelengthCoefficients:
                   
         return wlcoeff
 
-    @property
     def from_crvl (self):
         """
         Looks at all the CRVL1_?? and CDLT1_?? keywords where ?? is all the possible orders
@@ -458,7 +494,6 @@ class ExtractWavelengthCoefficients:
             
         return wlcoeff
 
-    @property
     def from_wcs (self): 
         """
         This extracts the wavelength solution from IRAF's World Coordinate System
@@ -671,7 +706,7 @@ class ExtractWavelengthCoefficients:
         
         LTV_dimn = [1,1]
       
-        def get_order_wlsoln (ordi):
+        def get_order_wvsoln (ordi):
             if ordi not in order_coeff: 
                 if i == 0: return False
                 return True
@@ -680,11 +715,7 @@ class ExtractWavelengthCoefficients:
                 raise ValueError("Encountered orders with different functions dcflag1="+str(dcflag)+"  dcflag"+str(ordi)+"="+str(order_coeff[ordi][2]))
             z = order_coeff[ordi][6]
             if z != 0: 
-                rv = 1./(1.+z)
-                if wlcoeff.get_rv() != 0.0 and rv != wlcoeff.set_rv:
-                    # TODO : allow two orders to have different rv values
-                    raise StandardError("Whoops, this means that two orders have different rv values")
-                wlcoeff.add_rv(rv)
+                wlcoeff.rv = 1.0/(10.+z)
         
             if dcflag < 0:
                 equ_type='none'
@@ -758,12 +789,11 @@ class ExtractWavelengthCoefficients:
             return False
     
         for i in xrange(100):
-            if get_order_wlsoln(i): break
+            if get_order_wvsoln(i): break
             
         wlcoeff.extra = ['used header to get parameters and coefficients, function: '+equ_type+', to apply wl = function(pts)',order_coeff]
         return wlcoeff
-
-    @property
+    
     def from_w0 (self):
         """
         Extracts coefficients from the W0 and WPC keywords
@@ -782,7 +812,6 @@ class ExtractWavelengthCoefficients:
             print "!! FIRST TIME WITH W0 AND WPC, CHECK THE OUTPUT OF WAVELENGTH VS FLUX"
         return wlcoeff
 
-    @property
     def from_pts (self):
         wlcoeff = WavelengthSolutionCoefficients()
         wlcoeff.extra = 'no header info used, just a wl = pts'
@@ -790,15 +819,13 @@ class ExtractWavelengthCoefficients:
         wlcoeff.add_coeffs([0,1])        
         return wlcoeff
 
-    @property
     def from_none (self):
         wlcoeff = WavelengthSolutionCoefficients()
         wlcoeff.extra = 'following checks found that the first order coefficient is zero, setting basic linear wl = pts'
         wlcoeff.set_equation_type('linear')
         wlcoeff.add_coeffs([0,1])        
         return wlcoeff        
-
-    @property
+    
     def from_makee_wv (self):
         """
         Extracts cooefficients from the WV_0_?? and WV_4_?? keywords where ??
@@ -831,8 +858,7 @@ class ExtractWavelengthCoefficients:
         
         #==========================================================================#   
         return wlcoeff
-
-    @property
+    
     def from_makee_c0 (self):
         """
         Extracts cooefficients from the CO_0_?? and CO_4_?? keywords where ??
@@ -867,8 +893,7 @@ class ExtractWavelengthCoefficients:
             wlcoeff.extra = 'coefficients from C0_0_? and C0_4_? makee pipeline keywords'  
              
         return wlcoeff
-
-    @property
+    
     def from_SPECTRE (self):
         """
         Extracts the wavelength solution from the SPECTRE HISTORY tags
@@ -878,12 +903,12 @@ class ExtractWavelengthCoefficients:
             return wlcoeff # old SPECTRE-stype dispersion information
 
         #==========================================================================#
-        spectre_history, _history_lines = self.get_SPECTRE_history()            
+        spectre_history = self.get_SPECTRE_history()   
         # if you found history lines use one with the most recent data                
         if len(spectre_history) > 0:
             most_recent = sorted(spectre_history.keys())[-1]
                 
-            extra_data, disp_type, coeff = spectre_history[most_recent][1:]
+            extra_data, disp_type, coeff = spectre_history[most_recent]
             
             wlcoeff.extra = extra_data
             wlcoeff.set_equation_type(disp_type)
@@ -920,16 +945,6 @@ class ExtractWavelengthCoefficients:
             timetag, dstr, coefficients = parse_spectre_history(hcard)
             co_tags = hcard[11:17]
                         
-                
-
-            
-        
-        
-
-
-
-
-
         for i in xrange(len(histories)):
             line=str(histories[i]).rstrip()
             history_lines.append(line)
@@ -983,102 +998,163 @@ class ExtractWavelengthCoefficients:
 
 
 ################################################################
-   
+    
+        histories = self.header['HISTORY']   
+        get_spectre_d = lambda x: x[11:17]
+        
+        def parse_timetag (hist_line):
+            date_str = hist_line[:10]
+            day,month,year = [int(s) for s in date_str.split(":")]
+            timetag = time.mktime((year,month,day,0,0,0,0,0,0))
+            return timetag
+            
+        def parse_coefficients (hist_line):
+            coeffs = hist_line[18:36],hist_line[36:54],hist_line[54:]
+            coeffs = [float(c.replace("D","e")) for c in coeffs]
+            return coeffs
+            
+        spectre_history = {}    
+        for i,hist_line in enumerate(histories):
+            ds1 = get_spectre_d(hist_line) 
+            if ds1 != 'D1,2,3':
+                continue
+            
+            if i+2 >= len(histories):
+                continue
+            
+            # get the current and next two history lines
+            hl1 = hist_line
+            hl2 = histories[i+1]
+            hl3 = histories[i+2]
+            
+            # check tags
+            ds2 = get_spectre_d(hl2)
+            ds3 = get_spectre_d(hl3)
+            if ds2 != "D4,5,6" or ds3 != "D7,8,9":
+                warnings.warn("Expected next two history lines "
+                              "to have D4,5,6 and D7,8,9")
+                continue
+                
+            # check time stamp
+            tt1 = parse_timetag(hl1)
+            tt2 = parse_timetag(hl2)
+            tt3 = parse_timetag(hl3)
+            if not (tt1==tt2 and tt2==tt3):
+                # time for these tags must be the same
+                continue 
+        
+            c1 = parse_coefficients(hl1)
+            c2 = parse_coefficients(hl2)
+            disp_info = parse_coefficients(hl3)
+            coeff = c1+c2 
+            
+            # cheby poly may need disp_info[0]
+            # disp_info[0] == c(7)
+            # disp_info[1] == c(8)
+            # from SPECTRE: 
+            # c20    p = (point - c(6))/c(7)
+            # c      xpt = (2.*p-(c(9)+c(8)))/(c(9)-c(8))
+            if disp_info[2] == 1: 
+                disp_type = 'chebyshev poly'
+            elif disp_info[2] == 2: 
+                disp_type = 'legrendre poly'
+            elif disp_info[2] == 3:
+                warnings.warn("check the output, I think I may need to use disp_info[1]  (timbles.io.io.ExtractWavelengthCoefficients) ")
+                # from SPECTRE: s = (point-1.)/(real(npt)-1.)*c(8)
+                # c(8) == disp_info[1] ==> true
+                disp_type = 'spline3'
+            else: 
+                disp_type = 'poly' # but likely the orders > 1 have coefficients zero
+       
+            extra_data= ['used header to get SPECRE HISTORY tags, function:'+disp_type+', to apply wl=function(pts)',[hl1,hl2,hl3]]
+            spectre_history[tt1] = (extra_data,disp_type,coeff) 
+                
+        return spectre_history
+        
 pass
 # ############################################################################# #
-# TODO: The functions below are incomplete until we have the exact 
-#     format for the measurementment list and information stuff
 
-def read_txt (filename, get_data=False,**np_kwargs):
+# read functions
+
+def read_txt (filepath,**np_kwargs):
     """
     Readin text files with wavelength and data columns (optionally inverse varience)
     
     Parameters
     ----------
-    filename : string
+    filepath : string
         Gives the path to the text file
-    get_data : boolean
-        If 'True' then it will just return wavelengths, flux, and inv_var
-        Otherwise returns a Spectrum object
     np_kwargs : dictionary
         Contains keywords and values to pass to np.loadtxt
-        This includes things such as skiprows, usecols, etc
+        This includes things such as skiprows, usecols, etc.
+        unpack and dtype are set to True and float respectively 
     
     Returns
     -------
-    spectrum : Spectrum object 
+    spectrum : list of `thimbles.spectrum.Spectrum` objects 
         If get_data is False returns a Spectrum object
-    OR
-    data : wavelengths, flux, inv_var
-        if get_data is True then returns a tuple of numpy arrays
-        
-    Raises
-    ------
-    TypeError : If the value of arg1 isn't 42
-    
     
     Notes
     -----
     __1)__ Keywords txt_data, unpack, and dtype are forced for the
         np_kwargs.
-    
-    
-    
-    Examples
-    --------
-    >>>
-    >>>
-    >>>
-    
+        
     """ 
     #### check if file exists   ####### #############
-    if not os.path.isfile(filename): 
-        raise IOError("File does not exist:'"+filename+"'")
+    if not os.path.isfile(filepath): 
+        raise IOError("File does not exist:'{}'".format(filepath))
 
-    info = Information()
-    info['filename'] = os.path.abspath(filename)
+    metadata = MetaData()
+    metadata['filepath'] = os.path.abspath(filepath)
 
     # Allows for not repeating a loadtxt
-    if 'txt_data' in np_kwargs: 
-        txt_data = np_kwargs['txt_data']
-    else: 
-        txt_data = None
-    
-    if txt_data is None:
-        if 'unpack' in np_kwargs: 
-            del np_kwargs['unpack']
-        if 'dtype' in np_kwargs: 
-            del np_kwargs['dtype']
-        txt_data = np.loadtxt(filename,unpack=True,dtype=float,**np_kwargs)
+    np_kwargs['unpack'] = True
+    np_kwargs['dtype'] = float
+    txt_data = np.loadtxt(filepath,**np_kwargs)
     
     # check the input txt_data
     if txt_data.ndim == 1:
-        print "HeadsUp: NO WAVELENGTH DATA FOUND, USING FIRST COLUMN AS DATA"
+        warnings.warn("NO WAVELENGTH DATA FOUND, USING FIRST COLUMN AS DATA")
         data = txt_data 
-        wls = np.arange(len(data))+1
-        var = np.ones(len(data))
+        wvs = np.arange(len(data))+1
+        var = None
     elif txt_data.ndim == 2:
-        wls = txt_data[0]
+        wvs = txt_data[0]
         data = txt_data[1]
-        var = np.ones(len(data))
-    elif txt_data.ndim == 3: wls,data,var = txt_data
+        var = None
+    elif txt_data.ndim == 3: 
+        wvs,data,var = txt_data
     elif txt_data.shape[0] > 2: 
-        print "HeadsUp: Found more than 3 columns in text file '"+filename+"' taking the first three to be wavelength, data, variance respectively"
-        wls,data,var = txt_data[:3]
-      
-    inv_var = var_2_inv_var(var)
-    if get_data:
-        return (wls,data,inv_var)
-    measurement_list = []
-    measurement_list.append(Spectrum(wls,data,inv_var))
+        warnings.warn(("Found more than 3 columns in text file '{}' "
+                       "taking the first three to be wavelength, data,"
+                       " variance respectively".format(filepath)))
+        wvs,data,var = txt_data[:3]
+        
+    if var is not None:        
+        inv_var = var_2_inv_var(var)
+    else:
+        inv_var = None
     
-    return measurement_list,info
-
+    return [Spectrum(wvs,data,inv_var,metadata=metadata)]
+    
 ############################################################################
 # readin is the main function for input
 
-def read_fits (filename, hdu=0, band=0, observation_id='', non_std_fits=False):
-    """
+def read_fits (filepath, which_hdu=0, band=0, preferred_wvsoln=None):
+    if not os.path.isfile(filepath): 
+        raise IOError("File does not exist:'{}'".format(filepath))
+        # TODO: add more checks of the fits header_line to see
+        # if you can parse more about it. e.g. it's an apogee/hst/or/makee file     
+    hdulist = fits.open(filepath)
+    if len(hdulist) > 1 and isinstance(hdulist[1],astropy.io.fits.hdu.table.BinTableHDU):
+        return read_bintablehdu(hdulist)
+    
+    kws = dict(which_hdu=which_hdu,
+               band=band,
+               preferred_wvsoln=preferred_wvsoln)
+    return read_fits_hdu(hdulist,**kws)
+
+read_fits.__doc__ = """
     Takes a astropy.io.fits hdulist and then for a particular hdu and band
     extracts the wavelength and flux information
     
@@ -1086,132 +1162,73 @@ def read_fits (filename, hdu=0, band=0, observation_id='', non_std_fits=False):
     keywords which give coefficients for a wavelenth solution. It then 
     calculates the wavelengths based on that wavelength solution.
     
-    
     Parameters
     ----------
-    hdulist : astropy.io.fits.HDUList
+    hdulist : `astropy.io.fits.HDUList` or string
         A header unit list which contains all the header units
-    hdu : integer
-        Which hdu from the hdulist to use
+    which_hdu : integer
+        Which hdu from the hdulist to use, start counting at 0
     band : integer
         If the hdu has NAXIS3 != 0 then this will select which
         value that dimension should be
-    get_data : boolean
-        If 'True' then return tuple of (wl,data,inv_var) else return Spectrum
+    preferred_wvsoln : None or "{}"
         
     Returns
     -------
-    measurement_list or (wl,data,inv_var) : SpectralMeasurementList \
-                                            OR tuple of numpy arrays
-        Depending on the value of get_data this will return either
-        * SpectrumMeasurementList object 
-        * a tuple of numpy arrays corresponding to wavelength, flux, inv_var
-
+    spectra : list of `thimbles.spectrum.Spectrum` objects 
+    
     Raises
     ------
     IOError : If it encounters unknown KEYWORD options when looking
         for a wavelength solution
     
-    Notes
-    -----
-    none
-    
-    Examples
-    --------
-    >>>
-    >>>
-    >>>
-    
-    """ 
-    if not os.path.isfile(filename): 
-        raise IOError("File does not exist:'"+filename+"'")
-    #### now check how it behaves as a fits file
-    if non_std_fits: 
-        hdulist = fits.open(filename)
-    else:
-        # give standard fits readin a try
-        try: hdulist = fits.open(filename)
-        except: 
-            raise IOError("PYFITS DOES NOT LIKE THE FILE YOU GAVE ('"+filename+"'), TO SEE WHAT ERROR IT GIVES TRY: hdulist = fits.open('"+filename+"')")
-    # TODO: check if hdulist is a binary fits table or not and then call correct function
-    return _core_read_fits(hdulist,hdu,band,observation_id)
-  
-def _core_read_binary_fits (hdulist,observation_id=''):
-    # TODO: possibly have this also check if the hdulist is for a binary fits table
-    # and then check the keywords of the table match 'wl','wavelength','WAVELENGTH'
-    # 'FLUX','flux' etc and then read data in that way
-    pass   
-    
-def _core_read_fits (hdulist, hdu=0, band=0, observation_id='', get_data=False):
-    #     preferred_wlsoln=None 
-    #     # !! should also be able to input wavelength solution?
-    #     
-    #     if preferred_wlsoln is not None: 
-    #         preferred_wlsoln = wavelength_solution_functions.get_func_name(preferred_wlsoln)
-    # 
-    
-    if len(hdulist) > 1: 
-        hdu = int(hdu)
-        hdu = np.clip(hdu,0,len(hdulist)-1)
-    else: 
-        hdu = 0
+    """.format(", ".format(ExtractWavelengthCoefficients.resolve_wvsoln))
 
-    # specify the current header unit
-    header_unit = hdulist[hdu]
-    header = header_unit.header
-
-    apformat = query_fits_header(header,'APFORMAT')
-    if apformat.found: 
-        # TODO: though I think it's just the spec files
-        print "WARNING: I'M NOT SURE HOW TO DEAL WITH APFORMAT VALUES" 
-
+def read_fits_hdu (hdulist,which_hdu=0,band=0,preferred_wvsoln=None):
+    """
+    Reads a fits header unit which contains a wavelength solution
+    """
+    hdu = hdulist[which_hdu]
+    header = hdu.header
+    if query_fits_header(header,'APFORMAT').found: 
+        warnings.warn(("Received keyword APFORMAT,"
+                       " no machinary to deal with this."
+                       " [thimbles.io.read_fits_hdu]"))
     # bzero = query_fits_header(header,"BZERO",noval=0)
     # bscale = query_fits_header(header,"BSCALE",noval=1)
-
+    
     ###### read in data ##############################################
-    data = header_unit.data
+    data = hdu.data
     
     # if there's no data return empty
     if data is None:
-        wl, data, inv_var = np.zeros(3).reshape((3,1))
-        if get_data: 
-            return (wl,data,inv_var)
-        else: 
-            return Spectrum(wl,data,inv_var)
+        warnings.warn("no data for header unit [thimbles.io.read_fits_hdu]")
+        wvs, flux, inv_var = np.zeros((3,1))
+        return [Spectrum(wvs,flux,inv_var)]
     
-    # hdu selection, band select, orders, pixels
-    while data.ndim > 3:
-        data = data[0]
+    # hdu selection, band select
     if data.ndim == 3:
-        # then there are bands
-        try: 
-            data = data[band]
-        except IndexError:
-            raise IndexError("Band "+str(band)+" out of range of the data")
+        data = data[band]
     elif data.ndim == 1:
         data = data.reshape((1,-1))
-    
     # now the data is ndim==2 with the first dimension as the orders
     # and the second being the data points
     
     ##### Calculate the wavelengths for the data
     # set up wavelength and inverse_variance
-    wv = np.ones(data.shape)
+    wvs = np.ones(data.shape)
     
     # get the wavelength coefficients
-    extract_wvcoeffs = ExtractWavelengthCoefficients(header_unit.header)
-    # TODO: allow user to edit which wavelength solution to use
-    preferred=None
-    wvcoeff = extract_wvcoeffs.get_coeff(preferred)
-
-    # TODO: make it possible to select specific order to read in
-    orders = xrange(data.shape[0])
+    extract_wvcoeffs = ExtractWavelengthCoefficients(hdu.header)
+    wvcoeff = extract_wvcoeffs.get_coeffs(preferred_wvsoln)
+    
+    idx_orders = xrange(len(data))
     
     # go through all the orders
     do_progress = True
     progressive_pt = 1 # this will advance and be used when there is no wavelength solution
     
-    for i in orders:
+    for i in idx_orders:
         # get the coefficients and function type    
         equ_type = wvcoeff.get_equation_type()
         if equ_type in ('none',None,'no solution') and do_progress: 
@@ -1219,629 +1236,492 @@ def _core_read_fits (hdulist, hdu=0, band=0, observation_id='', get_data=False):
             equ_type = 'pts'
         else: 
             coeff = wvcoeff.get_coeffs(i)
-            
         # pts[0] = 1 :: this was definitely the right thing to do for SPECTRE's 1-D output but may not be for other equations, may need pts[0]=0,  this may be for bzero,bscale
-        pts = np.arange(len(wv[i]))+1
+        pts = np.arange(len(wvs[i]))+1
         # apply function
-        wv[i] = wavelength_solution_functions(pts, coeff, equ_type)    
+        wvs[i] = wavelength_solution_functions(pts, coeff, equ_type)    
         progressive_pt += len(pts)
-    
+
     #=================================================================#
-    # return the data .OR. go on and create the spec_obj
-    if get_data: 
-        return (wl, data, inv_var)
+    metadata = MetaData()
+    metadata['filepath'] = hdulist.filename
+    metadata['hdu_used']=which_hdu
+    metadata['band_used']=band
+    metadata['wavelength_coeffs'] = wvcoeff
+    metadata['header0'] = deepcopy(hdu.header)
+        
+    spectra = []
+    for i in idx_orders:
+        metadata['order'] = i
+        wl_soln = WavelengthSolution(wvs[i],rv=wvcoeff.rv)
+        spectra.append(Spectrum(wl_soln,data[i],metadata=metadata))
+         
+    return spectra
+
+def read_bintablehdu (hdulist,which_hdu=1,wvcolname=None,fluxcolname=None,varcolname=None):
+    """
+    Read in a fits binary fits table
     
-    #=================================================================#
-    info = Information()
-    info['filepath']=os.path.abspath(hdulist.filename())
-    info['hdu_used']=hdu
-    info['band_used']=band
-    info['wavelength_coeffs'] = wvcoeff
+    Parameters 
+    ----------
+    bintablehdu : `astropy.io.fits.BinTableHDU`
+    wvcolname : None or string 
+    fluxcolname : None or string
+    varcolname : None or string
+    
+    
+    """
+    metadata = MetaData()
+    metadata['filepath'] = hdulist.filename()
     for i,hdu in enumerate(hdulist):
-        info['header_'+str(i)]=hdulist[i].header    
+        metadata['header{}'.format(i)] = hdu.header
     
-    rv = wvcoeff.get_rv() 
-    measurements = []
-    for i in orders:
-        wl_soln = WavelengthSolution(wv[i],rv=rv)
-        meas = Spectrum(wl_soln,data[i],observation_id=observation_id,order_id=i)
-        measurements.append(meas)
-    return measurements,info
+    guesses = dict(wvcol_guess = ['wavelength','wvs','wavelengths'],
+                   fluxcol_guess = ['flux','ergs','intensity'],
+                   var_guess = ['variance','varience'],
+                   inv_var_guess = ['inv_var','inverse variance','inverse varience'],
+                   sigma_guess = ['sigma','error'],
+                   )   
+    # include all uppercase and capitalized guesses too
+    items = guesses.items()     
+    for key,values in items:
+        guesses[key] += [v.upper() for v in values]
+        guesses[key] += [v.capitalize() for v in values]
+    
+    def get_key (set_key,options,guess_keys):
+        if set_key is not None:
+            return set_key
+        else:
+            for key in guess_keys:
+                if key in options:
+                    return key
+    
+    which_hdu = abs(which_hdu)
+    
+    if not (len(hdulist) > which_hdu and isinstance(hdulist[which_hdu],astropy.io.fits.hdu.table.BinTableHDU)):
+        raise ValueError("This must be done with a bin table fits file")
+        
+    # read in data   
+    data = hdulist[which_hdu].data
+    options = data.dtype.names
+    
+    # get the keys
+    wvs_key = get_key(wvcolname,options,guesses['wvcol_guess'])
+    flux_key = get_key(fluxcolname,options,guesses['fluxcol_guess'])
+    
+    sig_key = get_key(None,options,guesses['sigma_guess'])
+    var_key = get_key(varcolname,options,guesses['var_guess'])
+    inv_var_key = get_key(None,options,guesses['inv_var_guess'])
+    
+    # check that these keys are essential
+    if wvs_key is None or flux_key is None:
+        raise ValueError("No keys which make sense for wavelengths or flux")
+    wvs = data[wvs_key]
+    flux = data[flux_key]
+    
+    # check for error keys
+    if var_key is not None:
+        inv_var = var_2_inv_var(data[var_key])
+    elif sig_key is not None:
+        var = data[sig_key]**2
+        inv_var = var_2_inv_var(var)
+    elif inv_var_key is not None:
+        inv_var = data[inv_var_key]
+    else:
+        inv_var = None
+    
+    # store the spectra 
+    spectra = []
+    if wvs.ndim == 2:
+        for i in xrange(len(wvs)):
+            if inv_var is not None:
+                ivar = inv_var[i]
+            else:
+                ivar = None
+            metadata['order'] = i
+            spectra.append(Spectrum(wvs[i],flux[i],ivar,metadata=metadata.copy()))
+    elif wvs.ndim == 1:
+        spectra.append(Spectrum(wvs,flux,inv_var,metadata=metadata))
+    else:
+        raise ValueError("Don't know how to deal with data ndim={}".format(wvs.ndim))
+    return spectra
 
-_core_read_fits.__doc__ = read_fits.__doc__
+def read_many_fits (filelist,relative_paths=False,are_orders=False):
+    """
+    takes a list of spectre 1D files and returns `timbles.Spectrum` objects 
 
-def read_star (filename):
+    Parameters
+    ----------
+    filelist : string or list of strings
+        Each string gives the file path to a 
+    relative_paths : boolean
+        If True then each file path will be treated relative to the filelist file 
+        directory.
+    are_orders : boolean
+        If True it will order files by wavelength and assign them order numbers
+
+    Return
+    ------
+    spectra : list of `thimbles.Spectrum` objects
+    
+    
     """
-    Readin a specified Star object save
-    """
-    # TODO: write this
-    pass
+    list_of_files = []
+    relative_paths = bool(relative_paths)
+    nofile = "File does not exist '{}'"
+
+    if isinstance(filelist,(basestring)):
+        dirpath = os.path.dirname(filelist)
+        
+        if not os.path.isfile(filelist):
+            raise IOError(nofile.format(filelist))
+        
+        with open(filelist) as f:
+            files = f.readlines()
+            
+        for fname in files:
+            fname = fname.split()[0]
+            if relative_paths:
+                fname = os.path.join(dirpath,fname)  
+            if not os.path.isfile(fname):
+                warnings.warn(nofile.format(filelist))                      
+            else: 
+                list_of_files.append(fname)
+        f.close()
+    #-----------------------------------------------#
+    # if given input is not a string assume it's a list/array
+    elif isinstance(filelist,Iterable):
+        list_of_files = [str(fname).split()[0] for fname in filelist]
+    else:
+        raise TypeError("filelist must be string or list of strings")
+    
+    #============================================================#
+    
+    spectra = []
+    for fname in list_of_files:
+        spectra += read(fname)
+        
+    if are_orders:
+        med_wvs = []
+        for spec in spectra:
+            med_wvs.append(np.median(spec.wv))
+        sort_spectra = []
+        for i in np.argsort(med_wvs):
+            spec = spectra[i]
+            spec.metadata['order'] = i
+            sort_spectra.append(spec)
+        spectra = sort_spectra     
+    return spectra
 
 pass
 # ############################################################################# #
 # This is the general read in function for fits and text files
 
-def read (filename,**kwargs):
-    """
-    TODO: add doc string
-    
-    **kwargs are passed either to read_txt or read_fits depending
-    """
-    f = open(filename,'r')
-    header_line = f.readline()
-    f.close()
-    s = _fits_re.search(header_line)
-    if s is None:
-        return read_txt(filename,**kwargs)
+# general read function
+
+def is_many_fits (filepath):
+    if isinstance(filepath,Iterable):
+        return True
+    elif isinstance(filepath,basestring):
+        if not os.path.isfile(filepath):
+            return False
+        for line in open(filepath,'r'):
+            if not isinstance(line.split()[0],basestring):
+                return False
+        return True    
     else:
-        # TODO: add more checks of the fits header_line to see
-        # if you can parse more about it. e.g. it's an apogee/hst/or/makee file 
-        return read_fits(filename,**kwargs)
+        return False
+
+def read (filepath,**kwargs):
+    """
+    General read 
+    
+    **kwargs are passed either to read_txt or read_fits depending on determined 
+    file type
+    
+    """
+    # NOTE: Could also check for 'END' card and/or 'NAXIS  ='
+    fits_rexp = re.compile("[SIMPLE  =,XTENSION=]"+"."*71+"BITPIX  =")
+    
+    # check the first line of the file. What type is it?
+    with open(filepath,'r') as f:
+        header_line = f.readline()
+    s = fits_rexp.search(header_line)
+    
+    
+    if s is None: # is not a fits file
+        if is_many_fits(filepath): # is a file of many files
+            return read_many_fits(filepath,**kwargs)
+        else: # is a single text file
+            return read_txt(filepath,**kwargs)
+    else: # is a fits file
+        return read_fits(filepath,**kwargs)
 
 pass
 # ############################################################################# #
 # special readin functions
 
-def read_many_fits (filelist,relative_paths=False):
-    """
-    TODO: fix this doc string
-    takes a list of spectre 1D files and creates a single object
-
-    INPUTS:
-    =============  =============================================================
-    keyword        (type) Description
-    =============  =============================================================
-    filelist       (string) give the name of a file which contains a list of 
-                           spectre files (fits/txt)
-                    OR
-                   (array) which gives each file name
-    relative_paths (bool) if True eyeSpec will look for each file name in the 
-                   filelist relative to the current directory. If False it will
-                   take the absolute path of the filelist file as the base name
-                   to look for each file. Not applicable if filelist is array
-    =============  =============================================================
-    """
-    list_of_files = []
-    relative_paths = bool(relative_paths) # !! I think I want to do this every time
-
-    #============================================================#
-    # import the files
-    #-----------------------------------------------#
-    # if given input is a string treat it like it's a file to import
-    if isinstance(filelist,(str,np.str_)): 
-        # check if file exists
-        if not os.path.exists(filelist): 
-            raise IOError("Input file not found: '"+filelist+"'")
-        
-        dirpath = os.path.dirname(os.path.abspath(filelist))+"/"
-        f = open(filelist)
-        for fname in f:
-            fname = fname.rstrip().split()[0]
-            if not relative_paths:
-                bfname = os.path.basename(fname)
-                fname = dirpath+bfname
-            if not os.path.exists(fname): 
-                raise IOError("File doesn't exist: '"+fname+"'")
-            else: 
-                list_of_files.append(fname)
-
-        if len(list_of_files) == 0: 
-            raise IOError("No valid files found")
-        f.close()
-    #-----------------------------------------------#
-    # if given input is not a string assume it's a list/array
-    elif isinstance(filelist,Iterable):
-        relative_paths = False
-        # see if it's array like and can be used to iterate through
-        try: 
-            list_of_files = list(np.array(filelist,dtype=str))
-        except: 
-            raise TypeError("Input must either be a string giving a file which contains lists of files or array like list of file names")
-
-    #============================================================#
-    # now with list_of_files import all the objects
-    spectral_measurements = []
-    all_info = Information()    
-    for fname in list_of_files:
-        # the code was doing something funny, this is the work around
-        if fname[0] == "'" and fname[-1] == "'": 
-            fname = fname.replace("'","")
-        if not os.path.exists(fname): 
-            print("WARNING: not using file '"+fname+"' because it doesn't exist")
-            continue
-        meas,info = read(fname)        
-        spectral_measurements.append(meas)
-        all_info[fname] = info
-    
-    if len(spectral_measurements) == 0: 
-        raise IOError("No Data Read")
-    return spectral_measurements,all_info
-
-def read_apogee (filename,use_row=1,get_telluric=False,**read_kwargs):
-    """ 
-    This takes the pipeline reduced fits from the APOGEE. This should contain several header units each with several image extensions.
-
-    Paremeters
-    ----------
-    filename : string path to fits file
-        APOGEE pipeline reduced data with a 0 header unit similar to the below
-    use_row : integer 
-        APOGEE refers to these as rows, default is row1 ("combined spectrum with individual pixel weighting")
-    get_telluric : boolean
-        If True then it will also extract the telluric data
-
-
-    Returns
-    -------
-    data_meas : SpectralMeasurementList
-        A list of all the measurements made
-    data_info : Information
-        An information dictionary about the data
-    tell_meas : SpectralMeasurementList (optional if get_telluric)
-        A list of measurements for the Telluric
-    tell_info : Information (optional if get_telluric)
-        An information dictionary about the telluric
-    
-
-    =================================================================
-    Example header 0 header unit:
-    
-    HISTORY APSTAR: The data are in separate extensions:                      
-    HISTORY APSTAR:  HDU0 = Header only                                       
-    HISTORY APSTAR:  All image extensions have:                               
-    HISTORY APSTAR:    row 1: combined spectrum with individual pixel weighti 
-    HISTORY APSTAR:    row 2: combined spectrum with global weighting         
-    HISTORY APSTAR:    row 3-nvisis+2: individual resampled visit spectra     
-    HISTORY APSTAR:   unless nvists=1, which only have a single row           
-    HISTORY APSTAR:  All spectra shifted to rest (vacuum) wavelength scale    
-    HISTORY APSTAR:  HDU1 - Flux (10^-17 ergs/s/cm^2/Ang)                     
-    HISTORY APSTAR:  HDU2 - Error (10^-17 ergs/s/cm^2/Ang)                    
-    HISTORY APSTAR:  HDU3 - Flag mask (bitwise OR combined)                   
-    HISTORY APSTAR:  HDU4 - Sky (10^-17 ergs/s/cm^2/Ang)                      
-    HISTORY APSTAR:  HDU5 - Sky Error (10^-17 ergs/s/cm^2/Ang)                
-    HISTORY APSTAR:  HDU6 - Telluric                                          
-    HISTORY APSTAR:  HDU7 - Telluric Error                                    
-    HISTORY APSTAR:  HDU8 - LSF coefficients                                 
-    HISTORY APSTAR:  HDU9 - RV and CCF structure
-
-    """
-    # this is related to the row1
-    # can also give it an oid form (band,order)
-    
-    # use_order = 0 
-    use_order = int(use_row)-1
-    hdu_header = 0  # the HDU with the header information
-    hdu_flux = 1    # the HDU with the flux data
-    hdu_err = 2     # the HDU with the error on the flux data
-    hdu_tell = 6    # the HDU with the telluric data
-    hdu_tell_er = 7 # the HDU with the error on the telluric data
-
-    #readin_kwargs = {"non_std_fits"  :False,
-    #                 "disp_type"     :'log linear',
-    #                 "preferred_disp":'crval'}
-
-    # TODO: get information from the primary header?
-
-    def _get_obj (filename, use_order, hdu_data, hdu_error, **read_kwargs):
-        meas_list,info = read_fits(filename,hdu=hdu_data,**read_kwargs)
-        x_err,err_info = read_fits(filename,hdu=hdu_error)
-        # err = x_err.get_data(use_order)
-        # var = err**2
-        # inv_var = var_2_inv_var(var)
-        var = x_err[use_order].flux**2
-        meas_list[use_order].inv_var = var_2_inv_var(var)
-        return meas_list,info.cat(err_info,'ignore',True)
-    
-    data_out,data_info = _get_obj(filename,use_order,hdu_flux,hdu_err,**read_kwargs)
-    if get_telluric:
-        tell_out,tell_info = _get_obj(filename,use_order,hdu_tell,hdu_tell_er,**read_kwargs)
-        return data_out,data_info,tell_out,tell_info
-    else:
-        return data_out,data_info
-
-def read_fits_makee (filename,varience_filename=None,output_list=False,verbose=False):
-
-    """ 
-    Knows how to identify the KOA MAKEE file structure which ships with extracted data
-    and apply the eyeSpec function readin to the important directories to obtain a coherent 
-    spectrum object from the files
-
-
-    INPUTS:
-    filename : give an individual filename for the star or give the top level Star directory from MAKEE. 
-               It will go from TOP_LEVEL/extracted/makee/ and use directories ccd1/ etc to find the appropriate files
-
-    output_list : if it finds multiple chips of data it will return as a list and not a combined object
-
-
-    """
-    non_std_fits=False
-    disp_type='default'
-    preferred_disp='makee'
-    
-
-    def obj_var_2_inv_var (obj,fill=1e50):
-        var = deepcopy(obj._data)
-
-        # !! how to treat non values, i.e. negative values
-        zeros = (var<=0)
-        bad = (var>=fill/2.0)
-        infs = (var == np.inf)
-
-        var[zeros] = 1.0/fill
-        inv_var = 1.0/var
-
-        # set points which are very large to the fill
-        inv_var[zeros] = fill
-        # set points which are almost zero to zero
-        inv_var[bad] = 0.0
-        inv_var[infs] = 0.0
-
-        obj._inv_var = deepcopy(inv_var)
-        return inv_var
-
-
-    filename = str(filename)
-    if not os.path.exists(filename): raise ValueError("the given path does not exist")
-
-    objs = {}
-    inv_vars = {}
-
-    if os.path.isdir(filename):
-
-        if filename[-1:] != '/': filename += "/"
-        
-        # !! could make it smarter so it would know from anywhere within the TOP_FILE/extracted/makee/ chain
-        
-        full_path = filename+'extracted/makee/'
-        
-        if not os.path.exists(full_path): raise ValueError("Must have extracted files:"+full_path)
-        
-        ccds = os.listdir(full_path)
-        
-        for ccdir in ccds:
-            if not os.path.isdir(full_path+ccdir): continue
-            if not os.path.exists(full_path+ccdir+'/fits/'): continue
-
-            if ccdir in objs.keys():
-                print "Directory was already incorporated:"+ccdir
-                continue
-
-            fitspath = full_path+ccdir+'/fits/'
-            fitsfiles = os.listdir(fitspath)
-
-            print ""
-            print "="*20+format("GETTING DATA FROM DIRECTORY:"+ccdir,'^40')+"="*20
-            for ffname in fitsfiles:
-                fname = fitspath+ffname
-
-                # !! if file.find("_*.fits")
-                # !! I could add in stuff which would go as another band for the current Flux
-
-                if ffname.find("_Flux.fits") != -1: 
-                    print "flux file:"+ccdir+'/fits/'+ffname
-                    objs[ccdir] = readin(fname,preferred_disp=preferred_disp,disp_type=disp_type,non_std_fits=non_std_fits,verbose=verbose)
-
-                elif ffname.find("_Var.fits") != -1:
-                    print "variance file:"+ccdir+'/fits/'+ffname
-                    tmp_obj = readin(fname,preferred_disp=preferred_disp,disp_type=disp_type,non_std_fits=non_std_fits,verbose=verbose)
-                    inv_vars[ccdir] = obj_var_2_inv_var(tmp_obj)
-
-
-    else:
-        print "Reading in flux file:"+fname
-        objs['file'] = readin(filename,preferred_disp=preferred_disp,disp_type=disp_type,non_std_fits=non_std_fits,verbose=verbose)
-
-        if varience_filename is not None:
-            inv_var = readin(varience_filename,preferred_disp=preferred_disp,disp_type=disp_type,non_std_fits=non_std_fits,verbose=verbose)
-            inv_vars['file'] = obj_var_2_inv_var(inv_var)
-
-
-    num_objs = 0
-
-    OUTPUT_list = []
-    OUT_header = []
-    OUT_wl = []
-    OUT_data = []
-    OUT_inv_var = []
-
-
-    for key in objs.keys():
-        obj1 = objs[key]
-        inv_var1 = inv_vars[key]
-        # !! note I'm masking out the inf values
-        mask = (inv_var1 == np.inf)
-        inv_var1[mask] = 0.0
-
-        if obj1._inv_var.shape != inv_var1.shape:
-            print "HeadsUp: object and inverse variance shape are not the same"
-        else: obj1._inv_var = deepcopy(inv_var1)
-            
-        num_objs += 1
-
-        if output_list:
-            OUTPUT_list.append(obj1)
-        else:
-            OUT_header.append(obj1.header)
-            if obj1._wl.shape[0] > 1: print "HeadsUp: Multiple bands detected, only using the first"
-            OUT_wl.append(obj1._wl[0])
-            OUT_data.append(obj1._data[0])
-            OUT_inv_var.append(obj1._inv_var[0])
-
-    if output_list:
-        if num_objs == 1: return OUTPUT_list[0]
-        else: return OUTPUT_list        
-    else:
-        print ""
-        print "="*30+format("COMBINING",'^20')+"="*30
-        wl = np.concatenate(OUT_wl)
-        data = np.concatenate(OUT_data)
-        inv_var = np.concatenate(OUT_inv_var)
-
-        obj = eyeSpec_spec(wl,data,inv_var,OUT_header[0])
-        obj.hdrlist = OUT_header
-        obj.filename = fitspath
-        obj.edit.sort_orders()
-        return obj
-
-def read_fits_hst (filename,get_data=False):
-    """
-    This function is designed to read in Hubble Space Telescope Archive x1d data
-    
-    """
-    format_error = "Unexpected HST format for fits file. Please use the X1D"
-    
-    try: hdulist = fits.open(filename)
-    except: raise ValueError(format_error)
-    
-    if len(hdulist) != 2: raise ValueError(format_error)
-
-    hdu = hdulist[1] # the data table
-    
-    wl = hdu.data['WAVELENGTH']
-    flux = hdu.data['FLUX']
-    var = hdu.data['ERROR']**2
-    inv_var = var_2_inv_var(var)
-    
-    if get_data: return (wl,flux,inv_var)
-     
-    spec_obj = eyeSpec_spec(wl,flux,inv_var,hdu.header)
-    
-    # set up private information
-    
-    spec_obj.filename = filename
-    spec_obj._private_info['filename'] = filename
-            
-    if len(hdulist) > 1: spec_obj.hdrlist = [h.header for h in hdulist]
-        
-    return spec_obj
- 
-pass
-# ############################################################################# #
-# output functions, perhaps part of 
-
-def save_spectrum (spectrum,filename=None,unique_name=True,clobber=False):
-    fsuffix = '.spec' #'.pkl'
-    # save the spectrum object. perhaps should be part of the object itself
-    pass
-
-def save_spectrum_txt (spectrum,filename):
-    """
-    Outputs the eyeSpec spectrum class into a given file as text data.
-
-    INPUTS:
-    =============   ============================================================
-    keyword         (type) Description
-    =============   ============================================================
-    spec_obj        (eyeSpec_spec) spectrum class for eyeSpec
-    filename        (str) This gives the filename to save the as
-    band            (int,'default') This tells which of the first dimensions of
-                      spec_obj to use. 'default' is spec_obj.get_band()
-    use_cropped     (bool) If True it will crop off points at the begining and 
-                      end of orders which have inverse varience = 0, i.e. have
-                      inf errors
-    order           (int,array,None) you can specify which orders are output
-                      If None then it will output all possible orders
-    clobber         (bool) If True then the function will overwrite files of the
-                      same file name that already exis
-
-    include_varience (bool) If True the third column which gives the varience 
-                      will be included
-    divide_orders    (bool) If True it will but a commend line with '#' between
-                      each of the orders
-    comment          (str) What symbol to use as a comment
-    divide_header    (bool,None) If False it will give one long string as the first header line
-                                 If True it will divide it up by 80 character lines with a comment of '#:' 
-                                 If None then no header will be printed
-    =============   ============================================================
-
-    """
-    
-    pass
-
-
-class Information (dict):
-    """
-    A class for holding information about an object
-    """
-    
-    def __init__ (self,*args,**kwargs):
-        super(Information,self).__init__(*args,**kwargs)
-    
-    def __repr__ (self):
-        reprout = 'Information {'
-        if len(self) == 0:
-            return reprout + "}"
-        reprout += "\n"
-        for key in self:
-            value = str(repr(self[key])).split("\n")
-            reprout += " "+str(key)+" : "
-            reprout += value[0].strip()+"\n"
-            if len(value) > 1: 
-                reprout += " "*(len(key))+"    ...\n"
-        reprout += "}\n"
-        return reprout
-    
-    def __str__ (self):
-        return super(Information,self).__repr__()
-    
-    def _type_check_other (self,other):
-        if not isinstance(other,dict):
-            raise TypeError("other must be a subclass of dict")
-    
-    def __add__ (self,other):
-        return self.combine(other,key_conflicts='raise')
-            
-    def __iadd__ (self,other):
-        self._type_check_other(other)
-        for key in other:
-            if self.has_key(key):
-                continue
-            self[key] = other[key]
-        return self    
-        
-    def combine (self,other,key_conflicts='ignore',return_=False):
-        """
-        Combine two Information dictionaries together. 
-        
-        
-        Parameters
-        ----------
-        other : dict subclass
-            Any dictionary object will work including other Information Dictionaries
-        key_conflicts : 'ignore' (default), 'merge', 'warn', 'raise'
-            Defined the method to handle key conflicts
-            * ignore : if key is in conflict, keep the current key with no warning
-            * merge : convert key to string and add integers until unique key is found
-            * warn : print a warning message for key conflicts. Keep current key
-            * raise : raise error message for key conflicts.
-        return_ : boolean
-            If True then it will keep the data in place and return a copy with
-            with the concatenation
-                    
-        Returns
-        -------
-        info : Information 
-            Returns an information object with keys and information 
-            concatenated from the two
-        
-        
-        Raises
-        ------
-        KeyError : If key_conflicts=='raise' is True and conflicts exist between two keys
-        
-        
-        Notes
-        -----
-        __1)__ If a key is in conflict but the data the key refers to is the same then
-            no messages or errors will be raised
-        
-        
-        Special cases
-        -------------
-        add operator : info1 + info2
-            This will raise errors for key conflicts between the two 
-        iadd operator : info1 += info2
-            This will ignore key conflicts 
-            and always takes info1 keys as default
-            
-        """
-        self._type_check_other(other)
-        def errmsg (key):
-            return "Warning: key conflict '"+str(key)+"'"
-        
-        key_conflicts = key_conflicts.lower()
-        if return_:
-            out = self.copy()
-        else:
-            out = self
-        
-        if key_conflicts=='merge':
-            for key in other:
-                if self.has_key(key) and self[key]==other[key]:
-                    continue
-                i = 0   
-                base_key = deepcopy(key)
-                while self.has_key(key):            
-                    key = str(base_key)+"_"+str(i)
-                    i += 1    
-                out[key] = other[base_key]
-            return out
-        # else:
-        for key in other:
-            if self.has_key(key):
-                # if the data's the same don't worry about it
-                if self[key]==other[key]:
-                    continue
-                # resolve conflicts 
-                if key_conflicts=='raise':
-                    raise KeyError(errmsg(key))
-                elif key_conflicts=='warn':
-                    print(errmsg(key))
-                else:
-                    continue
-            out[key] = other[key]
-        
-        if return_:
-            return out
-
-    def copy (self):
-        return deepcopy(self)
-    
-    def header_list(self):
-        """returns a list of the values belonging to keys beginning header_ """
-        keys = self.keys()
-        headers = []
-        for key in keys:
-            try:
-                keystart = key[:7]
-                if keystart == "header_":
-                    headers.append(self[key])
-            except:
-                pass
-        return headers
-            
-    def guess_ra_dec(self, headers=None):
-        if headers == None:
-            headers = self.header_list()
-        ra, dec = None, None
-        for hdr in headers:
-            try:
-                rastr = hdr["RA"]
-                decstr = hdr["DEC"]
-                ra = Angle(rastr + " hour")
-                dec = Angle(decstr + " degree")
-                break
-            except:
-                pass
-        return ra, dec
-    
-    def guess_observation_time(self, headers=None):
-        if headers == None:
-            headers = self.header_list()
-        obs_time = None
-        for hdr in headers:
-            try:
-                obs_time = hdr["ut"]
-                break
-            except:
-                pass
-        return obs_time
-    
-    def guess_airmass(self, headers):
-        if headers == None:
-            headers = self.header_list()
-        airmass = None
-        for hdr in headers:
-            try:
-                airmass = hdr["airmass"]
-                break
-            except:
-                pass
-        return airmass
-    
-    def guess_object_name(self):
-        return None
+# TODO: Fix and include these functions
+# def read_apogee (filepath,use_row=1,get_telluric=False,**read_kwargs):
+#     """ 
+#     This takes the pipeline reduced fits from the APOGEE. This should contain several header units each with several image extensions.
+# 
+#     Paremeters
+#     ----------
+#     filepath : string path to fits file
+#         APOGEE pipeline reduced data with a 0 header unit similar to the below
+#     use_row : integer 
+#         APOGEE refers to these as rows, default is row1 ("combined spectrum with individual pixel weighting")
+#     get_telluric : boolean
+#         If True then it will also extract the telluric data
+# 
+# 
+#     Returns
+#     -------
+#     data_meas : SpectralMeasurementList
+#         A list of all the measurements made
+#     data_info : MetaData
+#         An information dictionary about the data
+#     tell_meas : SpectralMeasurementList (optional if get_telluric)
+#         A list of measurements for the Telluric
+#     tell_info : MetaData (optional if get_telluric)
+#         An information dictionary about the telluric
+#     
+# 
+#     =================================================================
+#     Example header 0 header unit:
+#     
+#     HISTORY APSTAR: The data are in separate extensions:                      
+#     HISTORY APSTAR:  HDU0 = Header only                                       
+#     HISTORY APSTAR:  All image extensions have:                               
+#     HISTORY APSTAR:    row 1: combined spectrum with individual pixel weighti 
+#     HISTORY APSTAR:    row 2: combined spectrum with global weighting         
+#     HISTORY APSTAR:    row 3-nvisis+2: individual resampled visit spectra     
+#     HISTORY APSTAR:   unless nvists=1, which only have a single row           
+#     HISTORY APSTAR:  All spectra shifted to rest (vacuum) wavelength scale    
+#     HISTORY APSTAR:  HDU1 - Flux (10^-17 ergs/s/cm^2/Ang)                     
+#     HISTORY APSTAR:  HDU2 - Error (10^-17 ergs/s/cm^2/Ang)                    
+#     HISTORY APSTAR:  HDU3 - Flag mask (bitwise OR combined)                   
+#     HISTORY APSTAR:  HDU4 - Sky (10^-17 ergs/s/cm^2/Ang)                      
+#     HISTORY APSTAR:  HDU5 - Sky Error (10^-17 ergs/s/cm^2/Ang)                
+#     HISTORY APSTAR:  HDU6 - Telluric                                          
+#     HISTORY APSTAR:  HDU7 - Telluric Error                                    
+#     HISTORY APSTAR:  HDU8 - LSF coefficients                                 
+#     HISTORY APSTAR:  HDU9 - RV and CCF structure
+# 
+#     """
+#     # this is related to the row1
+#     # can also give it an oid form (band,order)
+#     
+#     # use_order = 0 
+#     use_order = int(use_row)-1
+#     hdu_header = 0  # the HDU with the header information
+#     hdu_flux = 1    # the HDU with the flux data
+#     hdu_err = 2     # the HDU with the error on the flux data
+#     hdu_tell = 6    # the HDU with the telluric data
+#     hdu_tell_er = 7 # the HDU with the error on the telluric data
+# 
+#     #readin_kwargs = {"non_std_fits"  :False,
+#     #                 "disp_type"     :'log linear',
+#     #                 "preferred_disp":'crval'}
+# 
+#     # TODO: get information from the primary header?
+# 
+#     def _get_obj (filepath, use_order, hdu_data, hdu_error, **read_kwargs):
+#         meas_list,info = read_fits(filepath,hdu=hdu_data,**read_kwargs)
+#         x_err,err_info = read_fits(filepath,hdu=hdu_error)
+#         # err = x_err.get_data(use_order)
+#         # var = err**2
+#         # inv_var = var_2_inv_var(var)
+#         var = x_err[use_order].flux**2
+#         meas_list[use_order].inv_var = var_2_inv_var(var)
+#         return meas_list,info.cat(err_info,'ignore',True)
+#     
+#     data_out,data_info = _get_obj(filepath,use_order,hdu_flux,hdu_err,**read_kwargs)
+#     if get_telluric:
+#         tell_out,tell_info = _get_obj(filepath,use_order,hdu_tell,hdu_tell_er,**read_kwargs)
+#         return data_out,data_info,tell_out,tell_info
+#     else:
+#         return data_out,data_info
+# 
+# def read_fits_makee (filepath,varience_filepath=None,output_list=False,verbose=False):
+# 
+#     """ 
+#     Knows how to identify the KOA MAKEE file structure which ships with extracted data
+#     and apply the eyeSpec function readin to the important directories to obtain a coherent 
+#     spectrum object from the files
+# 
+# 
+#     INPUTS:
+#     filepath : give an individual filepath for the star or give the top level Star directory from MAKEE. 
+#                It will go from TOP_LEVEL/extracted/makee/ and use directories ccd1/ etc to find the appropriate files
+# 
+#     output_list : if it finds multiple chips of data it will return as a list and not a combined object
+# 
+# 
+#     """
+#     non_std_fits=False
+#     disp_type='default'
+#     preferred_disp='makee'
+#     
+# 
+#     def obj_var_2_inv_var (obj,fill=1e50):
+#         var = deepcopy(obj._data)
+# 
+#         # !! how to treat non values, i.e. negative values
+#         zeros = (var<=0)
+#         bad = (var>=fill/2.0)
+#         infs = (var == np.inf)
+# 
+#         var[zeros] = 1.0/fill
+#         inv_var = 1.0/var
+# 
+#         # set points which are very large to the fill
+#         inv_var[zeros] = fill
+#         # set points which are almost zero to zero
+#         inv_var[bad] = 0.0
+#         inv_var[infs] = 0.0
+# 
+#         obj._inv_var = deepcopy(inv_var)
+#         return inv_var
+# 
+# 
+#     filepath = str(filepath)
+#     if not os.path.exists(filepath): raise ValueError("the given path does not exist")
+# 
+#     objs = {}
+#     inv_vars = {}
+# 
+#     if os.path.isdir(filepath):
+# 
+#         if filepath[-1:] != '/': filepath += "/"
+#         
+#         # !! could make it smarter so it would know from anywhere within the TOP_FILE/extracted/makee/ chain
+#         
+#         full_path = filepath+'extracted/makee/'
+#         
+#         if not os.path.exists(full_path): raise ValueError("Must have extracted files:"+full_path)
+#         
+#         ccds = os.listdir(full_path)
+#         
+#         for ccdir in ccds:
+#             if not os.path.isdir(full_path+ccdir): continue
+#             if not os.path.exists(full_path+ccdir+'/fits/'): continue
+# 
+#             if ccdir in objs.keys():
+#                 print "Directory was already incorporated:"+ccdir
+#                 continue
+# 
+#             fitspath = full_path+ccdir+'/fits/'
+#             fitsfiles = os.listdir(fitspath)
+# 
+#             print ""
+#             print "="*20+format("GETTING DATA FROM DIRECTORY:"+ccdir,'^40')+"="*20
+#             for ffname in fitsfiles:
+#                 fname = fitspath+ffname
+# 
+#                 # !! if file.find("_*.fits")
+#                 # !! I could add in stuff which would go as another band for the current Flux
+# 
+#                 if ffname.find("_Flux.fits") != -1: 
+#                     print "flux file:"+ccdir+'/fits/'+ffname
+#                     objs[ccdir] = read_fits(fname,preferred_disp=preferred_disp,disp_type=disp_type,non_std_fits=non_std_fits,verbose=verbose)
+# 
+#                 elif ffname.find("_Var.fits") != -1:
+#                     print "variance file:"+ccdir+'/fits/'+ffname
+#                     tmp_obj = read_fits(fname,preferred_disp=preferred_disp,disp_type=disp_type,non_std_fits=non_std_fits,verbose=verbose)
+#                     inv_vars[ccdir] = obj_var_2_inv_var(tmp_obj)
+# 
+# 
+#     else:
+#         print "Reading in flux file:"+fname
+#         objs['file'] = read_fits(filepath,preferred_disp=preferred_disp,disp_type=disp_type,non_std_fits=non_std_fits,verbose=verbose)
+# 
+#         if varience_filepath is not None:
+#             inv_var = read_fits(varience_filepath,preferred_disp=preferred_disp,disp_type=disp_type,non_std_fits=non_std_fits,verbose=verbose)
+#             inv_vars['file'] = obj_var_2_inv_var(inv_var)
+# 
+# 
+#     num_objs = 0
+# 
+#     OUTPUT_list = []
+#     OUT_header = []
+#     OUT_wl = []
+#     OUT_data = []
+#     OUT_inv_var = []
+# 
+# 
+#     for key in objs.keys():
+#         obj1 = objs[key]
+#         inv_var1 = inv_vars[key]
+#         # !! note I'm masking out the inf values
+#         mask = (inv_var1 == np.inf)
+#         inv_var1[mask] = 0.0
+# 
+#         if obj1._inv_var.shape != inv_var1.shape:
+#             print "HeadsUp: object and inverse variance shape are not the same"
+#         else: obj1._inv_var = deepcopy(inv_var1)
+#             
+#         num_objs += 1
+# 
+#         if output_list:
+#             OUTPUT_list.append(obj1)
+#         else:
+#             OUT_header.append(obj1.header)
+#             if obj1._wl.shape[0] > 1: print "HeadsUp: Multiple bands detected, only using the first"
+#             OUT_wl.append(obj1._wl[0])
+#             OUT_data.append(obj1._data[0])
+#             OUT_inv_var.append(obj1._inv_var[0])
+# 
+#     if output_list:
+#         if num_objs == 1: return OUTPUT_list[0]
+#         else: return OUTPUT_list        
+#     else:
+#         print ""
+#         print "="*30+format("COMBINING",'^20')+"="*30
+#         wl = np.concatenate(OUT_wl)
+#         data = np.concatenate(OUT_data)
+#         inv_var = np.concatenate(OUT_inv_var)
+# 
+#         obj = eyeSpec_spec(wl,data,inv_var,OUT_header[0])
+#         obj.hdrlist = OUT_header
+#         obj.filepath = fitspath
+#         obj.edit.sort_orders()
+#         return obj
+# 
+# def save_spectrum_txt (spectrum,filepath):
+#     """
+#     Outputs the eyeSpec spectrum class into a given file as text data.
+# 
+#     INPUTS:
+#     =============   ============================================================
+#     keyword         (type) Description
+#     =============   ============================================================
+#     spec_obj        (eyeSpec_spec) spectrum class for eyeSpec
+#     filepath        (str) This gives the filename to save the as
+#     band            (int,'default') This tells which of the first dimensions of
+#                       spec_obj to use. 'default' is spec_obj.get_band()
+#     use_cropped     (bool) If True it will crop off points at the begining and 
+#                       end of orders which have inverse varience = 0, i.e. have
+#                       inf errors
+#     order           (int,array,None) you can specify which orders are output
+#                       If None then it will output all possible orders
+#     clobber         (bool) If True then the function will overwrite files of the
+#                       same file name that already exis
+# 
+#     include_varience (bool) If True the third column which gives the varience 
+#                       will be included
+#     divide_orders    (bool) If True it will but a commend line with '#' between
+#                       each of the orders
+#     comment          (str) What symbol to use as a comment
+#     divide_header    (bool,None) If False it will give one long string as the first header line
+#                                  If True it will divide it up by 80 character lines with a comment of '#:' 
+#                                  If None then no header will be printed
+#     =============   ============================================================
+# 
+#     """
+#     
+#     pass
 
 
 

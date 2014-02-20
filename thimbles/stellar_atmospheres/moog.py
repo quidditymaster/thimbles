@@ -1,11 +1,17 @@
 
-# Modules
-import pdb #@UnusedImport    
-import os, time, subprocess, threading
+# Standard Library
+import os
+import time
+import subprocess
+import threading 
+
+# 3rd Party
 import numpy as np
-from ..stellar_atmospheres import executables 
-from ..utils.prompt_user import get_bounds, get_filename 
-from .moog_utils import read_moog_linelist, write_moog_par, write_moog_lines_in, simple_llist_data, get_model_name
+
+# Internal
+from . import executables 
+from .utils import (get_bounds, get_filename, read_moog_linelist, write_moog_par, 
+                    write_moog_lines_in, simple_llist_data, get_model_name)
 
 pass
 #=============================================================================#

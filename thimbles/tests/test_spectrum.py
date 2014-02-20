@@ -35,11 +35,7 @@ class TestLSF (unittest.TestCase):
         unittest.TestCase.setUp(self)
         np.random.seed(5)
         self.dmsg = "({},{})"
-    
-    def test_lsf (self):
-        lsf = LineSpreadFunction()
-        lsf.get_integral(0,0)
-            
+                
     def test_gaussian_lsf (self):
         kws = dict(widths = np.random.normal(10,5,10),
                    max_sigma = 5,
@@ -66,7 +62,7 @@ class TestLSF (unittest.TestCase):
         
         values = [(blsf.get_integral(5,10),1),
                   (blsf.get_integral(5,2),0),
-                  (blsf.get_integral(5,5.25),0.25)]
+                  (blsf.get_integral(5,5.25),0.75)]
         
         for first,second in values:
             msg = self.dmsg.format(first,second)+" wrong get_integral"

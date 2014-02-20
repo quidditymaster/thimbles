@@ -9,11 +9,13 @@ except ImportError:
     from PyQt4.QtCore import *
     from PyQt4.QtGui import *
     matplotlib.rcParams['backend.qt4'] = 'PyQt4'
+import matplotlib.pyplot as plt
 
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt4agg import NavigationToolbar2QTAgg as NavigationToolbar
 from matplotlib.figure import Figure
 
+from widgets import *
 
 class Column(object):
     
@@ -100,6 +102,159 @@ class ConfigurableTableModel(QAbstractTableModel):
             print e
             return False
 
+class MainTableRow(object):
+    
+    def __init__(self, data, name="horse with no name"):
+        self.data = data
+        self.name = name
+        self.type_id = "misc"
+        self.widgets = {}
+    
+    def on_double_click(self):
+        pass
+
+class SpectraRow(MainTableRow):
+    
+    def __init__(self, data, name="some spectra"):
+        super(SpectraRow, self).__init__(data, name)
+        self.type_id = "spectra"
+    
+    def on_double_click(self):
+        fig = plt.figure()
+        print self.data
+        print "len of data", len(self.data)
+        ax = fig.add_subplot(111)
+        for i in range(len(self.data)):
+            ax.plot(self.data[i].wv, self.data[i].flux, c="b")
+            ax.plot(self.data[i].wv, self.data[i].norm, c="g")
+        plt.show()
+
+class LineListRow(MainTableRow):
+
+    def __init__(self, data, name="some line list"):
+        super(LineListRow, self).__init__(data, name)
+        self.type_id = "line list"
+
+class FeaturesRow(MainTableRow):
+    
+    def __init__(self, data, name="some features"):
+        super(FeaturesRow, self).__init__(data, name)
+        self.type_id = "features"
+        self.widget = None
+    
+    def on_double_click(self):
+        print "feature double click"
+        spec, features, feat_spec_idxs, fwidth = self.data
+        fw = FeatureFitWidget(spec, features, 0, feat_spec_idxs, fwidth, None)
+        self.widget = fw
+        self.widget.show()
+    
+class MainTableModel(QAbstractTableModel):
+    
+    def __init__(self, rows=None):
+        super(MainTableModel, self).__init__()
+        if rows == None:
+            rows = []
+        self.rows = rows
+        self.header_text = ["----------object name--------", "------type-------"]
+    
+    def rowCount(self, parent=QModelIndex()):
+        return len(self.rows)
+    
+    def columnCount(self, parent=QModelIndex()):
+        return 2
+    
+    def headerData(self, section, orientation, role):
+        if role == Qt.DisplayRole:
+            if orientation == Qt.Horizontal:
+                return self.header_text[section]
+    
+    def addRow(self, row):
+        if isinstance(row, MainTableRow):
+            nrows = self.rowCount()
+            self.beginInsertRows(QModelIndex(), nrows, nrows)
+            self.rows.append(row)
+            self.endInsertRows()
+        else:
+            raise ValueError
+    
+    def addRows(self, rows):
+        nrows = self.rowCount()
+        nrows_add = len(rows)
+        self.beginInsertRows(QModelIndex(), nrows, nrows+nrows_add)
+        self.rows.extend(rows)
+        self.endInsertRows()
+    
+    def flags(self, index):
+        fl = Qt.ItemIsEnabled | Qt.ItemIsSelectable
+        if index.column() == 0:
+            fl |= Qt.ItemIsEditable
+        return fl 
+    
+    def data(self, index, role=Qt.DisplayRole):
+        row, col = index.row(), index.column()
+        if col == 0:
+            return self.rows[row].name
+        elif col == 1:
+            return self.rows[row].type_id
+    
+    def setData(self, index, value, role=Qt.EditRole):
+        row, col = index.row(), index.column()
+        if role == Qt.EditRole:
+            if row == 0:
+                self.rows[row].name = value
+                return True
+        return False
+
+class NameTypeTableModel(QAbstractTableModel):
+    
+    def __init__(self):
+        super(NameTypeTableModel, self).__init__()
+        self.names = []
+        self._data = []
+        self.types = []
+        self.headers = ["-------------------object name--------------", "---------------type---------------"]
+    
+    def addItem(self, name, type_, data):
+        nrows = self.rowCount()
+        self.beginInsertRows(QModelIndex(), nrows, nrows)
+        self.names.append(name)
+        self.types.append(type_)
+        self._data.append(data)
+        self.endInsertRows()
+
+    def internalData(self, row):
+        return self._data[row]
+    
+    def rowCount(self, parent=QModelIndex()):
+        return len(self._data)
+    
+    def columnCount(self, parent=QModelIndex()):
+        return 2
+    
+    def headerData(self, section, orientation, role):
+        if role == Qt.DisplayRole:
+            if orientation == Qt.Horizontal:
+                return self.headers[section]
+    
+    def flags(self, index):
+        fl = Qt.ItemIsEnabled | Qt.ItemIsSelectable
+        if index.column() == 0:
+            fl |= Qt.ItemIsEditable
+        return fl 
+    
+    def data(self, index, role=Qt.DisplayRole):
+        row, col = index.row(), index.column()
+        if col == 0:
+            return self.names[row]
+        elif col == 1:
+            return self.types[row]
+    
+    def setData(self, index, value, role=Qt.EditRole):
+        row, col = index.row(), index.column()
+        if role == Qt.EditRole:
+            if row == 0:
+                self.names[row] = value
 
 class TypedGroupableItemModel(QAbstractItemModel):
     

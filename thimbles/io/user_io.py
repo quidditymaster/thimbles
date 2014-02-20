@@ -13,7 +13,7 @@ import sys
 import re
 from astropy.io import fits
 from ..utils.misc import inv_var_2_var, var_2_inv_var
-from .io import Information
+from .io import MetaData
 
 import thimbles as tmb
 
@@ -52,7 +52,7 @@ def read_user_defined (filepath,arg1,arg2='12',arg3='default'):
     spectral_measurement = tmb.Spectrum(wavelength,flux,inv_var)
     measurement_list = []
     measurement_list.append(spectral_measurement)
-    information = Information()
+    information = MetaData()
     information['filename'] = filepath
     
     return measurement_list,information
@@ -66,10 +66,10 @@ def read_elodie(filepath):
     flux[np.isnan(flux)] = 0.0
     flux /= rescaling_factor
     inv_var = var_2_inv_var(variance)
-    info = Information()
+    info = MetaData()
     info['filename'] = filepath
     spec_list = [tmb.Spectrum(wvs, flux, inv_var)]
-    return spec_list, info
+    return spec_list
 
 def read_mike(filepath):
     return tmb.io.read_fits(filepath, band=1)
@@ -94,6 +94,6 @@ def read_hectochelle (filepath):
 
     spectral_measurement = tmb.Spectrum(wavelength,flux,inv_var)
     measurement_list = [spectral_measurement]
-    information = Information()
+    information = MetaData()
     information['filename'] = filepath
     return measurement_list,information

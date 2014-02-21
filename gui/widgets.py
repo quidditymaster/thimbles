@@ -431,7 +431,7 @@ class FeatureFitWidget(QWidget):
         self._init_slider_vals()
         self._internal_connect()
         self.setLayout(self.lay)
-    
+
     def minimumSizeHint(self):
         return QSize(500, 500)
     

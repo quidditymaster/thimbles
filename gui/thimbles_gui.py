@@ -1,20 +1,15 @@
 import sys
 import os
+import time
 import numpy as np
+import scipy.optimize
 import matplotlib
 matplotlib.use('Qt4Agg')
 
-import scipy.optimize
-
-try: 
-    from PySide import QtCore,QtGui
-    from PySide.QtCore import *
-    from PySide.QtGui import *
-    matplotlib.rcParams['backend.qt4'] = 'PySide'
-except ImportError:
-    from PyQt4.QtCore import *
-    from PyQt4.QtGui import *
-    matplotlib.rcParams['backend.qt4'] = 'PyQt4'
+from PySide import QtCore,QtGui
+from PySide.QtCore import *
+from PySide.QtGui import *
+matplotlib.rcParams['backend.qt4'] = 'PySide'
 
 import matplotlib.pyplot as plt
 import models
@@ -334,7 +329,7 @@ class AppForm(QMainWindow):
     
     def save (self):
         QMessageBox.about(self, "Save MSG", "SAVE THE DATA\nTODO")
-
+    
     def undo (self):
         QMessageBox.about(self, "Undo", "UNDO THE DATA\nTODO")
     
@@ -434,9 +429,15 @@ class MainApplication (QApplication):
         self.aboutToQuit.connect(self.on_quit)
         screen_rect = self.desktop().screenGeometry()
         size = screen_rect.width(), screen_rect.height()
+        splash = QSplashScreen(QPixmap("splash_screen.png"))
+        splash.show()
+        for i in range(3):
+            self.processEvents()
+            time.sleep(0.01)
         # TODO: use size to make main window the full screen size
         self.main_window = AppForm(options)
         self.main_window.show()
+        splash.finish(self.main_window)
     
     def on_quit (self):
         pass

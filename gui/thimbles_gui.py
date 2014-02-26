@@ -1,6 +1,7 @@
 import sys
 import os
 import time
+from itertools import cycle, product
 import numpy as np
 import scipy.optimize
 import matplotlib
@@ -141,7 +142,9 @@ class AppForm(QMainWindow):
         op_box = QGroupBox("multi spectrum operations")
         btn_grid = QGridLayout()
         self.coadd_btn = QPushButton("coadd")
+        self.compare_btn =QPushButton("compare")
         btn_grid.addWidget(self.coadd_btn, 0, 0, 1, 1)
+        btn_grid.addWidget(self.compare_btn, 1, 0, 1, 1)
         op_box.setLayout(btn_grid)
         return op_box
     
@@ -153,14 +156,41 @@ class AppForm(QMainWindow):
         self.load_btn.clicked.connect(self.on_load)
         self.fit_features_btn.clicked.connect(self.on_fit_features)
         self.norm_btn.clicked.connect(self.on_norm)
+        self.compare_btn.clicked.connect(self.on_compare)
     
     def get_row(self, row):
         return self.main_table_model.rows[row]
     
     def on_double_click(self, index):
+        col_index = index.column()
+        if col_index == 0:
+            return
         row_index = index.row()
         row_object = self.get_row(row_index)
         row_object.on_double_click()
+    
+    def on_compare(self):
+        smod = self.main_table_view.selectionModel()
+        selrows = smod.selectedRows()
+        row_objs = [self.get_row(r.row()) for r in selrows]
+        row_types = [r.type_id for r in row_objs]
+        row_data = [r.data for r in row_objs]
+        type_ids = list(set(row_types))
+        if len(type_ids) == 1:
+            cur_type ,= type_ids
+            color_cycle = cycle("bgrky")
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            if cur_type == "spectra":
+                for spec_set in row_data:
+                    cur_c = color_cycle.next()
+                    for spec in spec_set:
+                        ax.plot(spec.wv, spec.flux, c=cur_c)
+            plt.show()
+        elif len(type_ids) == 0:
+            print "nothing selected to compare!"
+        else:
+            print "not all types matched, can only compare between like types"
     
     def on_div(self):
         smod = self.main_table_view.selectionModel()
@@ -202,7 +232,7 @@ class AppForm(QMainWindow):
                     for pair_idx in range(n1):
                         left_spec = self.partial_result[pair_idx]
                         right_spec = second_operand[pair_idx]
-                    
+         
     def on_fit_features(self):
         smod = self.main_table_view.selectionModel()
         selrows = smod.selectedRows()
@@ -259,9 +289,6 @@ class AppForm(QMainWindow):
         ld = dialogs.LoadDialog()
         new_row = ld.get_row()
         if isinstance(new_row, models.MainTableRow):
-            print "new row"
-            print new_row
-            print "data", new_row.data
             self.main_table_model.addRow(new_row)
     
     def cull_lines(self, spectra, ldat):

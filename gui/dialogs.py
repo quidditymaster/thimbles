@@ -192,16 +192,71 @@ class NormalizationDialog(QDialog):
     def __init__(self, spectra, parent=None):
         super(NormalizationDialog, self).__init__(parent=parent)
         self.spectra = spectra
+        self.orig_norms = [spec.norm for spec in self.spectra]
         self.initUI()
     
     def initUI(self):
         #set up the widgets
-        self.algorithm_label = QLabel("algorithms")
+        self.algorithm_label = QLabel("algorithm")
         self.algorithm_dd = QComboBox()
-        algos = "layered median PHIRLS"
-        self.algorithm_dd.addItems()
-
-
+        algo1 = ["adaptive echelle", 
+                 "partition_scale=300, poly_order=3, smart_partition=False, alpha=4.0, beta=4.0, overwrite=True",
+                 tmb.utils.misc.approximate_normalization
+                 ] 
+        self.algos = [algo1]
+        algo_names = [al[0] for al in self.algos]
+        self.algorithm_dd.addItems(algo_names)
+        self.params_le = QLineEdit()
+        self.params_le.setText(algo1[1])
+        
+        self.apply_btn = QPushButton("Apply")
+        self.cancel_btn = QPushButton("Cancel")
+        self.ok_btn = QPushButton("Ok")
+        self.preview_btn = QPushButton("Preview")
+        
+        lay = QGridLayout()
+        lay.addWidget(self.algorithm_label, 0, 0)
+        lay.addWidget(self.algorithm_dd, 0, 1)
+        lay.addWidget(self.params_le, 1, 0, 1, 4)
+        lay.addWidget(self.apply_btn, 2, 2)
+        lay.addWidget(self.preview_btn, 2, 1)
+        lay.addWidget(self.cancel_btn, 2, 3)
+        lay.addWidget(self.ok_btn, 2, 4)
+        
+        self.setLayout(lay)
+        
+        self.algorithm_dd.currentIndexChanged.connect(self.on_algorithm_change)
+        self.apply_btn.clicked.connect(self.on_apply)
+        self.ok_btn.clicked.connect(self.on_ok)
+        self.cancel_btn.clicked.connect(self.on_cancel)
+    
+    def get_norm(self):
+        self.exec_()
+    
+    def on_apply(self):
+        self.apply_norm()
+    
+    def apply_norm(self):
+        cind = self.algorithm_dd.currentIndex()
+        for spec in self.spectra:
+            try:
+                par_dict = eval("dict(%s)" % self.params_le.text())
+                self.algos[cind][2](spec, **par_dict)
+            except:
+                print "oops, there was a problem carrying out the norm"
+    
+    def on_cancel(self):
+        for spec_idx in range(len(self.spectra)):
+            self.spectra[spec_idx].norm = self.orig_norms[spec_idx]
+        self.reject()
+    
+    def on_ok(self):
+        self.apply_norm()
+        self.accept()
+    
+    def on_algorithm_change(self):
+        cind = self.algorithm_dd.currentIndex()
+        self.params_le.setText(self.algos[cind][1])
 
 if __name__ == "__main__":
     qap = QApplication([])

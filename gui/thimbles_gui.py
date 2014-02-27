@@ -1,25 +1,21 @@
 import sys
 import os
+import time
 import numpy as np
+import scipy.optimize
 import matplotlib
 matplotlib.use('Qt4Agg')
 
-import scipy.optimize
-
-try: 
-    from PySide import QtCore,QtGui
-    from PySide.QtCore import *
-    from PySide.QtGui import *
-    matplotlib.rcParams['backend.qt4'] = 'PySide'
-except ImportError:
-    from PyQt4.QtCore import *
-    from PyQt4.QtGui import *
-    matplotlib.rcParams['backend.qt4'] = 'PyQt4'
+from PySide import QtCore,QtGui
+from PySide.QtCore import *
+from PySide.QtGui import *
+matplotlib.rcParams['backend.qt4'] = 'PySide'
 
 import matplotlib.pyplot as plt
-from  models import *
-from views import *
-from widgets import *
+import models
+import views
+import widgets
+import dialogs
 
 import thimbles as tmb
 _resources_dir = os.path.join(os.path.dirname(__file__),"resources")
@@ -35,20 +31,20 @@ class AppForm(QMainWindow):
         self.options = options
         
         self.layout = QHBoxLayout()
-        self.main_table_model = MainTableModel()
+        self.main_table_model = models.MainTableModel()
         
         self.rfunc = eval("tmb.io.%s" % options.read_func)
         
         for sfile_name in options.spectra_files:
             try:
-                spec_list, spec_inf = self.rfunc(sfile_name)
+                spec_list = self.rfunc(sfile_name)
                 if options.norm == "auto":
                     for spec in spec_list:
                         spec.approx_norm()
                 for spec in spec_list:
                     spec.set_rv(options.rv)
                 base_name = os.path.basename(sfile_name)
-                spec_row = SpectraRow(spec_list, base_name)
+                spec_row = models.SpectraRow(spec_list, base_name)
                 self.main_table_model.addRow(spec_row)
             except Exception as e:
                 print "there was an error reading file %s" % sfile_name
@@ -58,7 +54,8 @@ class AppForm(QMainWindow):
             try:
                 ldat = np.loadtxt(options.line_list ,skiprows=1, usecols=[0, 1, 2, 3])
                 base_name = os.path.basename(options.line_list)
-                ll_row = LineListRow(ldat, base_name)
+                ll_row = models.LineListRow(ldat, base_name)
+                self.main_table_model.addRow(ll_row)
             except Exception as e:
                 print "there was an error reading file %s" % options.line_list
                 print e
@@ -67,7 +64,7 @@ class AppForm(QMainWindow):
         self.partial_result = None
         self.current_operation = None
 
-        self.main_table_view = NameTypeTableView(self)
+        self.main_table_view = views.NameTypeTableView(self)
         self.main_table_view.setModel(self.main_table_model)
         self.main_table_view.setColumnWidth(0, 200)
         self.main_table_view.setColumnWidth(1, 200)
@@ -113,11 +110,13 @@ class AppForm(QMainWindow):
         btn_grid = QGridLayout()
         self.load_btn = QPushButton("load")
         self.norm_btn = QPushButton("norm")
+        self.rv_btn = QPushButton("set rv")
         self.fit_features_btn = QPushButton("fit features")
         #self.tell_btn = QPushButton("extract telluric")
         btn_grid.addWidget(self.load_btn, 0, 0, 1, 1)
         btn_grid.addWidget(self.norm_btn, 1, 0, 1, 1)
-        btn_grid.addWidget(self.fit_features_btn, 2, 0, 1, 1)
+        btn_grid.addWidget(self.rv_btn, 2, 0, 1, 1)
+        btn_grid.addWidget(self.fit_features_btn, 3, 0, 1, 1)
         #btn_grid.addWidget(self.tell_btn, 1, 0, 1, 1)
         op_box.setLayout(btn_grid)
         return op_box
@@ -148,10 +147,12 @@ class AppForm(QMainWindow):
     
     def _connect(self):
         self.main_table_view.doubleClicked.connect(self.on_double_click)
+        self.rv_btn.clicked.connect(self.on_set_rv)
         self.div_btn.clicked.connect(self.on_div)
         self.eq_btn.clicked.connect(self.on_eq)
-        self.load_btn.clicked.connect(self.on_load_spectrum)
+        self.load_btn.clicked.connect(self.on_load)
         self.fit_features_btn.clicked.connect(self.on_fit_features)
+        self.norm_btn.clicked.connect(self.on_norm)
     
     def get_row(self, row):
         return self.main_table_model.rows[row]
@@ -216,36 +217,52 @@ class AppForm(QMainWindow):
             if row.type_id == "spectra":
                 spec = row.data
                 spec_name = row.name
-            elif self.main_table_model.types[row] == "line list":
+            elif row.type_id == "line list":
                 ll = row.data
                 ll_name = row.name
         if spec != None and ll != None:
+            print ll
+            print spec
             culled, feat_spec_idxs = self.cull_lines(spec, ll)
             if len(culled) == 0:
                 print "no features survived the culling! check your wavelength solution"
                 return
             fit_features = self.initial_feature_fit(spec, culled, feat_spec_idxs)
-            frow = FeaturesRow(fit_features, "")
-            features_name = "%s %s features" % (spec_name, ll_name)
-            self.main_table_model.addRow((spec, fit_features, feat_spec_idxs, options.fwidth)) 
+            features_name = "features from %s %s" % (spec_name, ll_name)
+            frow = models.FeaturesRow((spec, fit_features, feat_spec_idxs, options.fwidth), features_name)
+            self.main_table_model.addRow(frow)
     
     def on_set_rv(self):
-        pass
+        smod = self.main_table_view.selectionModel()
+        selrows = smod.selectedRows()
+        if len(selrows) != 1:
+            return
+        row = self.get_row(selrows[0].row())
+        if row.type_id == "spectra":
+            rvdialog = dialogs.RVSettingDialog(row.data, self)
+            row.widgets["rv"] = rvdialog
+            rvdialog.set_rv()
     
-    def on_load_spectrum(self):
-        fname, filters = QFileDialog.getOpenFileName(self, "load spectrum")
-        lspec, inf = self.rfunc(fname)
-        try:
-            spec_list, spec_inf = self.rfunc(fname)
-            if options.norm == "auto":
-                for spec in spec_list:
-                    spec.approx_norm()
-            base_name = os.path.basename(fname)
-            self.main_table_model.addItem(base_name, "spectra", lspec)
-        except Exception as e:
-            print "there was an error reading file %s" % fname
-            print e 
+    def on_norm(self):
+        smod = self.main_table_view.selectionModel()
+        selrows = smod.selectedRows()
+        row_idxs = [r.row() for r in selrows]
+        row_objs = [self.get_row(idx) for idx in row_idxs]
+        for row in row_objs:
+            if row.type_id == "spectra":
+                nd = dialogs.NormalizationDialog(row.data)
+                nd.get_norm()
+                #for spec in row.data:
+                #    spec.approx_norm()
     
+    def on_load(self):
+        ld = dialogs.LoadDialog()
+        new_row = ld.get_row()
+        if isinstance(new_row, models.MainTableRow):
+            print "new row"
+            print new_row
+            print "data", new_row.data
+            self.main_table_model.addRow(new_row)
     
     def cull_lines(self, spectra, ldat):
         new_ldat = []
@@ -268,6 +285,11 @@ class AppForm(QMainWindow):
         return new_ldat, line_spec_idxs
     
     def initial_feature_fit(self, spectra, ldat, feat_spec_idxs):
+        first_feats = self.preconditioned_feature_fit(spectra, ldat, feat_spec_idxs)
+        #TODO: refit and condition on the distribution of parameters
+        return first_feats
+    
+    def preconditioned_feature_fit(self, spectra, ldat, feat_spec_idxs):
         features = []
         for feat_idx in range(len(ldat)):
             print "fitting feature", feat_idx + 1
@@ -282,38 +304,49 @@ class AppForm(QMainWindow):
             nflux = flux/norm
             
             tp = tmb.features.AtomicTransition(cwv, cid, cloggf, cep)
-            start_p = np.array([0.0, 0.1, 0.0])
+            wvdel = np.abs(wvs[1]-wvs[0])
+            start_p = np.array([0.0, wvdel, 0.0])
             lprof = tmb.line_profiles.Voigt(cwv, start_p)
-            eq = 0.001
+            eq = 0.005
             nf = tmb.features.Feature(lprof, eq, 0.00, tp)
             
             wv_del = (wvs[-1]-wvs[0])/float(len(wvs))
             def resids(pvec):
-                ew=pvec[0]
-                pr = lprof.get_profile(wvs, pvec[1:])
-                lsig = pvec[2]
-                coff = pvec[1]
+                pr = lprof.get_profile(wvs, pvec[2:])
+                ew, relnorm, off, g_sig, l_sig = pvec
                 sig_reg = 0
-                if lsig < 0.5*wv_del:
-                    sig_reg = 20.0*(lsig-0.5*wv_del)
-                return np.hstack(((nflux - 1.0)+ew*pr, sig_reg))
+                rndiff = np.abs(relnorm-1.0)
+                if rndiff > 0.15:
+                    sig_reg += 100.0*(rndiff - 0.15)
+                if g_sig < 0.5*wv_del:
+                    sig_reg += 20.0*np.abs(g_sig-0.5*wv_del)
+                if np.abs(l_sig) > 1.0*wv_del:
+                    sig_reg += 100.0*np.abs((l_sig-1.0*wv_del))
+                fdiff = nflux-(1.0-ew*pr)*relnorm
+                return np.hstack((fdiff ,sig_reg))
             
-            guessv = np.hstack((0.05, start_p))
-            fit_res = fit_feature = scipy.optimize.leastsq(resids, guessv)
+            guessv = np.hstack((0.05, 1.0, start_p))
+            fit_res = scipy.optimize.leastsq(resids, guessv)
             fit = fit_res[0]
-            fit[2:] = np.abs(fit[2:])
-            lprof.set_parameters(fit[1:])
+            fit[3:] = np.abs(fit[3:])
+            lprof.set_parameters(fit[2:])
+            nf.relative_continuum = fit[1]
             nf.set_eq_width(fit[0]) 
             features.append(nf)
+            
+        fparams = np.array([f.profile.get_parameters() for f in features])
+        pmed = np.median(fparams, axis=0)
+        pmad = np.median(np.abs(fparams-pmed), axis=0)
+        
         return features
     
     def _init_fit_widget(self):
-        self.fit_widget = FeatureFitWidget(self.spec, self.features, 0, self.options.fwidth, parent=self)
+        self.fit_widget = widgets.FeatureFitWidget(self.spec, self.features, 0, self.options.fwidth, parent=self)
         self.layout.addWidget(self.fit_widget, 0, 0, 1, 1)
     
     def save (self):
         QMessageBox.about(self, "Save MSG", "SAVE THE DATA\nTODO")
-
+    
     def undo (self):
         QMessageBox.about(self, "Undo", "UNDO THE DATA\nTODO")
     
@@ -321,7 +354,7 @@ class AppForm(QMainWindow):
         QMessageBox.about(self, "Redo", "REDO THE DATA\nTODO")
 
     def _init_actions(self):
-
+        
         self.menu_actions = {}
         
         self.menu_actions['save'] = QtGui.QAction(QtGui.QIcon(_resources_dir+'/images/save.png'),
@@ -413,9 +446,17 @@ class MainApplication (QApplication):
         self.aboutToQuit.connect(self.on_quit)
         screen_rect = self.desktop().screenGeometry()
         size = screen_rect.width(), screen_rect.height()
+        self.splash = QSplashScreen(QPixmap("splash_screen.png"), Qt.WindowStaysOnTopHint)
+        self.splash.show()
+        #time.sleep(0.01)
+        #self.processEvents()
+        for i in range(10):
+            self.processEvents()
+            time.sleep(0.001)
         # TODO: use size to make main window the full screen size
         self.main_window = AppForm(options)
         self.main_window.show()
+        self.splash.finish(self.main_window)
     
     def on_quit (self):
         pass
@@ -435,10 +476,14 @@ if __name__ == "__main__":
     parser.add_argument("-line_list", "-ll", help="the path to a linelist file to load")
     parser.add_argument("-fwidth", "-fw",  type=float, default=3.0, 
                         help="the number of angstroms on either side of the current feature to display while fitting")
-    parser.add_argument("-read_func", default="read_fits")
+    parser.add_argument("-read_func", default="read")
     parser.add_argument("-rv", type=float, default=0.0, help="optional radial velocity shift to apply")
     #parser.add_argument("-order", type=int, default=0, help="if there are multiple spectra specify which one to pull up")
     parser.add_argument("-norm", default="ones", help="how to normalize the spectra on readin options are ones and auto' ")
+    parser.add_argument("-gaussian", "-g", action="store_true", help="force pure gaussian fits")
+    parser.add_argument("-auto_fit", action="store_true", help="automatically do the equivalent width measurements")
+    parser.add_argument("-output", "-o", default="thimbles_out.pkl", help="the name of the output file when doing automated outputs")
+    #parser.add_argument("-no_window", "-nw", action="store_true", help="suppress the GUI window")
     options = parser.parse_args()
     
     main(options)

@@ -12,8 +12,7 @@ import os
 
 # ########################################################################### #
 
-has_package = {'numpy':True}
-# TODO: make this be a yaml file which has the data. 
+has_package = {}
 
 try:
     import numpy

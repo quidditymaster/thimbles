@@ -108,6 +108,7 @@ class MainTableRow(object):
         self.data = data
         self.name = name
         self.type_id = "misc"
+        self.widgets = {}
     
     def on_double_click(self):
         pass
@@ -115,37 +116,38 @@ class MainTableRow(object):
 class SpectraRow(MainTableRow):
     
     def __init__(self, data, name="some spectra"):
-        super(SpectraRow, self).__init__(self, data, name)
+        super(SpectraRow, self).__init__(data, name)
         self.type_id = "spectra"
     
     def on_double_click(self):
         fig = plt.figure()
+        print self.data
+        print "len of data", len(self.data)
         ax = fig.add_subplot(111)
         for i in range(len(self.data)):
             ax.plot(self.data[i].wv, self.data[i].flux, c="b")
+            ax.plot(self.data[i].wv, self.data[i].norm, c="g")
         plt.show()
 
 class LineListRow(MainTableRow):
 
     def __init__(self, data, name="some line list"):
-        super(LineListRow, self).__init__(self, data, name)
+        super(LineListRow, self).__init__(data, name)
         self.type_id = "line list"
 
 class FeaturesRow(MainTableRow):
     
     def __init__(self, data, name="some features"):
-        super(FeaturesRow, self).__init__(self, data, name)
+        super(FeaturesRow, self).__init__(data, name)
         self.type_id = "features"
         self.widget = None
     
     def on_double_click(self):
-        if self.widget == None:
-            spec, features, feat_spec_idxs = self.data
-            fw = FeatureFitWidget(spec, features, 0, feat_spec_idxs, 3.0, None)
-            self.widget = fw
-            self.widget.show()
-        else:
-            self.widget.show()
+        print "feature double click"
+        spec, features, feat_spec_idxs, fwidth = self.data
+        fw = FeatureFitWidget(spec, features, 0, feat_spec_idxs, fwidth, None)
+        self.widget = fw
+        self.widget.show()
     
 class MainTableModel(QAbstractTableModel):
     
@@ -156,10 +158,10 @@ class MainTableModel(QAbstractTableModel):
         self.rows = rows
         self.header_text = ["----------object name--------", "------type-------"]
     
-    def rowCount(self):
+    def rowCount(self, parent=QModelIndex()):
         return len(self.rows)
     
-    def columnCount(self):
+    def columnCount(self, parent=QModelIndex()):
         return 2
     
     def headerData(self, section, orientation, role):
@@ -253,102 +255,4 @@ class NameTypeTableModel(QAbstractTableModel):
         if role == Qt.EditRole:
             if row == 0:
                 self.names[row] = value
-
-class TypedGroupableItemModel(QAbstractItemModel):
-    
-    def __init__(self, group_types=None):
-        super(TypedGroupableItemModel, self).__init__()
-        if group_types == None:
-            group_types = []
-        if "misc" not in [gt.name for gt in group_types]:
-            group_types.append(GroupType("misc", []))
-        self.group_types = {}
-        self.groups = {}
-        for gt in group_types:
-            self.group_types[gt.name] = gt
-            self.groups[gt.name] = []
-    
-    def rowCount(self, parent=QModelIndex()):
-        if parent==QModelIndex():
-            return len(self.group_types)
-        ip = parent.internalPointer()
-        return ip.rowCount()
-    
-    def columnCount(self, parent=QModelIndex()):
-        return 2
-    
-    def add_group(self, group, type_name):
-        self.groups[type_name].append(group)
-
-class GroupType(object):
-    
-    def __init__(self, type_name, columns):
-        self.name = type_name
-        self.columns = columns
-
-class ItemGroup(object):
-    
-    def __init__(self, name, items):
-        self.name = group_name
-        self.items = items
-    
-    def rowCount(self):
-        return len(self.items)
-
-class GroupItem(object):
-    
-    def __init__(self, name, data):
-        self.name = name
-        self.data = data
-
-class GroupableItemModel(QAbstractItemModel):
-    
-    def __init__(self, data, groups):
-        self._data = data
-        self._groups = groups
-    
-    def rowCount(self, parent=QModelIndex()):
-        if parent == QModelIndex():
-            return len(self._groups)
-        else:
-            group_row = parent.row()
-            return self._groups[group_row].rowCount()
-    
-    def columnCount(self, parent=QModelIndex()):
-        return 1
-    
-    def index(row, column, parent=QModelIndex()):
-        if not self.hasIndex(row, column, parent):
-            return QModelIndex()
-        if parent == QModelIndex():
-            return self.createIndex(row, column, QModelIndex())
-        if childItem:
-            pass
-
-    #def headerData(self, section, orientation, role):
-    #    if role == Qt.DisplayRole:
-    #        if orientation == Qt.Horizontal:
-    #            return self.columns[section].name
-    #
-    #def flags(self, index):
-    #    col = index.column()
-    #    return self.columns[col].qt_flag
-    #
-    def data(self, index, role=Qt.DisplayRole):
-        parent = index.parent()
-        row, col = index.row(), index.column()
-        if parent == QModelIndex():
-            return self._groups[row].name
-        else:
-            parent_row = index.parent().row()
-            return col_obj.get(data_obj, role)
-    
-    def setData(self, index, value, role=Qt.EditRole):
-        row, col = index.row(), index.column()
-        data_obj = self._data[row]
-        col_obj = self.columns[col]
-        try:
-            col_obj.set(data_obj, value, role)
-        except:
-            return False
 

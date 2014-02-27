@@ -368,7 +368,7 @@ class WavelengthSolution(CoordinateBinning1d):
         self.emitter_frame.set_rv(rv)
     
     def get_rv(self):
-        self.emitter_frame.get_rv()
+        return self.emitter_frame.get_rv()
     
     
     #     def dx_dlam(self, wvs, frame="emitter"):        
@@ -449,6 +449,9 @@ class Spectrum(object):
     
     def set_rv(self, rv):
         self.wv_soln.set_rv(rv)
+    
+    def get_rv(self):
+        return self.wv_soln.get_rv()
     
     def get_wvs(self, pixels=None, frame="emitter"):    
         return self.wv_soln.get_wvs(pixels, frame)

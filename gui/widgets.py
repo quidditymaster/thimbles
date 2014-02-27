@@ -15,10 +15,12 @@ from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt4agg import NavigationToolbar2QTAgg as NavigationToolbar
 from matplotlib.figure import Figure
 
-from models import *
+from PySide.QtGui import *
+from PySide.QtCore import *
+
+import models
 import views
 import thimbles as tmb
-
 
 class SpectraWidget(QDialog):
     pass
@@ -379,7 +381,7 @@ class PrevNext(QWidget):
         else:
             self.play()
 
-class FeatureFitWidget(QDialog):
+class FeatureFitWidget(QWidget):
     slidersChanged = Signal(int)
     
     def __init__(self, spectra, features, feature_idx, feat_spec_idxs, display_width, parent=None):
@@ -429,7 +431,7 @@ class FeatureFitWidget(QDialog):
         self._init_slider_vals()
         self._internal_connect()
         self.setLayout(self.lay)
-    
+
     def minimumSizeHint(self):
         return QSize(500, 500)
     
@@ -440,7 +442,7 @@ class FeatureFitWidget(QDialog):
         
     def save_measurements(self):
         fname, file_filter = QFileDialog.getSaveFileName(self, "save measurements")
-        llout = tmb.stellar_atmospheres.moog_utils.write_moog_lines_in(fname)
+        llout = tmb.stellar_atmospheres.utils.moog_utils.write_moog_lines_in(fname)
         for feat in self.features:
             wv=feat.wv
             spe=feat.species
@@ -517,21 +519,21 @@ class FeatureFitWidget(QDialog):
     def _init_feature_table(self):
         drole = Qt.DisplayRole
         crole = Qt.CheckStateRole
-        wvcol = Column("Wavelength", getter_dict = {drole: lambda x: "%10.3f" % x.wv})
-        spcol = Column("Species", getter_dict = {drole: lambda x: "%10.3f" % x.species})
-        epcol = Column("Excitation\nPotential", {drole: lambda x:"%10.3f" % x.ep})
-        loggfcol = Column("log(gf)", {drole: lambda x: "%10.3f" % x.loggf})        
-        offsetcol = Column("Offset", {drole: lambda x: "%10.3f" % x.get_offset()})
-        depthcol = Column("Depth", {drole: lambda x: "%10.3f" % x.depth})
-        sigcol = Column("sigma", {drole: lambda x: "% 10.3f" % x.profile.get_parameters()[1]})
-        gamcol = Column("gamma", {drole: lambda x: "% 10.3f" % x.profile.get_parameters()[2]})
-        ewcol = Column("Equivalent\nWidth", {drole: lambda x: "%10.2f" % (1000.0*x.eq_width)})
+        wvcol = models.Column("Wavelength", getter_dict = {drole: lambda x: "%10.3f" % x.wv})
+        spcol = models.Column("Species", getter_dict = {drole: lambda x: "%10.3f" % x.species})
+        epcol = models.Column("Excitation\nPotential", {drole: lambda x:"%10.3f" % x.ep})
+        loggfcol = models.Column("log(gf)", {drole: lambda x: "%10.3f" % x.loggf})        
+        offsetcol = models.Column("Offset", {drole: lambda x: "%10.3f" % x.get_offset()})
+        depthcol = models.Column("Depth", {drole: lambda x: "%10.3f" % x.depth})
+        sigcol = models.Column("sigma", {drole: lambda x: "% 10.3f" % x.profile.get_parameters()[1]})
+        gamcol = models.Column("gamma", {drole: lambda x: "% 10.3f" % x.profile.get_parameters()[2]})
+        ewcol = models.Column("Equivalent\nWidth", {drole: lambda x: "%10.2f" % (1000.0*x.eq_width)})
         #viewedcol = Column("Viewed", getter_dict={crole: dummy_func}, setter_dict={crole: flag_setter_factory("viewed")}, checkable=True)
         
         #ewcol = Column("depth"
         columns = [wvcol, spcol, epcol, loggfcol, offsetcol, 
                    depthcol, sigcol, gamcol, ewcol]#, viewedcol]
-        self.linelist_model = ConfigurableTableModel(self.features, columns)
+        self.linelist_model = models.ConfigurableTableModel(self.features, columns)
         self.linelist_view = views.LineListView(parent=self)
         self.linelist_view.setModel(self.linelist_model)
         self.linelist_view.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -572,6 +574,11 @@ class FeatureFitWidget(QDialog):
         xlim_min = feat_wv-self.display_width
         xlim_max = feat_wv+self.display_width
         self.fit_axis(0).set_xlim(xlim_min, xlim_max)
+        bspec = self.bounded_spec()
+        ymin, ymax = np.min(bspec.flux), np.max(bspec.flux)
+        ydelta = ymax-ymin
+        extra_frac = 0.05
+        self.fit_axis(0).set_ylim(ymin-extra_frac*ydelta, ymax+extra_frac*ydelta)
         self.update_plots()
     
     def _connect_sliders(self):

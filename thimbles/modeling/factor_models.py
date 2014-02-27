@@ -2,6 +2,8 @@ import numpy as np
 import scipy.sparse as sparse
 import matplotlib.pyplot as plt
 
+import thimbles as tmb
+
 class ParameterBag(object):
     """a dummy class for conveniently passing around information.
     
@@ -23,51 +25,92 @@ class ParameterBag(object):
             self.__dict__[key] = value
 
 
-class Predictor(object):
-    
-    def __init__(self, delta_func, sigma_func, gamma_func):
-        self.delta_func = delta_func
-        self.sigma_func = sigma_func
-        self.gamma_func = gamma_func
-    
-    def __call__(self, alpha, beta, pbag):
-        alpha_delta = self.delta_func(alpha, beta, pbag)
-        dsig = self.sigma_func(alpha, beta, pbag)
-        dgamma = self.gamma_func(alpha, beta, pbag)
-        return alpha_delta, dsig, dgamma
-
 class LocallyLinearModel(object):
-    """
+    """A representation of a model whose values are a smooth
+    function of its parameters both internal and input.
+
+    the external parameter linear expansion operator and the
+    internal parameter linear operator expansion are cached
+    internally and a flag to recalculate them is set when
+    set_params is called. For most efficient use, set the
+    parameters once and then don't pass any parameters in
+    to the "get_" functions. (if you pass a alpha, beta or pbag
+    in it is assumed you don't want the stored alpha, beta, pbag
+    and so you will need to recalculate anyway but the results 
+    are not cached.)
     """
     
-    def __init__(self, alpha0, eval_func, op_func, predictors=None, alpha_eps=1e-7):
+    def __init__(self, alpha0, beta0, pbag, eval_func, op_func, predictors=None, alpha_eps=1e-7):
         self._alpha = np.asarray(alpha0)
+        self._beta = np.asarray(beta0)
+        if pbag == None:
+            pbag = ParameterBag()
+        self._pbag = pbag
         self.n_alpha = len(self._alpha)
         self.eval_func = eval_func
         self.op_func = op_func
-        self.alpha_eps
+        self.alpha_eps = alpha_eps
         if predictors == None:
             predictors = []
         self.predictors = predictors
+        self._recalculate = True
     
-    def __call__(self, alpha, beta, pbag):
-        return self.eval_func(alpha, beta, pbag)
+    def get_params(self, alpha=None, beta=None, pbag=None):
+        if alpha == None:
+            alpha = self._alpha
+        if beta == None:
+            beta = self._beta
+        if pbag == None:
+            pbag = self._pbag
+        return alpha, beta, pbag
     
-    def get_lop(self, alpha, beta, pbag):
-        """return a linear expansion of this operator given the current _alpha
-        and expanded around the current beta (if this operator is truly linear
-        there is no beta dependence).
+    def __call__(self, alpha=None, beta=None, pbag=None):
+        return self.eval_func(*self.get_params(alpha, beta, pbag))
+    
+    def recalculate(self):
+        """force the local operators to be recalculated
         """
-        return self.op_func(alpha, beta, pbag)
+        self._lop, self._alpha_der, self._alpha_curve = self.get_differential_operators(*self.get_params())
+        self._recalculate = False
     
-    def get_differential_operators(self, alpha, beta, pbag):
+    def get_lop(self, alpha=None, beta=None, pbag=None):
+        """return a linear operator expansion with respect to
+        the external (beta) input parameters.
+        """
+        if (alpha==None) and (beta==None) and (pbag==None):
+            if self._recalculate:
+                self.recalculate()
+            return self._lop
+        else:
+            abp = self.get_params(alpha, beta, pbag)
+            return self.op_func(*abp)
+    
+    def get_alpha_der(self, alpha=None, beta=None, pbag=None):
+        """the local linear operator turning delta alpha into
+        a delta on the output parameters of this model, given
+        the current or passed in beta.
+        """
+        if (alpha==None) and (beta==None) and (pbag==None):
+            if self._recalculate:
+                self.recalculate()
+            return self._alpha_der
+        else:
+            abp = self.get_params(alpha, beta, pbag)
+            lop, alpha_der, alpha_curve =  self.get_differential_operators(*abp)
+            return alpha_der
+    
+    def get_differential_operators(self, alpha=None, beta=None, pbag=None):
+        """get all the differentials at once
+        """
+        alpha, beta, pbag = self.get_params(alpha, beta, pbag)
         delta_vecs = self.alpha_eps*np.eye(self.n_alpha)
         delta_columns = []
         curve_columns = []
         central_lop = self.get_lop(alpha, beta, pbag)
         for i in range(self.n_alpha):
-            plus_op = self.get_op(alpha+delta_vecs[0], beta, pbag)
-            minus_op = self.get_op(alpha-delta_vecs[0], beta, pbag)
+            #import pdb; pdb.set_trace()
+            plus_op = self.get_lop(alpha+delta_vecs[0], beta, pbag)
+            minus_op = self.get_lop(alpha-delta_vecs[0], beta, pbag)
             delta_op = (plus_op - minus_op)/(2*self.alpha_eps)
             curve_op = (plus_op - 2*central_lop + minus_op)/(self.alpha_eps**2)
             delta_col = delta_op*beta
@@ -78,42 +121,49 @@ class LocallyLinearModel(object):
             alpha_der = None
             alpha_curve = None
         else:
-            alpha_der = sparse.bmat(delta_columns)
-            alpha_curve = sparse.bmat(curve_columns)
+            alpha_der = sparse.bmat(delta_columns).transpose()
+            alpha_curve = sparse.bmat(curve_columns).transpose()
         #return a tuple of locally_linear_operator, alpha_derivative_operator, alpha_curvature_operator
         return central_lop, alpha_der, alpha_curve
     
     def evaluate_predictors(self, alpha, beta, pbag):
-        pred_deltas = []
-        pred_sigmas = []
-        pred_gammas = []
-        for predictor in self.predictors:
-            #predictor_allowed = True
-            #if predictor_min <= predictor.level <= predictor_max:
-            #    if not predictor.id_ in allowed_ids:
-            #        predictor_allowed=False
-            #if predictor.id_ in excluded_ids:
-            #    predictor_allowed=False
-            #if predictor_allowed:
-            if True:
-                pd, ps, pg = predictor(alpha, beta, pbag)
-                pred_deltas.append(pred_deltas)
-                pred_sigmas.append(pred_sigmas)
-                pred_gammas.append(pred_gammas)
-        return pred_deltas, pred_sigmas, pred_gammas
-
-    def set_alpha(self, alpha):
+        #TODO:
+        return None, None, None
+    
+    def set_params(self, alpha=None, beta=None, pbag=None):
+        if alpha == None:
+            alpha = self._alpha
+        if beta == None:
+            beta = self._beta
+        if pbag == None:
+            pbag = self._pbag
         self._alpha = alpha
-
+        self._beta = beta
+        self._pbag = pbag
+        self._recalculate = True
+    
     @property
     def alpha(self):
         return self._alpha
+    
+    @property
+    def beta(self):
+        return self._beta
 
+    @property
+    def pbag(self):
+        return self._pbag
+
+
+class MatrixModel(LocallyLinearModel):
+    
+    def __init__(self, alpha0, beta0, matrix_func, predictors=None, alpha_eps=None):
+        raise NotImplemented
 
 class CollapsedMatrixModel(LocallyLinearModel):
     """ 
     """
-    def __init__(self, alpha0, beta_internal0, matrix_generator, predictors=None, alpha_eps=1e-7):
+    def __init__(self, alpha0, beta0, matrix_generator, predictors=None, alpha_eps=1e-7):
         self.alpha_int = np.asarray(alpha0)
         self.beta_int = np.asarray(beta_internal0)
         self.n_alpha = len(self._alpha)
@@ -229,8 +279,5 @@ class IdentityOperation(object):
     
     def __rsub__(self, other):
         return other
+
     
-if __name__ == "__main__":
-    
-    def gaussian_mat(pvec, junk, pbag):
-        pass

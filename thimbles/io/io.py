@@ -26,9 +26,10 @@ from ..metadata import MetaData
 
 # ########################################################################### #
 
-__all__ = ["query_fits_header","wavelength_solution_functions",
+
+__all__ = ["read","read_txt","read_fits",
+           "query_fits_header","WavelengthSolutionFunctions",
            "ExtractWavelengthCoefficients",
-           
            "read","read_txt","read_fits","read_fits_hdu","read_bintablehdu",
            "read_many_fits"]
 
@@ -920,6 +921,76 @@ class ExtractWavelengthCoefficients (object):
     
         histories = self.header['HISTORY']   
         get_spectre_d = lambda x: x[11:17]
+        
+        def parse_timetag (hist_line):
+            date_str = hist_line[:10]
+            day,month,year = [int(s) for s in date_str.split(":")]
+            timetag = time.mktime((year,month,day,0,0,0,0,0,0))
+            return timetag
+            
+        def parse_coefficients (hist_line):
+            coeffs = hist_line[18:36],hist_line[36:54],hist_line[54:]
+            coeffs = [float(c.replace("D","e")) for c in coeffs]
+            return coeffs
+            
+        spectre_history = {}    
+        for i,hist_line in enumerate(histories):
+            ds1 = get_spectre_d(hist_line) 
+            if ds1 != 'D1,2,3':
+                continue
+            
+            if i+2 >= len(histories):
+                continue
+            
+            # get the current and next two history lines
+            hl1 = hist_line
+            hl2 = histories[i+1]
+            hl3 = histories[i+2]
+            
+            # check tags
+            ds2 = get_spectre_d(hl2)
+            ds3 = get_spectre_d(hl3)
+            if ds2 != "D4,5,6" or ds3 != "D7,8,9":
+                warnings.warn("Expected next two history lines "
+                              "to have D4,5,6 and D7,8,9")
+                continue
+                
+            # check time stamp
+            tt1 = parse_timetag(hl1)
+            tt2 = parse_timetag(hl2)
+            tt3 = parse_timetag(hl3)
+            if not (tt1==tt2 and tt2==tt3):
+                # time for these tags must be the same
+                continue 
+        
+            c1 = parse_coefficients(hl1)
+            c2 = parse_coefficients(hl2)
+            disp_info = parse_coefficients(hl3)
+            coeff = c1+c2 
+            
+            # cheby poly may need disp_info[0]
+            # disp_info[0] == c(7)
+            # disp_info[1] == c(8)
+            # from SPECTRE: 
+            # c20    p = (point - c(6))/c(7)
+            # c      xpt = (2.*p-(c(9)+c(8)))/(c(9)-c(8))
+            if disp_info[2] == 1: 
+                disp_type = 'chebyshev poly'
+            elif disp_info[2] == 2: 
+                disp_type = 'legrendre poly'
+            elif disp_info[2] == 3:
+                warnings.warn("check the output, I think I may need to use disp_info[1]  (timbles.io.io.ExtractWavelengthCoefficients) ")
+                # from SPECTRE: s = (point-1.)/(real(npt)-1.)*c(8)
+                # c(8) == disp_info[1] ==> true
+                disp_type = 'spline3'
+            else: 
+                disp_type = 'poly' # but likely the orders > 1 have coefficients zero
+       
+            extra_data= ['used header to get SPECRE HISTORY tags, function:'+disp_type+', to apply wl=function(pts)',[hl1,hl2,hl3]]
+            spectre_history[tt1] = (extra_data,disp_type,coeff) 
+                
+        return spectre_history
+
         
         def parse_timetag (hist_line):
             date_str = hist_line[:10]

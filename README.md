@@ -6,6 +6,11 @@ Tools for Handling Intricate Measurements on Breathtakingly Large Ensembles of S
 
 # Dependencies
 
+numpy
+matplotlib
+h5py
+PySide
+
 # Installation
 
 # Credit

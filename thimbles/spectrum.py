@@ -361,7 +361,7 @@ class WavelengthSolution(CoordinateBinning1d):
         return self.telescope_to_frame(obs_wvs, frame=frame)
     
     def get_pix(self, wvs, frame="emitter"):
-        shift_wvs = self.frame_to_telescope(wvs)
+        shift_wvs = self.frame_to_telescope(wvs, frame="emitter")
         return self.coordinates_to_indicies(shift_wvs)
     
     def set_rv(self, rv):
@@ -370,18 +370,28 @@ class WavelengthSolution(CoordinateBinning1d):
     def get_rv(self):
         return self.emitter_frame.get_rv()
     
-    
-    #     def dx_dlam(self, wvs, frame="emitter"):        
-    #         return scipy.misc.central_diff_weights(self.get_pix(wvs, frame))
-    #     
-    #     def dlam_dx(self, pixels, frame="emitter"):
-    #         return scipy.misc.central_diff_weights(self.get_wvs(pixels, frame))    
-    #     
-    #def pix_sig_from_wv_sig(self, wvs, wv_sigmas, frame="emitter"):
+    #TODO: convenient/efficent functions to transform a set of pixel sigmas
+    #into a set of wavelength sigmas given the current wavelength solution
+    #and turn a set of wavelength sigmas into pixel sigmas.
+    #def dx_dlam(self, wvs, frame="emitter"):
+    #    """find the gradient in pixel space which corresponds to
+    #    a progression of wavelengths.
+    #    """
+    #    return scipy.gradient(self.get_pix(wvs, frame))
+    #
+    #def dlam_dx(self, pixels, frame="emitter"):
+    #    """find the gradients in wavelength space corresponding to 
+    #    a progression of pixels.
+    #    """
+    #    return scipy.gradient(self.get_wvs(pixels, frame))    
+    #
+    #def pix_to_wv_delta(self, wvs, wv_sigmas, frame="emitter"):
+    #    """given a set of wavelengths 
+    #    """
     #    deriv = self.dx_dlam(wvs, frame)
     #    return deriv*wv_sigmas
     #
-    #def wv_sig_from_pix_sig(self, pix_nums, pix_sigmas, frame="emitter"):
+    #def wv_to_pix_sigma(self, pix_nums, pix_sigmas, frame="emitter"):
     #    deriv = self.dlam_dx(pix_nums, frame)
     #    return deriv*pix_sigmas
 
@@ -453,7 +463,7 @@ class Spectrum(object):
     def get_rv(self):
         return self.wv_soln.get_rv()
     
-    def get_wvs(self, pixels=None, frame="emitter"):    
+    def get_wvs(self, pixels=None, frame="emitter"):
         return self.wv_soln.get_wvs(pixels, frame)
     
     def get_pix(self, wvs, frame="emitter"):

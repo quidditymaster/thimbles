@@ -187,6 +187,31 @@ class RVSettingDialog(QDialog):
         self.on_apply()
         self.accept()
 
+
+class WarningDialog(QDialog):
+    
+    def __init__(self, message, error_message=None):
+        super(WarningDialog, self).__init__()
+        lay = QGridLayout()
+        self.message_label = QLabel(message)
+        lay.addWidget(self.message_label, 0, 0, 1, 3)
+        if error_message != None:
+            self.error_text_box = QPlainTextEdit()
+            self.error_text_box.setPlainText(str(error_message))
+            self.error_text_box.setReadOnly(True)
+            lay.addWidget(self.error_text_box, 1, 0, 1, 3)
+        self.ok_btn = QPushButton("acknowledged")
+        lay.addWidget(self.ok_btn, 2, 1, 1, 1)
+        self.setLayout(lay)
+        self.ok_btn.clicked.connect(self.on_ok)
+    
+    def warn(self):
+        self.exec_()
+    
+    def on_ok(self):
+        self.accept()
+        
+
 class NormalizationDialog(QDialog):
     
     def __init__(self, spectra, parent=None):
@@ -261,8 +286,17 @@ class NormalizationDialog(QDialog):
 if __name__ == "__main__":
     qap = QApplication([])
     
-    ld = LoadDialog()
-    res = ld.get_row()
-    print "res", res
+    #ld = LoadDialog()
+    #res = ld.get_row()
+    #print "res", res
+    
+    try:
+        a, b = 0
+    except Exception as e:
+        wd = WarningDialog("warning bad stuff happened!", e)
+        wd.warn()
+    
+    wd = WarningDialog("bad selection")
+    wd.warn()
     
     #qap.exec_()

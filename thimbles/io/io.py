@@ -1410,15 +1410,18 @@ pass
 # general read function
 
 def is_many_fits (filepath):
-    if isinstance(filepath,Iterable):
-        return True
-    elif isinstance(filepath,basestring):
+    
+    if isinstance(filepath,basestring):
+        # check if this is a file with a list of files
         if not os.path.isfile(filepath):
             return False
-        for line in open(filepath,'r'):
-            if not isinstance(line.split()[0],basestring):
-                return False
+        with open(filepath,'r') as f:
+            for line in f:
+                if len(line.strip()) and line.strip()[0] != "#" and not os.path.isfile(line.rstrip().split()[0]):
+                    return False
         return True    
+    elif isinstance(filepath,Iterable):
+        return True
     else:
         return False
 

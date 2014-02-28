@@ -158,6 +158,15 @@ class AppForm(QMainWindow):
         self.norm_btn.clicked.connect(self.on_norm)
         self.compare_btn.clicked.connect(self.on_compare)
     
+    def bad_selection(self, msg=None):
+        
+        if msg == None:
+            msg = "invalid selection\n"
+        else:
+            msg = "invalid selection\n" + msg
+        wd = dialogs.WarningDialog(msg)
+        wd.warn()
+    
     def get_row(self, row):
         return self.main_table_model.rows[row]
     
@@ -185,12 +194,17 @@ class AppForm(QMainWindow):
                 for spec_set in row_data:
                     cur_c = color_cycle.next()
                     for spec in spec_set:
-                        ax.plot(spec.wv, spec.flux, c=cur_c)
+                        ax.plot(spec.wv, spec.flux/spec.norm, c=cur_c)
             plt.show()
         elif len(type_ids) == 0:
-            print "nothing selected to compare!"
+            self.bad_selection("nothing selected to compare!")
         else:
-            print "not all types matched, can only compare between like types"
+            self.bad_selection("not all types matched")
+    
+    def on_delete(self):
+        smod = self.main_table_view.selectionModel()
+        selrows = smod.selectedRows()
+        self.main_table_model.beginRemoveRows()
     
     def on_div(self):
         smod = self.main_table_view.selectionModel()
@@ -232,12 +246,13 @@ class AppForm(QMainWindow):
                     for pair_idx in range(n1):
                         left_spec = self.partial_result[pair_idx]
                         right_spec = second_operand[pair_idx]
-         
+    
     def on_fit_features(self):
         smod = self.main_table_view.selectionModel()
         selrows = smod.selectedRows()
+        selection_warn = False
         if len(selrows) != 2:
-            #self.statusBar.setText("one at a time!")
+            self.bad_selection()
             return
         row1, row2 = selrows[0].row(), selrows[1].row()
         spec = None
@@ -251,16 +266,17 @@ class AppForm(QMainWindow):
                 ll = row.data
                 ll_name = row.name
         if spec != None and ll != None:
-            print ll
-            print spec
             culled, feat_spec_idxs = self.cull_lines(spec, ll)
             if len(culled) == 0:
-                print "no features survived the culling! check your wavelength solution"
+                wd = dialogs.WarningDialog("There were no features in the overlap! \n Check your wavelength solution")
+                wd.warn()
                 return
             fit_features = self.initial_feature_fit(spec, culled, feat_spec_idxs)
             features_name = "features from %s %s" % (spec_name, ll_name)
             frow = models.FeaturesRow((spec, fit_features, feat_spec_idxs, options.fwidth), features_name)
             self.main_table_model.addRow(frow)
+        else:
+            self.bad_selection("need one line list and one spectrum")
     
     def on_set_rv(self):
         smod = self.main_table_view.selectionModel()
@@ -297,8 +313,8 @@ class AppForm(QMainWindow):
         line_spec_idxs = np.zeros(len(ldat), dtype=int)
         for spec_idx in range(len(spectra)):
             spec = spectra[spec_idx]
-            min_wv = spec.wv[0]
-            max_wv = spec.wv[-1]
+            min_wv = np.min(spec.wv)
+            max_wv = np.max(spec.wv)
             for feat_idx in range(len(ldat)):
                 cwv, cid, cep, cloggf = ldat[feat_idx]
                 if (min_wv + 0.1) < cwv < (max_wv-0.1):
@@ -316,7 +332,7 @@ class AppForm(QMainWindow):
         #TODO: refit and condition on the distribution of parameters
         return first_feats
     
-    def preconditioned_feature_fit(self, spectra, ldat, feat_spec_idxs):
+    def preconditioned_feature_fit(self, spectra, ldat, feat_spec_idxs, pvec_min, pvec_max, bound_sig):
         features = []
         for feat_idx in range(len(ldat)):
             print "fitting feature", feat_idx + 1
@@ -473,11 +489,12 @@ class MainApplication (QApplication):
         self.aboutToQuit.connect(self.on_quit)
         screen_rect = self.desktop().screenGeometry()
         size = screen_rect.width(), screen_rect.height()
-        self.splash = QSplashScreen(QPixmap("splash_screen.png"), Qt.WindowStaysOnTopHint)
+        self.spl_pic = QPixmap(os.path.join(_resources_dir, "splash_screen.png"))
+        self.splash = QSplashScreen(self.spl_pic, Qt.WindowStaysOnTopHint)
         self.splash.show()
-        #time.sleep(0.01)
-        #self.processEvents()
-        for i in range(10):
+        time.sleep(0.01)
+        self.processEvents()
+        for i in range(1000):
             self.processEvents()
             time.sleep(0.001)
         # TODO: use size to make main window the full screen size

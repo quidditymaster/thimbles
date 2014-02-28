@@ -1,24 +1,34 @@
-import sys
-import os
-import time
-from itertools import cycle, product
-import numpy as np
-import scipy.optimize
-import matplotlib
-matplotlib.use('Qt4Agg')
 
+import os
+import sys
+import time
 from PySide import QtCore,QtGui
 from PySide.QtCore import *
 from PySide.QtGui import *
-matplotlib.rcParams['backend.qt4'] = 'PySide'
 
-import matplotlib.pyplot as plt
-import models
-import views
-import widgets
-import dialogs
-
-import thimbles as tmb
+def import_items ():
+    """
+    This is so the splash screen appears while waiting for imports
+    """
+    global plt,models,views,widgets,dialogs,cycle,product,np,tmb,scipy,matplotlib
+    # standard library
+    from itertools import cycle, product
+    # 3rd party packages
+    import matplotlib
+    matplotlib.use('Qt4Agg')
+    matplotlib.rcParams['backend.qt4'] = 'PySide'
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import scipy
+    import scipy.optimize
+    # gui modules
+    import models
+    import views
+    import widgets
+    import dialogs    
+    # thimbles api
+    import thimbles as tmb
+    
 _resources_dir = os.path.join(os.path.dirname(__file__),"resources")
 
 # ########################################################################### #
@@ -487,19 +497,30 @@ class MainApplication (QApplication):
     def __init__ (self,options):
         super(MainApplication,self).__init__([])
         self.aboutToQuit.connect(self.on_quit)
-        screen_rect = self.desktop().screenGeometry()
-        size = screen_rect.width(), screen_rect.height()
+        
+        # splash screen for thimbles
         self.spl_pic = QPixmap(os.path.join(_resources_dir, "splash_screen.png"))
         self.splash = QSplashScreen(self.spl_pic, Qt.WindowStaysOnTopHint)
+        self.splash.setMask(self.spl_pic.mask())
         self.splash.show()
         time.sleep(0.01)
         self.processEvents()
-        for i in range(1000):
-            self.processEvents()
-            time.sleep(0.001)
+        
+        #for _ in xrange(100):
+        #    self.processEvents()
+        #    time.sleep(0.001)
+        
+        # globally import items
+        import_items()
+        
         # TODO: use size to make main window the full screen size
+        screen_rect = self.desktop().screenGeometry()
+        size = screen_rect.width(), screen_rect.height()
         self.main_window = AppForm(options)
+        self.main_window
         self.main_window.show()
+        
+        # close the splash window
         self.splash.finish(self.main_window)
     
     def on_quit (self):

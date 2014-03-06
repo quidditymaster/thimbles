@@ -429,6 +429,9 @@ class Spectrum(object):
         else:
             self.metadata = MetaData(metadata)
     
+    def __len__(self):
+        return len(self.flux)
+    
     def approx_norm(self):
         #TODO: put extra controls in here
         norm_res = misc.approximate_normalization(self, overwrite=True)
@@ -556,25 +559,3 @@ class Spectrum(object):
             axes.set_ylabel('Flux')
         l, = axes.plot(plot_wvs, plot_flux, **mpl_kwargs)
         return axes,l
-
-class Continuum(Spectrum):
-    
-    def __init__(self, wv_soln, flux=None):
-        wvs = wv_soln.get_wvs()
-        if flux == None:
-            flux = np.ones(wvs.shape)
-        #TODO make for proper handling of continuum error propagation
-        invvar = np.ones(wvs.shape)
-        Spectrum.__init__(self, wv_soln, flux, invvar)
-    
-    def get_continuum(self):
-        #TODO make the continuum a black body 
-        return self.flux
-    
-    def get_normalization(self):
-        return self.get_continuum()
-    
-    def get_parameter_list(self):
-        return self.parameter_list
-    
-

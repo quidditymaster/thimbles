@@ -118,6 +118,7 @@ class AppForm(QMainWindow):
         self.load_btn = QPushButton("load")
         self.norm_btn = QPushButton("norm")
         self.rv_btn = QPushButton("set rv")
+        self.ex_norm_btn = QPushButton("extract normalized")
         self.fit_features_btn = QPushButton("fit features")
         #self.tell_btn = QPushButton("extract telluric")
         btn_grid.addWidget(self.load_btn, 0, 0, 1, 1)
@@ -334,7 +335,7 @@ class AppForm(QMainWindow):
         return new_ldat, line_spec_idxs
     
     def initial_feature_fit(self, spectra, ldat, feat_spec_idxs):
-        first_feats = self.preconditioned_feature_fit(spectra, ldat, feat_spec_idxs)
+        first_feats = self.preconditioned_feature_fit(spectra, ldat, feat_spec_idxs, None, None, None)
         #TODO: refit and condition on the distribution of parameters
         return first_feats
     

@@ -247,8 +247,9 @@ if __name__ == "__main__":
     nk2.start()
     
     data = np.loadtxt("for_midi_game.dat")
+    data -= np.mean(data, axis=0)
     slvec = nk2.slider_state_vec()
-    pwid = ProjectionDisplay(data[::10], nk2)    
+    pwid = ProjectionDisplay(data, nk2)    
     
     #pwid.update_plots()
     def call_update():

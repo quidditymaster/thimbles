@@ -20,7 +20,7 @@ try:
     with_cvxopt = True
 except ImportError:
     with_cvxopt = False
-    
+
 
 # Internal
 import thimbles
@@ -68,36 +68,34 @@ def AngleDec (angle,unit=units.degree,raise_errors=False):
             raise e
     return result
 
-def _invert(arr):
+def invert(arr):
     return np.where(arr > 0, 1.0/(arr+(arr==0)), np.inf)
-    
+
 def inv_var_2_var (inv_var):
     """
     Takes an inv_var and converts it to a variance. Carefully 
     handling zeros and inf values
     """
-    #fill = np.inf
-    #inv_var = np.asarray(inv_var).astype(float)
-    #zeros = (inv_var == 0.0) # find the non_zeros
-    #inv_var[zeros] = -1.0
-    #var = 1.0/inv_var # inverse
-    #var[zeros] = fill
-    #return var
-    return _invert(inv_var)
+    fill = np.inf
+    inv_var = np.asarray(inv_var).astype(float)
+    zeros = (inv_var <= 0.0) # find the non_zeros
+    inv_var[zeros] = -1.0
+    var = 1.0/inv_var # inverse
+    var[zeros] = fill
+    return var
 
 def var_2_inv_var (var):
     """
     Takes variance and converts to an inverse variance. Carefully
     handling zeros and inf values
     """
-    #fill = np.inf
-    #var = np.asarray(var).astype(float)
-    #zeros = (var == 0.0) # find non zeros
-    #var[zeros] = -1.0
-    #inv_var = 1.0/var # inverse
-    #inv_var[zeros] = fill
-    #return inv_var
-    return _invert(var)
+    fill = np.inf
+    var = np.asarray(var).astype(float)
+    zeros = (var <= 0.0) # find non zeros
+    var[zeros] = -1.0
+    inv_var = 1.0/var # inverse
+    inv_var[zeros] = fill
+    return inv_var
 
 def clean_variances(variance):
     """takes input variances which may include nan's 0's and negative values
@@ -195,16 +193,24 @@ def box_clip(to_be_clipped, lower_bounds, upper_bounds):
     clipped = np.where(clipped < upper_bounds, clipped, upper_bounds)
     return clipped
 
-class Hypercube_Grid_Interpolator:
+class HypercubeGridInterpolator:
     
+    """A class for doing quick linear interpolation over a large D dimensional
+     hypercube of vector outputs.
+    
+    inputs:
+    grid_min: ndarray of length D
+      The coodinate of the minimum edge of the cube which is assumed to correspond
+      to grid_data[0, 0, 0, ... 0] 
+    grid_max: ndarray of length D
+      The coordinate of the maximum edge of the data cube which is assumed to 
+      correspond to grid_data[-1, -1, -1, ... -1]
+    grid_data: ndarray
+      a hypercube of data with a shape 
+      n_dim_1, n_dim_2, ... n_dim_D, len(output_vector)
+    """    
     def __init__(self, grid_min, grid_max, grid_data):
-        """
-grid_min_vec should be the coordinates of the data in grid_data[0, 0, .... 0]
-grid_max_vec should be the coordinates of the data in grid_data[-1, -1, ... -1]
-grid_min_vec and grid_max_vec together define the hypercube.
-grid_data should have at least one more dimension than grid_parameters 
-the extra dimensions should contain the data to be interpolated
-"""
+
         self.grid_min = grid_min
         self.grid_max = grid_max
         self.n_dims_in = len(grid_min)
@@ -474,56 +480,97 @@ def detect_features(values,
 
 def smoothed_mad_error(spectrum, 
                        smoothing_scale=3.0, 
+                       error_scale = 200,
                        apply_poisson=True, 
-                       correction_factor=1.05,
                        overwrite_error=False):
     cinv_var = spectrum.inv_var
     inv_mask = (cinv_var >= 0)*(spectrum.flux >= 0)
-    smfl ,= wavelet_transform(spectrum.flux, [smoothing_scale], inv_mask)
-    diffs = (spectrum.flux - smfl)[inv_mask]
-    mad = np.median(np.abs(diffs))
-    #print "mad", mad
+    #smfl ,= wavelet_transform(spectrum.flux, [smoothing_scale], inv_mask)
+    smfl = filters.gaussian_filter(spectrum.flux, smoothing_scale)
+    eff_width = 2.0*smoothing_scale #effective filter width
+    #need to correct for loss of variance from the averaging
+    correction_factor = eff_width/max(1, (eff_width-1))
+    diffs = (spectrum.flux - smfl)
+    #use the running median change to protect ourselves from 
+    mad = filters.median_filter(np.abs(diffs), error_scale)
     char_sigma = correction_factor*1.48*mad
     if apply_poisson:
         mean_one_flux = spectrum.flux/np.sum(spectrum.flux*inv_mask)*np.sum(inv_mask)
         new_inv_var = np.where(inv_mask, 1.0/(mean_one_flux*char_sigma**2), 0.0)
     else:
         new_inv_var = np.ones(spectrum.flux.shape)*char_sigma
+    new_inv_var = clean_inverse_variances(new_inv_var)
     if overwrite_error:
         spectrum.inv_var = new_inv_var
     return new_inv_var
 
-def min_delta_bins(x, min_delta, target_n=1):
+def min_delta_bins(x, min_delta, target_n=1, forced_breaks=None):
     """return a set of x values which partition x into bins.
     each bin must be at least min_delta wide and must contain at least target_n
-    points in the x array. Bins are simply accumulated until these constraints
-    are met, no optimization is done.
+    points in the x array (with an exception made when forced_breaks are used).
+    The bins attempt to be the smallest that they can be while achieving both
+    these constraints.
+    Bins are simply built up from the left until the constraints are met 
+    and then a new bin is begun, so the optimum bins do not necessarily result.
+    
+    inputs
+    
+    x: iterable
+      the coordinates to choose a binning for
+    min_delta: float
+      the smallest allowed bin size
+    target_n: int
+      the desired number of objects per bin
+    forced_breaks: list
+      if forced_breaks is specified then the numbers in forced_breaks will 
+      be included in the output bins. The bins will otherwise still attempt to
+      meet the min_delta and target_n values.
     """
-    break_idxs = []
     sorted_x = np.sort(np.asarray(x))
     x_diff = np.abs(sorted_x[1:]-sorted_x[:-1])
+    if forced_breaks == None:
+        forced_breaks = []
+    forced_breaks = sorted(forced_breaks)
+    
     diff_sum = np.cumsum(x_diff)
     last_diff_sum = 0
+    last_diff_idx = 0
     current_n = 0
+    bins = [sorted_x[0]]
+    last_bin_forced = True
+    next_force_idx = 0
     for i in range(len(x_diff)):
         current_n += 1
+        if len(forced_breaks) > next_force_idx:
+            next_fb = forced_breaks[next_force_idx]
+            if sorted_x[i+1] > next_fb:
+                bins.append(next_fb)
+                next_force_idx += 1
+                last_diff_sum = diff_sum[i]
+                below_target_n = current_n < target_n
+                below_target_delta = next_fb - sorted_x[last_diff_idx]
+                if below_target_n or below_target_delta: 
+                    if not last_bin_forced:
+                        bins.pop()
+                last_bin_forced = True
+                last_diff_idx = i
+                last_diff_sum = diff_sum[i]
+                current_n = 0
         if diff_sum[i]-last_diff_sum > min_delta and current_n >= target_n:
-            break_idxs.append(i+1)
+            avg_br = 0.5*(sorted_x[i] + sorted_x[i+1])
+            bins.append(avg_br)
             last_diff_sum = diff_sum[i]
+            last_diff_idx = i
             current_n = 0
-    #turn the indicies into bins
-    bins = [sorted_x[0]]
-    #note we just leave off the last break index effectively lumping the last two bins togehter
-    #this is so that the last bin is still guaranteed to have target_n included values
-    bins.extend([0.5*(sorted_x[br_idx] + sorted_x[br_idx+1]) for br_idx in break_idxs[:-1]])
-    bins.append(sorted_x[-1])
+            last_bin_forced = False
+    if not last_bin_forced:
+        bins.pop()
+    if bins[-1] != sorted_x[-1]:
+        bins.append(sorted_x[-1])
     return bins
 
-class NormFitResult:
-    pass
 
-
-def layered_median_mask(arr, n_layers=3, first_layer_width=31, last_layer_width=11, rejection_sig=2.0):
+def layered_median_mask(arr, n_layers=3, first_layer_width=31, last_layer_width=11, rejection_sigma=2.0):
     marr = np.asarray(arr)
     assert n_layers > 1
     assert first_layer_width >= 1
@@ -535,16 +582,157 @@ def layered_median_mask(arr, n_layers=3, first_layer_width=31, last_layer_width=
         masked_arr = marr[mask]
         filtered = filters.median_filter(masked_arr, lw)
         local_mad = filters.median_filter(np.abs(masked_arr-filtered), lw)
-        mask[mask] = masked_arr >= (filtered - rejection_sig*1.4*local_mad)
+        mask[mask] = masked_arr >= (filtered - rejection_sigma*1.4*local_mad)
     return mask
 
-def layered_median_normalization(spectra):
-    for spec in spectra:
-        pass
+def normalize(spectrum, 
+              mask="layered median", 
+              partition="adaptive",
+              mask_kwargs=None, 
+              partition_kwargs=None):
+    flux = spectrum.flux
+    wvs = spectrum.flux
+    
+    if mask_kwargs == None:
+        mask_kwargs = {}
+    if partition_kwargs == None:
+        partition_kwargs = {}
+    
+    if mask == "layered median":
+        mask = layered_median_mask(flux, **mask_kwargs)
+    elif len(mask) == len(flux):
+        mask = np.asarray(mask, dtype=bool)
+    
+    if partition == "adaptive":
+        partition = min_delta_bins(wvs, **partition_kwargs)
+    
+    return
 
+def smooth_ppol_fit(x, y, y_inv=None, order=3, mask=None, mult=None, partition="adaptive", partition_kwargs=None):
+    if partition_kwargs == None:
+        partition_kwargs = {}
+    
+    if y_inv == None:
+        y_inv = np.ones(y.shape)
+    
+    if mult==None:
+        mult = np.ones(y.shape, dtype=float)
+    
+    if mask == None:
+        mask = np.ones(y.shape, dtype=bool)
+ 
+    masked_x = x[mask]
+    if partition == "adaptive":
+        try:
+            partition = min_delta_bins(masked_x, **partition_kwargs)[1:-1]
+        except:
+            partition = [np.median(masked_x)]
+    
+    pp_gen = piecewise_polynomial.RCPPB(poly_order=order, control_points=partition)
+    ppol_basis = pp_gen.get_basis(masked_x).transpose()
+    ppol_basis *= mult.reshape((-1, 1))
+    in_sig = 1.0/np.sqrt(y_inv[mask])
+    med_sig = np.median(in_sig)
+    fit_coeffs = pseudo_huber_irls(ppol_basis, y, 
+                      sigma=in_sig, 
+                      gamma=2.0*med_sig, 
+                      max_iter=5, conv_thresh=1e-4)
+    n_polys = len(partition) + 1
+    n_coeffs = order+1
+    out_coeffs = np.zeros((n_polys, n_coeffs))
+    for basis_idx in xrange(pp_gen.n_basis):
+        c_coeffs = pp_gen.basis_coefficients[basis_idx].reshape((n_polys, n_coeffs))
+        out_coeffs += c_coeffs*fit_coeffs[basis_idx]
+    out_ppol = piecewise_polynomial.PiecewisePolynomial(out_coeffs, partition, centers=pp_gen.centers, scales=pp_gen.scales, bounds=pp_gen.bounds)
+    return out_ppol
+ 
+def echelle_normalize(spectra, masks="layered median", partition="adaptive", mask_kwargs=None, partition_kwargs=None):
+    """normalize in a way that shares normalization shape accross nearby
+    orders"""
+    n_spec = len(spectra)
+    if mask_kwargs == None:
+        mask_kwargs = {}
+    if partition_kwargs == None:
+        partition_kwargs = {}
+    
+    if masks == "layered median":
+        masks = []
+        for spec_idx in range(n_spec):
+            flux = spectra[spec_idx].flux
+            mask = layered_median_mask(flux, **mask_kwargs)
+            masks.append(mask)
+    elif len(masks) == n_spec and len(masks[0]) == len(flux):
+        masks = [np.asarray(mask, dtype=bool) for mask in masks]
+    
+    masked_pixels = np.hstack([np.arange(len(spectra[i].flux))[masks[i]] for i in range(n_spec)])
+    masked_wvs = np.hstack([spectra[i].wv[masks[i]] for i in range(n_spec)])
+    order_set = range(1, n_spec+1)
+    order_nums = np.hstack([np.ones(len(spectra[i-1].flux), dtype=float)[masks[i-1]]*i for i in order_set])
+    masked_fluxes = np.hstack([spectra[i].flux[masks[i]] for i in range(n_spec)])
+    masked_inv_var = np.hstack([spectra[i].inv_var[masks[i]] for i in range(n_spec)])
+    #break the model up into 3 models one for each of pixel, wv, order
+    
+    npts = len(masked_fluxes)
+    
+    #initialize the models with ones
+    order_mod = np.ones(npts, dtype=float)
+    pixel_mod = np.ones(npts, dtype=float)
+    wv_mod = np.ones(npts, dtype=float)
+    
+    try:
+        order_cp = min_delta_bins(order_set, 1, 1)[1:-1]
+    except:
+        order_cp = np.median(order_set)
+    try:
+        wv_cp = min_delta_bins(masked_wvs, 300, 1000)[1:-1]
+    except:
+        wv_cp = [np.median(masked_wvs)]
+    max_pix = np.max(masked_pixels)
+    try:
+        pixel_cp = min_delta_bins(np.arange(0, max_pix), 100, 100)[1:-1]
+    except:
+        pixel_cp = [max_pix/2]
+                                 
+    #import matplotlib.pyplot as plt
+    for iter_idx in range(3):
+        #import pdb; pdb.set_trace()
+        #fit order trends
+        complement_mod = pixel_mod*wv_mod
+        complement_mod = np.where(complement_mod > 0.1, complement_mod, 0.1) 
+        order_poly = smooth_ppol_fit(order_nums, masked_fluxes, masked_inv_var, 2,
+                                     mult = complement_mod,
+                                     partition = order_cp,
+                                     )
+        order_mod = order_poly(order_nums)
+        
+        #fit pixel trends
+        complement_mod = order_mod*wv_mod
+        complement_mod = np.where(complement_mod > 0.1, complement_mod, 0.1) 
+        pixel_poly = smooth_ppol_fit(masked_pixels, masked_fluxes, masked_inv_var, 2,
+                                     mult = complement_mod,
+                                     partition = pixel_cp,
+                                     )
+        pixel_mod = pixel_poly(masked_pixels)
+        
+        #fit wv_trends
+        complement_mod = pixel_mod*order_mod
+        complement_mod = np.where(complement_mod > 0.1, complement_mod, 0.1) 
+        wv_poly = smooth_ppol_fit(masked_wvs, masked_fluxes, masked_inv_var, 2,
+                                     mult = complement_mod,
+                                     partition = wv_cp,
+                                     )
+        wv_mod = wv_poly(masked_wvs)
+    
+    norms = []
+    for order_idx in range(1, len(spectra)+1):
+        wvs = spectra[order_idx-1].wv
+        order_nums = order_idx*np.ones(wvs.shape)
+        pixels = np.arange(len(wvs))
+        nmod = pixel_poly(pixels)*wv_poly(wvs)*order_poly(order_nums)
+        norms.append(nmod)
+    return norms
 
-
-
+    
 def approximate_normalization(spectrum,
                               partition_scale=300,
                               reject_fraction=0.5, 
@@ -643,12 +831,12 @@ def approximate_normalization(spectrum,
         minv = np.hstack((minv, hint_inv_var))
     
     ppol_basis = pp_gen.get_basis(mwv).transpose()
-    in_sig = np.sqrt(minv)
+    in_sig = 1.0/np.sqrt(minv)
     med_sig = np.median(in_sig)
     print med_sig, "med sig"
     fit_coeffs = pseudo_huber_irls(ppol_basis, mflux, 
                       sigma=in_sig, 
-                      gamma=3.0*med_sig, 
+                      gamma=2.0*med_sig, 
                       max_iter=10, conv_thresh=1e-4)
     n_polys = len(break_wvs) + 1
     n_coeffs = poly_order+1

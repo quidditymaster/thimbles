@@ -22,44 +22,22 @@ import models
 import views
 import thimbles as tmb
 
-class SpectraWidget(QDialog):
-    pass
-
-class SpectrumWidget(QWidget):
+class NormalizationWidget(QWidget):
     
-    def __init__(self, spectrum):
-        super(SpectrumWidget, self).__init__()
-        #self.frame = QWidget()
-        self.spec = spectrum
-        self.dpi = 100
-        self.fig = Figure((10.0, 6.0), dpi=self.dpi)
-        self.canvas = FigureCanvas(self.fig)
-        self.canvas.setParent(self)
+    def __init__(self, spectra, norms=None):
+        self.spectra = spectra
+    
+    def initUI(self):
+        lay = QHBoxLayout()
+        self.mpl_wid = MatplotlibWidget(parent=self, nrows=1, ncols=1, mpl_toolbar=True,
+                 sharex="none", sharey="none")
         
-        self.axes = self.fig.add_subplot(111)
-        self.mpl_toolbar = NavigationToolbar(self.canvas, self)
-        self.vbox = QVBoxLayout()
-        self.vbox.addWidget(self.canvas)
-        self.vbox.addWidget(self.mpl_toolbar)
-        self.setLayout(self.vbox)
-        self._init_plots()
-        self.draw()
-    
-    def _init_plots(self):
-        self.datal ,= self.axes.plot(self.spec.wv, self.spec.flux, c="b")
-        self.contl ,= self.axes.plot(self.spec.wv, self.spec.norm)
-        self.maskl ,= self.axes.plot(self.spec.wv, self.spec.feature_mask*self.spec.norm)
-    
-    def update_flux(self):
-        self.datal.set_ydata(self.spec.flux)
-    
-    def draw(self):
-        self.canvas.draw()
+        self.setLayout(lay)
 
 
 class FloatSlider(QWidget):
     
-    def __init__(self, name, min_, max_, n_steps=100, orientation=Qt.Horizontal, parent=None):
+    def __init__(self, name, min_, max_, n_steps=127, orientation=Qt.Horizontal, parent=None):
         super(FloatSlider, self).__init__(parent)
         label = QLabel(name, parent=self)
         if orientation == Qt.Horizontal:
@@ -77,6 +55,17 @@ class FloatSlider(QWidget):
         lay.addWidget(label)
         lay.addWidget(self.slider)
         self.setLayout(lay)
+    
+    def calculate_delta(self):
+        self.delta = float(self.max-self.min)
+    
+    def set_min(self, min_):
+        self.min = float(min_)
+        self.calculate_delta()
+    
+    def set_max(self, max_):
+        self.max = float(max_)
+        self.calculate_delta()
     
     def value(self):
         return self.min + self.slider.value()*(self.delta/self.n_steps)
@@ -200,7 +189,7 @@ class MatplotlibCanvas (FigureCanvas):
         ax_num = self.ncols*row_idx + col_idx
         return self._axes[ax_num]
     
-    def set_ax(row_idx, col_idx):
+    def set_ax(self, row_idx, col_idx):
         """change which axis .ax refers to"""
         self.ax = self.axis(row_idx, col_idx)
     
@@ -546,8 +535,10 @@ class FeatureFitWidget(QWidget):
     
     def bounded_spec(self):
         feat_wv = self.feature.wv
+        print "feature wv", feat_wv
         min_wv = feat_wv-1.5*self.display_width
         max_wv = feat_wv+1.5*self.display_width
+        print "spectra wvs", self.spectra[self.feat_spec_idxs[self.feature_idx]].wv[[0, -1]]
         bspec = self.spectra[self.feat_spec_idxs[self.feature_idx]].bounded_sample((min_wv, max_wv))
         return bspec
     
@@ -647,3 +638,5 @@ class FeatureFitWidget(QWidget):
             line.set_xdata([bspec.wv[0], bspec.wv[-1]])
         
         self.mpl_fit.draw()
+
+

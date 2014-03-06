@@ -604,6 +604,8 @@ class RegularityConstrainedPiecewisePolynomialBasis:
                 self.basis_polys[basis_i].append(Polynomial(ccoeffs, self.centers[poly_i], self.scales[poly_i]))
         #import pdb; pdb.set_trace()        
         if b_spline_rotation:
+            if len(self.control_points) >= 1:
+                return
             ctrans = self.b_spline_rotation()
             vrot = np.dot(ctrans.transpose(), vclip)
             self.basis_polys = [[] for _bi in range(self.n_basis)]
@@ -618,6 +620,7 @@ class RegularityConstrainedPiecewisePolynomialBasis:
     
     def b_spline_rotation(self):
         #evaluate the b splines
+        import pdb; pdb.set_trace()
         bound_pts = np.zeros(len(self.centers) + 2)
         bound_pts[1:-1] = self.centers
         if len(self.centers) > 1:
@@ -661,7 +664,7 @@ class RegularityConstrainedPiecewisePolynomialBasis:
 
 def fit_piecewise_polynomial(x, y, order, control_points, bounds = (float("-inf"), float("inf")), regularity_constraints = None, centers = None, scales = "autoscale"):
     if scales == "autoscale":
-        scales = np.ones(len(control_points)+1)*np.std(x)*(len(control_points)+1)
+        scales = np.ones(len(control_points)+1, dtype=float)*np.std(x)*(len(control_points)+1)
     pp_gen = RegularityConstrainedPiecewisePolynomialBasis(order, control_points=control_points, bounds = bounds, regularity_constraints = regularity_constraints, centers = centers, scales = scales)
     gbasis = pp_gen.get_basis(x)
     n_polys = len(control_points) + 1

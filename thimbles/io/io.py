@@ -698,7 +698,7 @@ class ExtractWavelengthCoefficients (object):
         #                        4 linear spline, 5 pixel coordinate array, 6 sampled coordinate array
         # order_coeff[?][12+] = [parameters...]
         # order_coeff[?][12++] = [coefficients...]
-    
+        
         if 1 not in order_coeff: 
             raise ValueError("IRAF WCS: I didn't find a spec1:"+wat2_str[:40])
         dcflag = order_coeff[1][2]

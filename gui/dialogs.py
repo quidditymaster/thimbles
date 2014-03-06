@@ -290,13 +290,13 @@ if __name__ == "__main__":
     #res = ld.get_row()
     #print "res", res
     
-    try:
-        a, b = 0
-    except Exception as e:
-        wd = WarningDialog("warning bad stuff happened!", e)
-        wd.warn()
-    
-    wd = WarningDialog("bad selection")
-    wd.warn()
+    #try:
+    #    a, b = 0
+    #except Exception as e:
+    #    wd = WarningDialog("warning bad stuff happened!", e)
+    #    wd.warn()
+    #
+    #wd = WarningDialog("bad selection")
+    #wd.warn()
     
     #qap.exec_()

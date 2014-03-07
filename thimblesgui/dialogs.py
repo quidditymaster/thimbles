@@ -1,10 +1,13 @@
 import os
+import numpy as np
+import matplotlib.pyplot as plt
 
 from PySide.QtGui import *
 from PySide.QtCore import *
-from models import *
 
-import thimbles as tmb
+import thimblesgui as tmbg
+from thimblesgui import user_namespace
+#import thimbles as tmb
 
 class LoadDialog(QDialog):
     
@@ -36,8 +39,8 @@ class LoadDialog(QDialog):
         self.function_label = QLabel("readin function")
         lay.addWidget(self.function_label, 3, 0, 1, 1)
         lay.addWidget(self.function_dd, 3, 1, 1, 1)
-        spec_io_names = [f for f in dir(tmb.io) if "read" in f]
-        spec_io_funcs = map(lambda x: eval("tmb.io." + x), spec_io_names)
+        spec_io_names = [f for f in dir(user_namespace) if "read" in f]
+        spec_io_funcs = [user_namespace.eval_(x) for x in spec_io_names]
         
         ll_io_names = ["loadtxt"]
         
@@ -109,16 +112,14 @@ class LoadDialog(QDialog):
             qmb.exec_()
             return
         if self.type_dd.currentText() == "spectra":
-            self.new_row = SpectraRow(loaded_obj, row_name)
+            self.new_row = tmbg.models.SpectraRow(loaded_obj, row_name)
         elif self.type_dd.currentText() == "line list":
-            self.new_row = LineListRow(loaded_obj, row_name)
+            self.new_row = tmbg.models.LineListRow(loaded_obj, row_name)
         self.accept()
     
     def get_row(self):
         self.exec_()
         return self.new_row
-
-
 
 class RVSettingDialog(QDialog):
 
@@ -226,8 +227,7 @@ class NormalizationDialog(QDialog):
         self.algorithm_dd = QComboBox()
         algo1 = ["adaptive echelle", 
                  "partition_scale=300, poly_order=3, smart_partition=False, alpha=4.0, beta=4.0, overwrite=True",
-                 tmb.utils.misc.approximate_normalization
-                 ] 
+                 user_namespace.eval_("tmb.utils.misc.approximate_normalization")]
         self.algos = [algo1]
         algo_names = [al[0] for al in self.algos]
         self.algorithm_dd.addItems(algo_names)
@@ -267,7 +267,8 @@ class NormalizationDialog(QDialog):
             try:
                 par_dict = eval("dict(%s)" % self.params_le.text())
                 self.algos[cind][2](spec, **par_dict)
-            except:
+            except Exception as e:
+                print e
                 print "oops, there was a problem carrying out the norm"
     
     def on_cancel(self):

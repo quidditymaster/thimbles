@@ -1,7 +1,5 @@
-from widgets import *
-from models import *
-import matplotlib
-
+from PySide.QtGui import *
+from PySide.QtCore import *
 
 class LineListView(QTableView):
     

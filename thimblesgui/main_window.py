@@ -8,7 +8,6 @@ import time
 # 3rd party packages
 import matplotlib
 matplotlib.use('Qt4Agg')
-from PySide import QtCore,QtGui
 from PySide.QtCore import *
 from PySide.QtGui import *
 matplotlib.rcParams['backend.qt4'] = 'PySide'
@@ -17,13 +16,9 @@ import numpy as np
 import scipy
 import scipy.optimize
 
-# gui modules
-import models
-import views
-import widgets
-import dialogs    
-# thimbles api
+import thimblesgui as tmbg
 import thimbles as tmb
+
 
 _resources_dir = os.path.join(os.path.dirname(__file__),"resources")
 
@@ -36,13 +31,11 @@ class AppForm(QMainWindow):
         self.setWindowTitle("Thimbles")
         self.main_frame = QWidget()        
         self.options = options
-        
         self.layout = QHBoxLayout()
-        self.main_table_model = models.MainTableModel()
+        self.main_table_model = tmbg.models.MainTableModel()
+        self.rfunc = tmbg.user_namespace.eval_("tmb.io."+options.read_func)
         
-        self.rfunc = eval("tmb.io.%s" % options.read_func)
-        
-        for sfile_name in options.spectra_files:
+        for sfile_name in options.files:
             try:
                 spec_list = self.rfunc(sfile_name)
                 if options.norm == "auto":
@@ -51,7 +44,7 @@ class AppForm(QMainWindow):
                 for spec in spec_list:
                     spec.set_rv(options.rv)
                 base_name = os.path.basename(sfile_name)
-                spec_row = models.SpectraRow(spec_list, base_name)
+                spec_row = tmbg.models.SpectraRow(spec_list, base_name)
                 self.main_table_model.addRow(spec_row)
             except Exception as e:
                 print "there was an error reading file %s" % sfile_name
@@ -61,7 +54,7 @@ class AppForm(QMainWindow):
             try:
                 ldat = np.loadtxt(options.line_list ,skiprows=1, usecols=[0, 1, 2, 3])
                 base_name = os.path.basename(options.line_list)
-                ll_row = models.LineListRow(ldat, base_name)
+                ll_row = tmbg.models.LineListRow(ldat, base_name)
                 self.main_table_model.addRow(ll_row)
             except Exception as e:
                 print "there was an error reading file %s" % options.line_list
@@ -71,7 +64,7 @@ class AppForm(QMainWindow):
         self.partial_result = None
         self.current_operation = None
 
-        self.main_table_view = views.NameTypeTableView(self)
+        self.main_table_view = tmbg.views.NameTypeTableView(self)
         self.main_table_view.setModel(self.main_table_model)
         self.main_table_view.setColumnWidth(0, 200)
         self.main_table_view.setColumnWidth(1, 200)
@@ -88,8 +81,8 @@ class AppForm(QMainWindow):
         self.setCentralWidget(self.main_frame)
         
         #self.create_menu()
-        self._init_actions()
-        self._init_menus()
+        #self._init_actions()
+        #self._init_menus()
         
         self._init_status_bar()
         self._connect()
@@ -171,7 +164,7 @@ class AppForm(QMainWindow):
             msg = "invalid selection\n"
         else:
             msg = "invalid selection\n" + msg
-        wd = dialogs.WarningDialog(msg)
+        wd = tmbg.dialogs.WarningDialog(msg)
         wd.warn()
     
     def get_row(self, row):
@@ -275,12 +268,12 @@ class AppForm(QMainWindow):
         if spec != None and ll != None:
             culled, feat_spec_idxs = self.cull_lines(spec, ll)
             if len(culled) == 0:
-                wd = dialogs.WarningDialog("There were no features in the overlap! \n Check your wavelength solution")
+                wd = tmbg.dialogs.WarningDialog("There were no features in the overlap! \n Check your wavelength solution")
                 wd.warn()
                 return
             fit_features = self.initial_feature_fit(spec, culled, feat_spec_idxs)
             features_name = "features from %s %s" % (spec_name, ll_name)
-            frow = models.FeaturesRow((spec, fit_features, feat_spec_idxs, self.options.fwidth), features_name)
+            frow = tmbg.models.FeaturesRow((spec, fit_features, feat_spec_idxs, self.options.fwidth), features_name)
             self.main_table_model.addRow(frow)
         else:
             self.bad_selection("need one line list and one spectrum")
@@ -292,7 +285,7 @@ class AppForm(QMainWindow):
             return
         row = self.get_row(selrows[0].row())
         if row.type_id == "spectra":
-            rvdialog = dialogs.RVSettingDialog(row.data, self)
+            rvdialog = tmbg.dialogs.RVSettingDialog(row.data, self)
             row.widgets["rv"] = rvdialog
             rvdialog.set_rv()
     
@@ -303,15 +296,15 @@ class AppForm(QMainWindow):
         row_objs = [self.get_row(idx) for idx in row_idxs]
         for row in row_objs:
             if row.type_id == "spectra":
-                nd = dialogs.NormalizationDialog(row.data)
+                nd = tmbg.dialogs.NormalizationDialog(row.data)
                 nd.get_norm()
                 #for spec in row.data:
                 #    spec.approx_norm()
     
     def on_load(self):
-        ld = dialogs.LoadDialog()
+        ld = tmbg.dialogs.LoadDialog()
         new_row = ld.get_row()
-        if isinstance(new_row, models.MainTableRow):
+        if isinstance(new_row, tmbg.models.MainTableRow):
             self.main_table_model.addRow(new_row)
     
     def cull_lines(self, spectra, ldat):
@@ -391,7 +384,7 @@ class AppForm(QMainWindow):
         return features
     
     def _init_fit_widget(self):
-        self.fit_widget = widgets.FeatureFitWidget(self.spec, self.features, 0, self.options.fwidth, parent=self)
+        self.fit_widget = tmbg.widgets.FeatureFitWidget(self.spec, self.features, 0, self.options.fwidth, parent=self)
         self.layout.addWidget(self.fit_widget, 0, 0, 1, 1)
     
     def save (self):
@@ -407,38 +400,38 @@ class AppForm(QMainWindow):
         
         self.menu_actions = {}
         
-        self.menu_actions['save'] = QtGui.QAction(QtGui.QIcon(_resources_dir+'/images/save.png'),
-                "&Save...", self, shortcut=QtGui.QKeySequence.Save,
+        self.menu_actions['save'] = QAction(QIcon(_resources_dir+'/images/save.png'),
+                "&Save...", self, shortcut=QKeySequence.Save,
                 statusTip="Save the current data",
                 triggered=self.save)
         
-        self.menu_actions['save as'] = QtGui.QAction(QtGui.QIcon(_resources_dir+'/images/save_as.png'),
-                "&Save As...", self, shortcut=QtGui.QKeySequence.SaveAs,
+        self.menu_actions['save as'] = QAction(QIcon(_resources_dir+'/images/save_as.png'),
+                "&Save As...", self, shortcut=QKeySequence.SaveAs,
                 statusTip="Save the current data as....",
                 triggered=self.save)
         
-        self.menu_actions['undo'] = QtGui.QAction(QtGui.QIcon(_resources_dir+'/images/undo_24.png'),
-                "&Undo", self, shortcut=QtGui.QKeySequence.Undo,
+        self.menu_actions['undo'] = QAction(QIcon(_resources_dir+'/images/undo_24.png'),
+                "&Undo", self, shortcut=QKeySequence.Undo,
                 statusTip="Undo the last editing action", triggered=self.undo)
         
-        self.menu_actions['redo'] =  QtGui.QAction(QtGui.QIcon(_resources_dir+'/images/redo_24.png'),
-                                                   "&Redo", self, shortcut=QtGui.QKeySequence.Redo,
+        self.menu_actions['redo'] =  QAction(QIcon(_resources_dir+'/images/redo_24.png'),
+                                                   "&Redo", self, shortcut=QKeySequence.Redo,
                                                    statusTip="Redo the last editing action", triggered=self.redo)
         
         #         self.menu_actions['fullscreen'] = QtGui.QAction(None,"&Full Screen",self,shortcut="Ctrl+f",
         #                                            statusTip="Run in full screen mode",triggered=self.full_screen)
         
-        self.menu_actions['quit'] = QtGui.QAction(QtGui.QIcon(_resources_dir+'/images/redo_24.png'),
-                                                   "&Quit", self, shortcut=QtGui.QKeySequence.Quit,
+        self.menu_actions['quit'] = QAction(QIcon(_resources_dir+'/images/redo_24.png'),
+                                                   "&Quit", self, shortcut=QKeySequence.Quit,
                                                    statusTip="Quit the application", triggered=self.close)
         
-        self.menu_actions['about'] = QtGui.QAction(QtGui.QIcon("hello_world"),"&About", self,
+        self.menu_actions['about'] = QAction(QIcon("hello_world"),"&About", self,
                                                     statusTip="Show the application's About box",
                                                     triggered=self.on_about)
         
-        self.menu_actions['aboutQt'] = QtGui.QAction(QtGui.QIcon('hello_world'),"About &Qt", self,
+        self.menu_actions['aboutQt'] = QAction(QIcon('hello_world'),"About &Qt", self,
                                                      statusTip="Show the Qt library's About box",
-                                                     triggered=QtGui.qApp.aboutQt)
+                                                     triggered=qApp.aboutQt)
     
     def _init_menus(self):
         get_items = lambda *keys: [self.menu_actions.get(k,None) for k in keys]

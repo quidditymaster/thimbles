@@ -1,21 +1,10 @@
 
-import matplotlib
-matplotlib.use('Qt4Agg')
-try: 
-    from PySide.QtCore import *
-    from PySide.QtGui import *
-    matplotlib.rcParams['backend.qt4'] = 'PySide'
-except ImportError:
-    from PyQt4.QtCore import *
-    from PyQt4.QtGui import *
-    matplotlib.rcParams['backend.qt4'] = 'PyQt4'
+import numpy as np
 import matplotlib.pyplot as plt
 
-from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt4agg import NavigationToolbar2QTAgg as NavigationToolbar
-from matplotlib.figure import Figure
-
-from widgets import *
+import thimblesgui as tmbg
+from PySide.QtGui import *
+from PySide.QtCore import *
 
 class Column(object):
     
@@ -145,7 +134,7 @@ class FeaturesRow(MainTableRow):
     def on_double_click(self):
         print "feature double click"
         spec, features, feat_spec_idxs, fwidth = self.data
-        fw = FeatureFitWidget(spec, features, 0, feat_spec_idxs, fwidth, None)
+        fw = tmbg.widgets.FeatureFitWidget(spec, features, 0, feat_spec_idxs, fwidth, None)
         self.widget = fw
         self.widget.show()
     

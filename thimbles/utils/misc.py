@@ -846,15 +846,10 @@ def approximate_normalization(spectrum,
         out_coeffs += c_coeffs*fit_coeffs[basis_idx]
     continuum_ppol = piecewise_polynomial.PiecewisePolynomial(out_coeffs, break_wvs, centers=pp_gen.centers, scales=pp_gen.scales, bounds=pp_gen.bounds)
     approx_norm = continuum_ppol(wavelengths)
-    res = NormFitResult()
-    res.norm = approx_norm
-    res.norm_ppol = continuum_ppol
-    res.min_stats = min_stats
-    res.feature_mask = fmask
     if overwrite:
         spectrum.norm = approx_norm
         spectrum.feature_mask = fmask
-    return res
+    return approx_norm
 
 def lad_fit(A, y):
     """finds the least absolute deviations fit for Ax = y

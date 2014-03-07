@@ -13,7 +13,7 @@ import sys
 import re
 from astropy.io import fits
 from ..utils.misc import inv_var_2_var, var_2_inv_var
-from .io import MetaData
+from .spec_io import MetaData
 
 import thimbles as tmb
 

@@ -23,7 +23,6 @@ class MainApplication (QApplication):
         
         # splash screen for thimbles
         spl_path = os.path.join(_resources_dir, "splash_screen.png")
-        print "splash path", spl_path
         self.spl_pic = QPixmap(spl_path)
         self.splash = QSplashScreen(self.spl_pic, Qt.WindowStaysOnTopHint)
         self.splash.setMask(self.spl_pic.mask())
@@ -50,7 +49,6 @@ class MainApplication (QApplication):
 
 if __name__ == "__main__":
     from thimblesgui.options import options
-    print "inside", os.getcwd()
     print _resources_dir
     try:
         app = MainApplication(options)

@@ -17,6 +17,6 @@ else:
     try:
         exec(command_str)
     except Exception as e:
-        print("Error with user given --exec argument:")
+        print("Error with user given --startup argument:")
         print("    {} : {}".format(type(e).__name__,e.message))
 

@@ -363,6 +363,7 @@ class AppForm(QMainWindow):
                 sig_reg += 10.0*np.abs(rndiff)
                 if g_sig < 0.5*wv_del:
                     sig_reg += 20.0*np.abs(g_sig-0.5*wv_del)
+                gam_thresh = 
                 if np.abs(l_sig) > 1.0*wv_del:
                     sig_reg += 100.0*np.abs((l_sig-1.0*wv_del))
                 fdiff = nflux-(1.0-ew*pr)*relnorm

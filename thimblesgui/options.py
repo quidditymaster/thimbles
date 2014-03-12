@@ -13,9 +13,12 @@ parser.add_argument("--line-list", "--ll", help=line_list_help)
 dwhelp = "default number of angstroms to display" 
 parser.add_argument("--display-width", "--dw", type=float, default=3.0, help=dwhelp)
 
-#TODO: replace this option with a kwarg for the individual mode using --fit
+#TODO: replace these options with a kwarg for the individual mode using --fit
 fwhelp = "default individual line fit width"
 parser.add_argument("--fit-width", "--fw", type=float, default=0.3, help=fwhelp)
+
+dgamma_help = "penalize lorentz width values above this threshold"
+parser.add_argument("--gamma-max", "--gm", type=float, default=0.0)
 
 read_help = "name of function to load the data files with"
 parser.add_argument("--read_func", default="read")

@@ -9,6 +9,104 @@ import thimblesgui as tmbg
 from thimblesgui import user_namespace
 #import thimbles as tmb
 
+class SaveDialog(QDialog):
+    
+    def __init__(self, data, parent=None):
+        super(LoadDialog, self).__init__(parent)
+        self.initUI()
+    
+    def initUI(self):
+        lay = QGridLayout()
+        self.fname_label = QLabel("file path")
+        self.file_le = QLineEdit("", self)
+        lay.addWidget(self.fname_label, 0, 0, 1, 1)
+        lay.addWidget(self.file_le, 0, 1, 1, 1)
+        self.browse_btn = QPushButton("Browse", self)
+        lay.addWidget(self.browse_btn, 0, 2, 1, 1)
+        self.type_label = QLabel("object type")
+        lay.addWidget(self.type_label, 2, 0, 1, 1)
+        self.type_dd = QComboBox()
+        self.type_ids = ["spectra", "line list"]
+        self.type_dd.addItems(self.type_ids)
+        lay.addWidget(self.type_dd, 2, 1, 1, 1)
+        
+        self.function_dd = QComboBox()
+        self.function_label = QLabel("readin function")
+        lay.addWidget(self.function_label, 3, 0, 1, 1)
+        lay.addWidget(self.function_dd, 3, 1, 1, 1)
+        spec_io_names = [f for f in dir(user_namespace) if "read" in f]
+        spec_io_funcs = [user_namespace.eval_(x) for x in spec_io_names]
+        
+        ll_io_names = ["loadtxt"]
+        ll_io_funcs = [skipload] 
+        self.loading_functions = {}
+        self.loading_function_names = {}
+        self.loading_functions["spectra"] = spec_io_funcs
+        self.loading_functions["line list"] = ll_io_funcs
+        self.loading_function_names["spectra"] = spec_io_names
+        self.loading_function_names["line list"] = ll_io_names
+        
+        self.on_type_changed()
+        
+        self.load_btn = QPushButton("Load")
+        self.cancel_btn = QPushButton("Cancel")
+        lay.addWidget(self.load_btn, 4, 2, 1, 1)
+        lay.addWidget(self.cancel_btn, 4, 1, 1, 1)
+        
+        #do the event connections
+        self.function_dd.currentIndexChanged.connect(self.on_function_changed)
+        self.type_dd.currentIndexChanged.connect(self.on_type_changed)
+        self.browse_btn.clicked.connect(self.on_browse)
+        self.load_btn.clicked.connect(self.on_load)
+        self.cancel_btn.clicked.connect(self.on_cancel)
+        
+        #set the layout
+        self.setLayout(lay)
+        
+        self.new_row = None
+    
+    def on_browse(self):
+        fname, filters = QFileDialog.getSaveFileName(self, "select file path")
+        if fname:
+            self.file_le.setText(fname)
+        if not self.name_le.text():
+            base_name = os.path.basename(fname)
+            self.name_le.setText(base_name)
+    
+    def on_type_changed(self):
+        self.cur_type_id = self.type_dd.currentText()
+        self.function_dd.clear()
+        func_names = self.loading_function_names[self.cur_type_id]
+        self.function_dd.addItems(func_names)
+        self.on_function_changed()
+    
+    def on_function_changed(self):
+        cur_type = self.cur_type_id
+        function_index = self.function_dd.currentIndex()
+        self.load_func = self.loading_functions[cur_type][function_index]
+    
+    def on_cancel(self):
+        self.reject()
+    
+    def on_save(self):
+        try:
+            fname = self.file_le.text()
+            loaded_obj = self.load_func(fname)
+            row_name = self.name_le.text()
+        except:
+            qmb = QMessageBox()
+            qmb.setText("There was a problem reading the file")
+            qmb.exec_()
+            return
+        if self.type_dd.currentText() == "spectra":
+            self.new_row = tmbg.models.SpectraRow(loaded_obj, row_name)
+        elif self.type_dd.currentText() == "line list":
+            self.new_row = tmbg.models.LineListRow(loaded_obj, row_name)
+        self.accept()
+    
+    def save_row(self):
+        self.exec_()
+
 class LoadDialog(QDialog):
     
     def __init__(self, parent=None):

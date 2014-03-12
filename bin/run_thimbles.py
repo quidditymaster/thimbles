@@ -44,7 +44,6 @@ class MainApplication (QApplication):
         self.splash.finish(self.main_window)
         if options.no_window:
             self.main_window.close()
-            self.close()
     
     def on_quit (self):
         pass
@@ -55,4 +54,5 @@ if __name__ == "__main__":
         app = MainApplication(options)
     except RuntimeError:
         app = MainApplication.instance()
-    sys.exit(app.exec_())
+    if not options.no_window:
+        sys.exit(app.exec_())

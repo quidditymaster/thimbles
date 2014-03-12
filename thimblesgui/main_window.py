@@ -354,7 +354,8 @@ class AppForm(QMainWindow):
             eq = 0.005
             nf = tmb.features.Feature(lprof, eq, 0.00, tp)
             
-            wv_del = (wvs[-1]-wvs[0])/float(len(wvs))
+            wv_del = (np.max(wvs)-np.min(wvs))/float(len(wvs))
+            gam_thresh = self.options.gamma_max
             def resids(pvec):
                 pr = lprof.get_profile(wvs, pvec[2:])
                 ew, relnorm, _off, g_sig, l_sig = pvec
@@ -363,9 +364,8 @@ class AppForm(QMainWindow):
                 sig_reg += 10.0*np.abs(rndiff)
                 if g_sig < 0.5*wv_del:
                     sig_reg += 20.0*np.abs(g_sig-0.5*wv_del)
-                gam_thresh = 
-                if np.abs(l_sig) > 1.0*wv_del:
-                    sig_reg += 100.0*np.abs((l_sig-1.0*wv_del))
+                if np.abs(l_sig) > gam_thresh:
+                    sig_reg += np.abs((l_sig-gam_thresh))/wv_del
                 fdiff = nflux-(1.0-ew*pr)*relnorm
                 return np.hstack((fdiff ,sig_reg))
             

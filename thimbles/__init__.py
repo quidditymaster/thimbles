@@ -1,5 +1,5 @@
 import utils
-from .io import read_fits
+from .io import *
 import features
 import line_profiles
 import stellar_atmospheres

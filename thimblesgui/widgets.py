@@ -21,7 +21,7 @@ from PySide.QtCore import *
 import models
 import views
 import user_namespace
-#import thimbles as tmb
+import thimbles as tmb
 
 class NormalizationWidget(QWidget):
     

@@ -5,10 +5,11 @@ import time
 from PySide import QtCore,QtGui
 from PySide.QtCore import *
 from PySide.QtGui import *
-import thimblesgui
-from thimblesgui import main_window    
+import thimblesgui as tmbg
+from thimblesgui import main_window
+from thimblesgui import workers
 
-_resources_dir = os.path.join(os.path.dirname(thimblesgui.__file__),"resources")
+_resources_dir = os.path.join(os.path.dirname(tmbg.__file__),"resources")
 
 # ########################################################################### #
 
@@ -31,10 +32,6 @@ class MainApplication (QApplication):
         time.sleep(0.01)
         self.processEvents()
         
-        #for _ in xrange(10):
-        #    self.processEvents()
-        #    time.sleep(0.005)
-        
         # TODO: use size to make main window the full screen size
         screen_rect = self.desktop().screenGeometry()
         size = screen_rect.width(), screen_rect.height()
@@ -49,7 +46,6 @@ class MainApplication (QApplication):
 
 if __name__ == "__main__":
     from thimblesgui.options import options
-    print _resources_dir
     try:
         app = MainApplication(options)
     except RuntimeError:

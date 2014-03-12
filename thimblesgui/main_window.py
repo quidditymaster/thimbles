@@ -26,7 +26,7 @@ _resources_dir = os.path.join(os.path.dirname(__file__),"resources")
 
 class AppForm(QMainWindow):
     
-    def __init__(self, options):
+    def __init__(self, options, rows=[]):
         super(AppForm, self).__init__()
         self.setWindowTitle("Thimbles")
         self.main_frame = QWidget()        
@@ -273,7 +273,7 @@ class AppForm(QMainWindow):
                 return
             fit_features = self.initial_feature_fit(spec, culled, feat_spec_idxs)
             features_name = "features from %s %s" % (spec_name, ll_name)
-            frow = tmbg.models.FeaturesRow((spec, fit_features, feat_spec_idxs, self.options.fwidth), features_name)
+            frow = tmbg.models.FeaturesRow((spec, fit_features, feat_spec_idxs, self.options.display_width), features_name)
             self.main_table_model.addRow(frow)
         else:
             self.bad_selection("need one line list and one spectrum")
@@ -335,10 +335,11 @@ class AppForm(QMainWindow):
     def preconditioned_feature_fit(self, spectra, ldat, feat_spec_idxs, pvec_min, pvec_max, bound_sig):
         features = []
         for feat_idx in range(len(ldat)):
-            print "fitting feature", feat_idx + 1
             cwv, cid, cep, cloggf = ldat[feat_idx]
+            print "fitting feature", feat_idx + 1
+            print "% 10.3f% 10.1f% 10.2f%10.2f" % (cwv, cid, cep, cloggf)
             spec = spectra[feat_spec_idxs[feat_idx]]
-            bspec = spec.bounded_sample((cwv-0.25, cwv+0.25))
+            bspec = spec.bounded_sample((cwv-self.options.fit_width, cwv+self.options.fit_width))
             if bspec == None:
                 continue
             wvs = bspec.wv
@@ -359,8 +360,7 @@ class AppForm(QMainWindow):
                 ew, relnorm, _off, g_sig, l_sig = pvec
                 sig_reg = 0
                 rndiff = np.abs(relnorm-1.0)
-                if rndiff > 0.15:
-                    sig_reg += 100.0*(rndiff - 0.15)
+                sig_reg += 10.0*np.abs(rndiff)
                 if g_sig < 0.5*wv_del:
                     sig_reg += 20.0*np.abs(g_sig-0.5*wv_del)
                 if np.abs(l_sig) > 1.0*wv_del:
@@ -376,7 +376,7 @@ class AppForm(QMainWindow):
             nf.relative_continuum = fit[1]
             nf.set_eq_width(fit[0]) 
             features.append(nf)
-            
+        
         fparams = np.array([f.profile.get_parameters() for f in features])
         pmed = np.median(fparams, axis=0)
         pmad = np.median(np.abs(fparams-pmed), axis=0)

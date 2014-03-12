@@ -4,6 +4,7 @@ from itertools import cycle, product
 import os
 import sys
 import time
+import cPickle
 
 # 3rd party packages
 import matplotlib
@@ -18,7 +19,6 @@ import scipy.optimize
 
 import thimblesgui as tmbg
 import thimbles as tmb
-
 
 _resources_dir = os.path.join(os.path.dirname(__file__),"resources")
 
@@ -37,28 +37,50 @@ class AppForm(QMainWindow):
         
         for sfile_name in options.files:
             try:
-                spec_list = self.rfunc(sfile_name)
+                joined_name = os.path.join(options.data_dir, sfile_name)
+                spec_list = self.rfunc(joined_name)
                 if options.norm == "auto":
                     for spec in spec_list:
                         spec.approx_norm()
                 for spec in spec_list:
                     spec.set_rv(options.rv)
-                base_name = os.path.basename(sfile_name)
-                spec_row = tmbg.models.SpectraRow(spec_list, base_name)
+                spec_base_name = os.path.basename(sfile_name)
+                spec_row = tmbg.models.SpectraRow(spec_list, sepc_base_name)
                 self.main_table_model.addRow(spec_row)
             except Exception as e:
                 print "there was an error reading file %s" % sfile_name
                 print e
         
-        if options.line_list != None:
+        ldat = None
+        if not options.line_list is None:
             try:
                 ldat = np.loadtxt(options.line_list ,skiprows=1, usecols=[0, 1, 2, 3])
-                base_name = os.path.basename(options.line_list)
-                ll_row = tmbg.models.LineListRow(ldat, base_name)
+                ll_base_name = os.path.basename(options.line_list)
+                ll_row = tmbg.models.LineListRow(ldat, ll_base_name)
                 self.main_table_model.addRow(ll_row)
             except Exception as e:
                 print "there was an error reading file %s" % options.line_list
                 print e
+        
+        for row_idx in range(self.main_table_model.rowCount()):
+            crow = self.get_row(row_idx)
+            if crow.type_id == "spectra":
+                spectra = crow.data
+                spec_name = crow.name
+            else:
+                continue
+            if ldat is None:
+                print "cannot carry out a fit without a feature line list"
+                break
+            if self.options.fit == "individual":
+                culled, feat_spec_idxs = self.cull_lines(spectra, ldat)
+                fit_features = self.initial_feature_fit(spectra, culled, feat_spec_idxs)
+            features_name = "features from %s %s" % (spec_name, ll_name)
+            if self.options.features_out:
+                out_fname=spec_name.split(".")[0] + ".features.pkl"
+                cPicle.dump(fit_features, open(out_fname))
+            frow = tmbg.models.FeaturesRow((spec, fit_features, feat_spec_idxs, self.options.display_width), features_name)
+            self.main_table_model.addRow(frow)
         
         #setup for the dual spectrum operations
         self.partial_result = None
@@ -246,6 +268,8 @@ class AppForm(QMainWindow):
                     for pair_idx in range(n1):
                         left_spec = self.partial_result[pair_idx]
                         right_spec = second_operand[pair_idx]
+    
+    
     
     def on_fit_features(self):
         smod = self.main_table_view.selectionModel()

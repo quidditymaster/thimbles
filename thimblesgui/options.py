@@ -30,10 +30,16 @@ norm_help="type of normalization to apply to spectra"
 parser.add_argument("--norm", default="ones", help=norm_help)
 
 fit_help="the type of spectral fit to run"
-parser.add_argument("--fit", default="none", help=fit_help)
+parser.add_argument("--fit", default="individual", help=fit_help)
 
-benchmark_help = "run in benchmark mode"
-parser.add_argument("--benchmark", help=benchmark_help)
+mout_help="output a moog readable ew file if set"
+parser.add_argument("--moog-out", action="store_true", help=mout_help)
+
+featout_help="output a features.pkl if set"
+parser.add_argument("--features-out", action="store_true", help=featout_help)
+
+ddir_help="directory of the data to read in"
+parser.add_argument("--data-dir", default="", help=ddir_help)
 
 nwhelp="suppress the GUI window"
 parser.add_argument("--no-window", "--nw", action="store_true", help=nwhelp) 

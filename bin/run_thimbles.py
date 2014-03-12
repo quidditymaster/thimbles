@@ -27,19 +27,24 @@ class MainApplication (QApplication):
         self.spl_pic = QPixmap(spl_path)
         self.splash = QSplashScreen(self.spl_pic, Qt.WindowStaysOnTopHint)
         self.splash.setMask(self.spl_pic.mask())
-        self.splash.show()
-        self.processEvents()
-        time.sleep(0.01)
-        self.processEvents()
-        
-        # TODO: use size to make main window the full screen size
-        screen_rect = self.desktop().screenGeometry()
-        size = screen_rect.width(), screen_rect.height()
+        if not options.no_window:
+            self.splash.show()
+            self.processEvents()
+            time.sleep(0.01)
+            self.processEvents()
+            
+            #TODO: use size to make main window the full screen size
+            screen_rect = self.desktop().screenGeometry()
+            size = screen_rect.width(), screen_rect.height()
         self.main_window = main_window.AppForm(options)
-        self.main_window.show()
+        if not options.no_window:    
+            self.main_window.show()
         
         # close the splash window
         self.splash.finish(self.main_window)
+        if options.no_window:
+            self.main_window.close()
+            self.close()
     
     def on_quit (self):
         pass

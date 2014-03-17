@@ -1455,87 +1455,56 @@ pass
 # special readin functions
 
 # TODO: Fix and include these functions
-# def read_apogee (filepath,use_row=1,get_telluric=False,**read_kwargs):
-#     """ 
-#     This takes the pipeline reduced fits from the APOGEE. This should contain several header units each with several image extensions.
-# 
-#     Paremeters
-#     ----------
-#     filepath : string path to fits file
-#         APOGEE pipeline reduced data with a 0 header unit similar to the below
-#     use_row : integer 
-#         APOGEE refers to these as rows, default is row1 ("combined spectrum with individual pixel weighting")
-#     get_telluric : boolean
-#         If True then it will also extract the telluric data
-# 
-# 
-#     Returns
-#     -------
-#     data_meas : SpectralMeasurementList
-#         A list of all the measurements made
-#     data_info : MetaData
-#         An information dictionary about the data
-#     tell_meas : SpectralMeasurementList (optional if get_telluric)
-#         A list of measurements for the Telluric
-#     tell_info : MetaData (optional if get_telluric)
-#         An information dictionary about the telluric
-#     
-# 
-#     =================================================================
-#     Example header 0 header unit:
-#     
-#     HISTORY APSTAR: The data are in separate extensions:                      
-#     HISTORY APSTAR:  HDU0 = Header only                                       
-#     HISTORY APSTAR:  All image extensions have:                               
-#     HISTORY APSTAR:    row 1: combined spectrum with individual pixel weighti 
-#     HISTORY APSTAR:    row 2: combined spectrum with global weighting         
-#     HISTORY APSTAR:    row 3-nvisis+2: individual resampled visit spectra     
-#     HISTORY APSTAR:   unless nvists=1, which only have a single row           
-#     HISTORY APSTAR:  All spectra shifted to rest (vacuum) wavelength scale    
-#     HISTORY APSTAR:  HDU1 - Flux (10^-17 ergs/s/cm^2/Ang)                     
-#     HISTORY APSTAR:  HDU2 - Error (10^-17 ergs/s/cm^2/Ang)                    
-#     HISTORY APSTAR:  HDU3 - Flag mask (bitwise OR combined)                   
-#     HISTORY APSTAR:  HDU4 - Sky (10^-17 ergs/s/cm^2/Ang)                      
-#     HISTORY APSTAR:  HDU5 - Sky Error (10^-17 ergs/s/cm^2/Ang)                
-#     HISTORY APSTAR:  HDU6 - Telluric                                          
-#     HISTORY APSTAR:  HDU7 - Telluric Error                                    
-#     HISTORY APSTAR:  HDU8 - LSF coefficients                                 
-#     HISTORY APSTAR:  HDU9 - RV and CCF structure
-# 
-#     """
-#     # this is related to the row1
-#     # can also give it an oid form (band,order)
-#     
-#     # use_order = 0 
-#     use_order = int(use_row)-1
-#     hdu_header = 0  # the HDU with the header information
-#     hdu_flux = 1    # the HDU with the flux data
-#     hdu_err = 2     # the HDU with the error on the flux data
-#     hdu_tell = 6    # the HDU with the telluric data
-#     hdu_tell_er = 7 # the HDU with the error on the telluric data
-# 
-#     #readin_kwargs = {"non_std_fits"  :False,
-#     #                 "disp_type"     :'log linear',
-#     #                 "preferred_disp":'crval'}
-# 
-#     # TODO: get information from the primary header?
-# 
-#     def _get_obj (filepath, use_order, hdu_data, hdu_error, **read_kwargs):
-#         meas_list,info = read_fits(filepath,hdu=hdu_data,**read_kwargs)
-#         x_err,err_info = read_fits(filepath,hdu=hdu_error)
-#         # err = x_err.get_data(use_order)
-#         # var = err**2
-#         # inv_var = var_2_inv_var(var)
-#         var = x_err[use_order].flux**2
-#         meas_list[use_order].inv_var = var_2_inv_var(var)
-#         return meas_list,info.cat(err_info,'ignore',True)
-#     
-#     data_out,data_info = _get_obj(filepath,use_order,hdu_flux,hdu_err,**read_kwargs)
-#     if get_telluric:
-#         tell_out,tell_info = _get_obj(filepath,use_order,hdu_tell,hdu_tell_er,**read_kwargs)
-#         return data_out,data_info,tell_out,tell_info
-#     else:
-#         return data_out,data_info
+def read_apogee (filepath,use_row=1,get_telluric=False,**read_kwargs):
+    """ 
+    This takes the pipeline reduced fits from the APOGEE. This should contain several header units each with several image extensions.
+    
+    Paremeters
+     ----------
+     filepath : string path to fits file
+         APOGEE pipeline reduced data with a 0 header unit similar to the below
+     use_row : integer 
+         APOGEE refers to these as rows, default is row1 ("combined spectrum with individual pixel weighting")
+     get_telluric : boolean
+         If True then it will also extract the telluric data
+ 
+ 
+    Returns
+     -------
+     data_meas : SpectralMeasurementList
+         A list of all the measurements made
+     data_info : MetaData
+         An information dictionary about the data
+     tell_meas : SpectralMeasurementList (optional if get_telluric)
+         A list of measurements for the Telluric
+     tell_info : MetaData (optional if get_telluric)
+         An information dictionary about the telluric
+     
+ 
+     =================================================================
+     Example header 0 header unit:
+     
+     HISTORY APSTAR: The data are in separate extensions:                      
+     HISTORY APSTAR:  HDU0 = Header only                                       
+     HISTORY APSTAR:  All image extensions have:                               
+     HISTORY APSTAR:    row 1: combined spectrum with individual pixel weighti 
+     HISTORY APSTAR:    row 2: combined spectrum with global weighting         
+     HISTORY APSTAR:    row 3-nvisis+2: individual resampled visit spectra     
+     HISTORY APSTAR:   unless nvists=1, which only have a single row           
+     HISTORY APSTAR:  All spectra shifted to rest (vacuum) wavelength scale    
+     HISTORY APSTAR:  HDU1 - Flux (10^-17 ergs/s/cm^2/Ang)                     
+     HISTORY APSTAR:  HDU2 - Error (10^-17 ergs/s/cm^2/Ang)                    
+     HISTORY APSTAR:  HDU3 - Flag mask (bitwise OR combined)                   
+     HISTORY APSTAR:  HDU4 - Sky (10^-17 ergs/s/cm^2/Ang)                      
+     HISTORY APSTAR:  HDU5 - Sky Error (10^-17 ergs/s/cm^2/Ang)                
+     HISTORY APSTAR:  HDU6 - Telluric                                          
+     HISTORY APSTAR:  HDU7 - Telluric Error                                    
+     HISTORY APSTAR:  HDU8 - LSF coefficients                                 
+     HISTORY APSTAR:  HDU9 - RV and CCF structure
+ 
+     """
+    pass
+
 # 
 # def read_fits_makee (filepath,varience_filepath=None,output_list=False,verbose=False):
 # 

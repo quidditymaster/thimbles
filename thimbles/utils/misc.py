@@ -149,7 +149,8 @@ def cross_corr(arr1, arr2, offset_number):
 def local_gaussian_fit(yvalues, peak_idx, fit_width=2, xvalues=None):
     """near the peak of a gaussian it is well described by a quadratic.
     this function fits a quadratic function taking pixels from 
-    peak_idx - fit_width to peak_idx + fit_width.
+    peak_idx - fit_width to peak_idx + fit_width, and then maps the resulting
+    quadratic function onto parameters for an associated gaussian.
     
     inputs:
     values: the array of input values to which the fit will be made
@@ -187,12 +188,6 @@ def local_gaussian_fit(yvalues, peak_idx, fit_width=2, xvalues=None):
     peak_y_value = np.dot(center_p_vec, poly_coeffs)
     return center, sigma, peak_y_value
 
-def box_clip(to_be_clipped, lower_bounds, upper_bounds):
-    "clips the input vector to lie inside the box described by the input bounds"
-    clipped = np.where(to_be_clipped > lower_bounds, to_be_clipped, lower_bounds)
-    clipped = np.where(clipped < upper_bounds, clipped, upper_bounds)
-    return clipped
-
 class HypercubeGridInterpolator:
     
     """A class for doing quick linear interpolation over a large D dimensional
@@ -219,7 +214,7 @@ class HypercubeGridInterpolator:
         return
         
     def __call__(self, coord_vec):
-        clipped_coords = box_clip(coord_vec, self.grid_min, self.grid_max)
+        clipped_coords = np.clip(coord_vec, self.grid_min, self.grid_max)
         idx_val = (clipped_coords-self.grid_min)/self.grid_deltas
         min_idx = np.array(idx_val, dtype = int)
         alphas = idx_val-min_idx

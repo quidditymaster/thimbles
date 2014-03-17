@@ -45,7 +45,7 @@ class AppForm(QMainWindow):
                 for spec in spec_list:
                     spec.set_rv(options.rv)
                 spec_base_name = os.path.basename(sfile_name)
-                spec_row = tmbg.models.SpectraRow(spec_list, sepc_base_name)
+                spec_row = tmbg.models.SpectraRow(spec_list, spec_base_name)
                 self.main_table_model.addRow(spec_row)
             except Exception as e:
                 print "there was an error reading file %s" % sfile_name
@@ -75,11 +75,12 @@ class AppForm(QMainWindow):
             if self.options.fit == "individual":
                 culled, feat_spec_idxs = self.cull_lines(spectra, ldat)
                 fit_features = self.initial_feature_fit(spectra, culled, feat_spec_idxs)
-            features_name = "features from %s %s" % (spec_name, ll_name)
+            features_name = "%s_%s" % (spec_name, ll_base_name)
             if self.options.features_out:
                 out_fname=spec_name.split(".")[0] + ".features.pkl"
-                cPicle.dump(fit_features, open(out_fname))
-            frow = tmbg.models.FeaturesRow((spec, fit_features, feat_spec_idxs, self.options.display_width), features_name)
+                out_fpath = os.path.join(self.options.output_dir, out_fname)
+                cPickle.dump(fit_features, open(out_fpath, "w"))
+            frow = tmbg.models.FeaturesRow((spectra, fit_features, feat_spec_idxs, self.options.display_width), features_name)
             self.main_table_model.addRow(frow)
         
         #setup for the dual spectrum operations

@@ -32,8 +32,8 @@ parser.add_argument("--norm", default="ones", help=norm_help)
 fit_help="the type of spectral fit to run"
 parser.add_argument("--fit", default="individual", help=fit_help)
 
-mout_help="output a moog readable ew file if set"
-parser.add_argument("--moog-out", action="store_true", help=mout_help)
+#mout_help="output a moog readable ew file if set"
+#parser.add_argument("--moog-out", action="store_true", help=mout_help)
 
 featout_help="output a features.pkl if set"
 parser.add_argument("--features-out", action="store_true", help=featout_help)
@@ -41,11 +41,14 @@ parser.add_argument("--features-out", action="store_true", help=featout_help)
 ddir_help="directory of the data to read in"
 parser.add_argument("--data-dir", default="", help=ddir_help)
 
+outdir_help="directory to store outputs in"
+parser.add_argument("--output-dir", default="", help=outdir_help)
+
 nwhelp="suppress the GUI window"
 parser.add_argument("--no-window", "--nw", action="store_true", help=nwhelp) 
 
 templ_help="specify template spectra to load from the thimbles/resources/templates directory"
-parser.add_argument("--templates", nargs="*", help=templ_help)
+parser.add_argument("--templates", nargs="*", help=templ_help, default=[])
 
 st_help = "a valid python script or expression to execute in the user name space on startup"
 parser.add_argument("--startup", default="", help=st_help)

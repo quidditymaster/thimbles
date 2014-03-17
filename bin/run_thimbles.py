@@ -9,6 +9,8 @@ import thimblesgui as tmbg
 from thimblesgui import main_window
 from thimblesgui import workers
 
+print "main window file", main_window.__file__
+
 _resources_dir = os.path.join(os.path.dirname(tmbg.__file__),"resources")
 
 # ########################################################################### #

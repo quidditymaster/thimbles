@@ -24,6 +24,19 @@ if not os.path.isfile(rv_template_h5file):
     
 speed_of_light = 299792.458
 
+
+def template_rv_estimate(spectra, template, shift_together=True, overwrite=True):
+    """use a template spectrum to estimate an rv shift for a collection
+    of spectra.
+    
+    spectra: list of spectrum objects
+    template: a template spectrum to use to do the shifting
+    
+    
+    """
+    
+
+
 # ########################################################################### #
 
 class RVTemplates:

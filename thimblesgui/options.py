@@ -48,7 +48,8 @@ nwhelp="suppress the GUI window"
 parser.add_argument("--no-window", "--nw", action="store_true", help=nwhelp) 
 
 templ_help="specify template spectra to load from the thimbles/resources/templates directory"
-parser.add_argument("--templates", nargs="*", help=templ_help, default=[])
+parser.add_argument("--templates", nargs="*", default=[], help=templ_help)
+
 
 st_help = "a valid python script or expression to execute in the user name space on startup"
 parser.add_argument("--startup", default="", help=st_help)

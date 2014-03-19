@@ -79,22 +79,25 @@ MODIFICATION HISTORY:
     
     
     f = open(fname)
-    lines = f.readlines()
+    lines_in = f.readlines()
     f.close()
     
+    lines = []
+    try:
+        float(lines_in[0][:10])
+        float(lines_in[0][10:20])
+        lines.append(lines_in[0])
+    except ValueError as e:
+        pass
+              
     # guess formatting is formatted is None
-    if formatted is None:
-        formatted = True
-        for line in lines:
-            if line.strip() == '' or line.strip()[0] == '#': continue
-            try: 
-                wl = float(line[:10])
-                formatted = True
-            except: pass
-            
+    for line in lines_in[1:]:
+        if line.strip() == '' or line.strip()[0] == '#': 
+            continue
+        lines.append(line)
+    
     # list to hold data
     data = []
-    
     
     # update to have unformatted reads
     if formatted:

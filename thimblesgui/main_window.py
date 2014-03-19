@@ -35,53 +35,40 @@ class AppForm(QMainWindow):
         self.main_table_model = tmbg.models.MainTableModel()
         self.rfunc = tmbg.user_namespace.eval_("tmb.io."+options.read_func)
         
-        for sfile_name in options.files:
+        self.load_linelist()
+        
+        
+        if self.options.batch_mode:
+            input_files = open(options.files[0], "r").readlines()
+            input_files = [fname.rstrip() for fname in input_files]  
+        else:
+            input_files = options.files
+        
+        print "input files", input_files
+        
+        for sfile_name in input_files:
             try:
                 joined_name = os.path.join(options.data_dir, sfile_name)
                 spec_list = self.rfunc(joined_name)
-                if options.norm == "auto":
-                    for spec in spec_list:
-                        spec.approx_norm()
-                for spec in spec_list:
-                    spec.set_rv(options.rv)
-                spec_base_name = os.path.basename(sfile_name)
-                spec_row = tmbg.models.SpectraRow(spec_list, spec_base_name)
-                self.main_table_model.addRow(spec_row)
             except Exception as e:
                 print "there was an error reading file %s" % sfile_name
                 print e
-        
-        ldat = None
-        if not options.line_list is None:
-            try:
-                ldat = np.loadtxt(options.line_list ,skiprows=1, usecols=[0, 1, 2, 3])
-                ll_base_name = os.path.basename(options.line_list)
-                ll_row = tmbg.models.LineListRow(ldat, ll_base_name)
-                self.main_table_model.addRow(ll_row)
-            except Exception as e:
-                print "there was an error reading file %s" % options.line_list
-                print e
-        
-        for row_idx in range(self.main_table_model.rowCount()):
-            crow = self.get_row(row_idx)
-            if crow.type_id == "spectra":
-                spectra = crow.data
-                spec_name = crow.name
-            else:
-                continue
-            if ldat is None:
-                print "cannot carry out a fit without a feature line list"
-                break
-            if self.options.fit == "individual":
-                culled, feat_spec_idxs = self.cull_lines(spectra, ldat)
-                fit_features = self.initial_feature_fit(spectra, culled, feat_spec_idxs)
-            features_name = "%s_%s" % (spec_name, ll_base_name)
+            spec_base_name = os.path.basename(sfile_name)
+            spectra, fit_features, feat_spec_idxs = self.pre_process_spectra(spec_list)
+            spec_base_name = os.path.basename(sfile_name)
+            features_name = "features_%s" % spec_base_name
+            if not self.options.no_window:
+                spec_row = tmbg.models.SpectraRow(spec_list, spec_base_name)
+                self.main_table_model.addRow(spec_row)
+                if not fit_features is None:
+                    frow = tmbg.models.FeaturesRow((spectra, fit_features, feat_spec_idxs, self.options.display_width), features_name)
+                    self.main_table_model.addRow(frow)
+            
             if self.options.features_out:
-                out_fname=spec_name.split(".")[0] + ".features.pkl"
-                out_fpath = os.path.join(self.options.output_dir, out_fname)
-                cPickle.dump(fit_features, open(out_fpath, "w"))
-            frow = tmbg.models.FeaturesRow((spectra, fit_features, feat_spec_idxs, self.options.display_width), features_name)
-            self.main_table_model.addRow(frow)
+                self.save_features(spec_base_name, fit_features)
+            
+            if self.options.moog_out:
+                self.save_moog_from_features(spec_base_name, fit_features)
         
         #setup for the dual spectrum operations
         self.partial_result = None
@@ -291,7 +278,7 @@ class AppForm(QMainWindow):
                 ll = row.data
                 ll_name = row.name
         if spec != None and ll != None:
-            culled, feat_spec_idxs = self.cull_lines(spec, ll)
+            culled, feat_spec_idxs = self.pre_cull_lines(spec, ll)
             if len(culled) == 0:
                 wd = tmbg.dialogs.WarningDialog("There were no features in the overlap! \n Check your wavelength solution")
                 wd.warn()
@@ -332,7 +319,7 @@ class AppForm(QMainWindow):
         if isinstance(new_row, tmbg.models.MainTableRow):
             self.main_table_model.addRow(new_row)
     
-    def cull_lines(self, spectra, ldat):
+    def pre_cull_lines(self, spectra, ldat):
         new_ldat = []
         accepted_mask = np.zeros(len(ldat), dtype=bool)
         line_spec_idxs = np.zeros(len(ldat), dtype=int)
@@ -342,9 +329,22 @@ class AppForm(QMainWindow):
             max_wv = np.max(spec.wv)
             for feat_idx in range(len(ldat)):
                 cwv, cid, cep, cloggf = ldat[feat_idx]
-                if (min_wv + 0.1) < cwv < (max_wv-0.1):
-                    accepted_mask[feat_idx] = True
-                    line_spec_idxs[feat_idx] = spec_idx
+                samp_bounds = (cwv-self.options.fit_width, cwv+self.options.fit_width)
+                bspec = spectra[spec_idx].bounded_sample(samp_bounds)
+                if not bspec is None:
+                    if len(bspec) > 3:
+                        accepted = False
+                        if self.options.pre_cull=="snr":
+                            min_snr = np.min(bspec.flux*np.sqrt(bspec.get_inv_var()))
+                            print "min_snr", min_snr
+                            if min_snr > 10:
+                                accepted=True
+                        else:
+                            accepted = True
+                            print "no pre culling of linelist done"
+                        if accepted:
+                            accepted_mask[feat_idx] = True
+                            line_spec_idxs[feat_idx] = spec_idx
         for feat_idx in range(len(ldat)):
             if accepted_mask[feat_idx]:
                 cwv, cid, cep, cloggf = ldat[feat_idx]
@@ -356,6 +356,47 @@ class AppForm(QMainWindow):
         first_feats = self.preconditioned_feature_fit(spectra, ldat, feat_spec_idxs, None, None, None)
         #TODO: refit and condition on the distribution of parameters
         return first_feats
+    
+    def load_linelist(self):
+        ldat = None
+        if not self.options.line_list is None:
+            try:
+                ldat = np.loadtxt(self.options.line_list ,skiprows=1, usecols=[0, 1, 2, 3])
+                ll_base_name = os.path.basename(self.options.line_list)
+                ll_row = tmbg.models.LineListRow(ldat, ll_base_name)
+                self.main_table_model.addRow(ll_row)
+            except Exception as e:
+                print "there was an error reading file %s" % self.options.line_list
+                print e
+        self.ldat = ldat
+    
+    def save_features(self, fname, features):
+        out_fname=fname.split(".")[0] + ".features.pkl"
+        out_fpath = os.path.join(self.options.output_dir, out_fname)
+        cPickle.dump(features, open(out_fpath, "w"))
+    
+    def save_moog_from_features(self, fname, features):
+        out_fname=fname.split(".")[0] + ".features.ln"
+        out_fpath = os.path.join(self.options.output_dir, out_fname)
+        tmb.io.linelist_io.write_moog_from_features(out_fpath, features)
+    
+    def pre_process_spectra(self, spectra):
+        #apply the normalization
+        if self.options.norm == "auto":
+            for spec in spectra:
+                spec.approx_norm()
+        #apply the radial velocity shift
+        for spec in spectra:
+            spec.set_rv(self.options.rv)
+        
+        if self.ldat is None:
+            print "cannot carry out a fit without a feature line list"
+            return spectra, None, None
+        
+        if self.options.fit == "individual":
+            culled, feat_spec_idxs = self.pre_cull_lines(spectra, self.ldat)
+            fit_features = self.initial_feature_fit(spectra, culled, feat_spec_idxs)
+        return spectra, fit_features, feat_spec_idxs
     
     def preconditioned_feature_fit(self, spectra, ldat, feat_spec_idxs, pvec_min, pvec_max, bound_sig):
         features = []

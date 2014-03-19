@@ -31,7 +31,7 @@ __all__ = ["read","read_txt","read_fits",
            "query_fits_header","WavelengthSolutionFunctions",
            "ExtractWavelengthCoefficients",
            "read","read_txt","read_fits","read_fits_hdu","read_bintablehdu",
-           "read_many_fits"]
+           "read_many_fits", "read_apstar"]
 
 # ########################################################################### #
 
@@ -1454,10 +1454,9 @@ pass
 # ############################################################################# #
 # special readin functions
 
-# TODO: Fix and include these functions
-def read_apogee (filepath,use_row=1,get_telluric=False,**read_kwargs):
+def read_apstar (filepath, data_hdu=1, error_hdu=2, row=0):
     """ 
-    This takes the pipeline reduced fits from the APOGEE. This should contain several header units each with several image extensions.
+  reads the apStar APOGEE fits files.
     
     Paremeters
      ----------
@@ -1471,14 +1470,7 @@ def read_apogee (filepath,use_row=1,get_telluric=False,**read_kwargs):
  
     Returns
      -------
-     data_meas : SpectralMeasurementList
-         A list of all the measurements made
-     data_info : MetaData
-         An information dictionary about the data
-     tell_meas : SpectralMeasurementList (optional if get_telluric)
-         A list of measurements for the Telluric
-     tell_info : MetaData (optional if get_telluric)
-         An information dictionary about the telluric
+    a list with a single apogee spectrum in it
      
  
      =================================================================
@@ -1503,7 +1495,20 @@ def read_apogee (filepath,use_row=1,get_telluric=False,**read_kwargs):
      HISTORY APSTAR:  HDU9 - RV and CCF structure
  
      """
-    pass
+    hdulist = fits.open(filepath)
+    metadata = MetaData()
+    metadata['filepath'] = hdulist.filename()
+    hdr = hdulist[0].header
+    metadata['header'] = hdr
+    
+    
+    flux = hdulist[data_hdu].data[row].copy()
+    sigma = hdulist[error_hdu].data[row].copy()
+    crval1 = hdr["CRVAL1"]
+    cdelt1 = hdr["CDELT1"]
+    nwave  = hdr["NWAVE"]
+    wv = np.power(10.0, np.arange(nwave)*cdelt1+crval1)
+    return [Spectrum(wv, flux, var_2_inv_var(sigma**2))]
 
 # 
 # def read_fits_makee (filepath,varience_filepath=None,output_list=False,verbose=False):

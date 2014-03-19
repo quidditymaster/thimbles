@@ -729,10 +729,9 @@ def echelle_normalize(spectra, masks="layered median", partition="adaptive", mas
 
     
 def approximate_normalization(spectrum,
-                              partition_scale=300,
-                              reject_fraction=0.5, 
-                              poly_order=3, 
-                              mask_back_off=-1,
+                              partition_scale=300, 
+                              poly_order=3,
+                              mask_kwargs=None,
                               smart_partition=False, 
                               alpha=4.0,
                               beta=4.0,
@@ -788,7 +787,7 @@ def approximate_normalization(spectrum,
     flux = spectrum.flux
     variance = spectrum.get_var()
     inv_var = spectrum.get_inv_var()
-    good_mask = inv_var > 0
+    good_mask = (inv_var > 0)*(flux > 0)
     #min_stats, fmask = detect_features(flux, variance, 
     #                                   reject_fraction=reject_fraction,
     #                                   mask_back_off=mask_back_off, 
@@ -796,7 +795,9 @@ def approximate_normalization(spectrum,
     #fmask *= good_mask
     
     #generate a layered median mask.
-    fmask = layered_median_mask(flux, 4, 51, 11, 1.0)*good_mask
+    if mask_kwargs is None:
+        mask_kwargs = {'n_layers':3, 'first_layer_width':101, 'last_layer_width':11, 'rejection_sigma':2.0} 
+    fmask = layered_median_mask(flux, **mask_kwargs)*good_mask
     
     mwv = wavelengths[fmask].copy()
     mflux = flux[fmask].copy()

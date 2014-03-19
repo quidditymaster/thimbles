@@ -32,8 +32,8 @@ parser.add_argument("--norm", default="ones", help=norm_help)
 fit_help="the type of spectral fit to run"
 parser.add_argument("--fit", default="individual", help=fit_help)
 
-#mout_help="output a moog readable ew file if set"
-#parser.add_argument("--moog-out", action="store_true", help=mout_help)
+mout_help="automatically output a moog readable ew file if set"
+parser.add_argument("--moog-out", action="store_true", help=mout_help)
 
 featout_help="output a features.pkl if set"
 parser.add_argument("--features-out", action="store_true", help=featout_help)

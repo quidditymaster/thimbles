@@ -445,14 +445,16 @@ class FeatureFitWidget(QWidget):
     
     @property
     def hint_click_on(self):
-        return False
+        return True
     
     def handle_plot_click(self, eventl):
         event ,= eventl
-        if self.hint_click_on:
-            hwv = event.xdata
-            hflux = event.ydata
-            self.add_norm_hint(hwv, hflux)
+        print "clicked!", event.button
+        if event.button == 2:
+            if self.hint_click_on:
+                hwv = event.xdata
+                hflux = event.ydata
+                self.add_norm_hint(hwv, hflux)
     
     def add_norm_hint(self, wv, flux):
         self.norm_hint_wvs.append(wv)

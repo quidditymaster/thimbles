@@ -425,23 +425,15 @@ class FeatureFitWidget(QWidget):
     def minimumSizeHint(self):
         return QSize(500, 500)
     
-    def save_feature_fits(self):
-        fname, file_filter = QFileDialog.getSaveFileName(self, "save features")
+    def save_feature_fits(self, fname):
         import cPickle
         cPickle.dump(self.features, open(fname, "wb"))
         
     def save_measurements(self):
         fname, file_filter = QFileDialog.getSaveFileName(self, "save measurements")
-        llout = tmb.stellar_atmospheres.utils.moog_utils.write_moog_lines_in(fname)
-        for feat in self.features:
-            wv=feat.wv
-            spe=feat.species
-            loggf = feat.loggf
-            ep = feat.ep
-            ew = 1000*feat.eq_width
-            if feat.flags["use"]:
-                llout.add_line(wv, spe, ep, loggf, ew=ew)
-        llout.close()
+        tmb.io.linelist_io.write_moog_from_features(fname, self.features)
+        feat_fname = ".".join(fname.split(".")[:-1]) + ".features.pkl"
+        self.save_feature_fits(feat_fname)
     
     @property
     def hint_click_on(self):

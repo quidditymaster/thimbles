@@ -1,6 +1,7 @@
 from datetime import datetime 
 import numpy as np
 import pandas as pd
+import thimbles as tmb
 
 def read_moog_linelist (fname,formatted=True, output_pandas=False, defaults=None,convert_gf=False):
     """
@@ -162,3 +163,15 @@ def write_moog_linelist(filename, line_data, comment=None):
         out_str += "\n"
         out_file.write(out_str)    
         out_file.close()
+
+def write_moog_from_features(filename, features):
+    llout = tmb.stellar_atmospheres.utils.moog_utils.write_moog_lines_in(filename)
+    for feat in features:
+        wv=feat.wv
+        spe=feat.species
+        loggf = feat.loggf
+        ep = feat.ep
+        ew = 1000*feat.eq_width
+        if feat.flags["use"]:
+            llout.add_line(wv, spe, ep, loggf, ew=ew)
+    llout.close()

@@ -19,6 +19,7 @@ import scipy.optimize
 
 import thimblesgui as tmbg
 import thimbles as tmb
+import thimbles.io as io
 
 _resources_dir = os.path.join(os.path.dirname(__file__),"resources")
 
@@ -336,7 +337,6 @@ class AppForm(QMainWindow):
                         accepted = False
                         if self.options.pre_cull=="snr":
                             min_snr = np.min(bspec.flux*np.sqrt(bspec.get_inv_var()))
-                            print "min_snr", min_snr
                             if min_snr > 10:
                                 accepted=True
                         else:
@@ -378,7 +378,7 @@ class AppForm(QMainWindow):
     def save_moog_from_features(self, fname, features):
         out_fname=fname.split(".")[0] + ".features.ln"
         out_fpath = os.path.join(self.options.output_dir, out_fname)
-        tmb.io.linelist_io.write_moog_from_features(out_fpath, features)
+        io.linelist_io.write_moog_from_features(out_fpath, features)
     
     def pre_process_spectra(self, spectra):
         #apply the normalization

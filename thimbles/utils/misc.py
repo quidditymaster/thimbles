@@ -9,6 +9,7 @@ import scipy.ndimage.filters as filters
 import scipy.ndimage.morphology as morphology
 import scipy.fftpack as fftpack
 import scipy.sparse
+import scipy.sparse.linalg
 from scipy.interpolate import interp1d
 import numpy as np
 from astropy import units

@@ -15,6 +15,7 @@ import warnings
 # 3rd Party
 import scipy
 import astropy
+import astropy.io
 from astropy.io import fits
 import numpy as np
 
@@ -31,7 +32,7 @@ __all__ = ["read","read_txt","read_fits",
            "query_fits_header","WavelengthSolutionFunctions",
            "ExtractWavelengthCoefficients",
            "read","read_txt","read_fits","read_fits_hdu","read_bintablehdu",
-           "read_many_fits", "read_apstar"]
+           "read_many_fits", "read_apstar", "read_aspcap"]
 
 # ########################################################################### #
 
@@ -990,19 +991,7 @@ class ExtractWavelengthCoefficients (object):
             spectre_history[tt1] = (extra_data,disp_type,coeff) 
                 
         return spectre_history
-
         
-        def parse_timetag (hist_line):
-            date_str = hist_line[:10]
-            day,month,year = [int(s) for s in date_str.split(":")]
-            timetag = time.mktime((year,month,day,0,0,0,0,0,0))
-            return timetag
-            
-        def parse_coefficients (hist_line):
-            coeffs = hist_line[18:36],hist_line[36:54],hist_line[54:]
-            coeffs = [float(c.replace("D","e")) for c in coeffs]
-            return coeffs
-            
         spectre_history = {}    
         for i,hist_line in enumerate(histories):
             ds1 = get_spectre_d(hist_line) 
@@ -1501,14 +1490,34 @@ def read_apstar (filepath, data_hdu=1, error_hdu=2, row=0):
     hdr = hdulist[0].header
     metadata['header'] = hdr
     
-    
-    flux = hdulist[data_hdu].data[row].copy()
-    sigma = hdulist[error_hdu].data[row].copy()
+    if len(hdulist[1].data.shape) == 2:
+        flux = hdulist[data_hdu].data[row].copy()
+        sigma = hdulist[error_hdu].data[row].copy()
+    elif len(hdulist[1].data.shape) == 1:
+        flux = hdulist[data_hdu].data
+        sigma = hdulist[error_hdu].data
     crval1 = hdr["CRVAL1"]
     cdelt1 = hdr["CDELT1"]
     nwave  = hdr["NWAVE"]
     wv = np.power(10.0, np.arange(nwave)*cdelt1+crval1)
     return [Spectrum(wv, flux, var_2_inv_var(sigma**2))]
+
+
+def read_aspcap(filepath):
+    hdulist = fits.open(filepath)
+    metadata = MetaData()
+    metadata['filepath'] = hdulist.filename()
+    hdr = hdulist[0].header
+    metadata['header'] = hdr
+    
+    flux = hdulist[1].data
+    sigma = hdulist[2].data
+    invvar = var_2_inv_var(sigma**2)*(flux > 0)
+    crval1 = hdulist[1].header["CRVAL1"]
+    cdelt1 = hdulist[1].header["CDELT1"]
+    nwave  = len(flux)
+    wv = np.power(10.0, np.arange(nwave)*cdelt1+crval1)
+    return [Spectrum(wv, flux, invvar)]
 
 # 
 # def read_fits_makee (filepath,varience_filepath=None,output_list=False,verbose=False):

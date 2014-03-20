@@ -28,19 +28,13 @@ pass
 # Further explanation of read function...
 #
 
-def read_user_defined (filepath,arg1,arg2='12',arg3='default'):
+def read_user_defined (filepath):
     """
     Optional doc string
     """
     # First thing always passed is the file path
     if not os.path.isfile(filepath):
         raise IOError("File does not exist")
-    
-    # all arguments are passed as strings so the user 
-    # needs to cast them to the correct type
-    arg1 = float(arg1)
-    arg2 = int(arg2)
-    arg3
     
     # then you can do whatever you need to read in the data
     # to wavelength, flux, and inverse variance (inv_var)
@@ -49,13 +43,14 @@ def read_user_defined (filepath,arg1,arg2='12',arg3='default'):
     inv_var = []
     
     # then return a spectral measurement list and information
-    spectral_measurement = tmb.Spectrum(wavelength,flux,inv_var)
-    measurement_list = []
-    measurement_list.append(spectral_measurement)
     information = MetaData()
     information['filename'] = filepath
+    spectral_measurement = tmb.Spectrum(wavelength,flux,inv_var, metadata=information)
+    measurement_list = []
+    measurement_list.append(spectral_measurement)
     
-    return measurement_list,information
+    return measurement_list
+
 
 def read_elodie(filepath):
     hdul = fits.open(filepath)
@@ -91,9 +86,8 @@ def read_hectochelle (filepath):
     
     wavelength = (np.arange(len(flux))-crpix)*cdelt + crval
     wavelength *= (1.0-bcv/299796458.0)
-
-    spectral_measurement = tmb.Spectrum(wavelength,flux,inv_var)
-    measurement_list = [spectral_measurement]
+    
     information = MetaData()
     information['filename'] = filepath
-    return measurement_list,information
+    spectra = [tmb.Spectrum(wavelength,flux,inv_var, metadata=information)]
+    return spectra

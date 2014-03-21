@@ -55,14 +55,14 @@ class AppForm(QMainWindow):
                 print "there was an error reading file %s" % sfile_name
                 print e
             spec_base_name = os.path.basename(sfile_name)
-            spectra, fit_features, feat_spec_idxs = self.pre_process_spectra(spec_list)
+            fit_features = self.pre_process_spectra(spec_list)
             spec_base_name = os.path.basename(sfile_name)
             features_name = "features_%s" % spec_base_name
             if not self.options.no_window:
                 spec_row = tmbg.models.SpectraRow(spec_list, spec_base_name)
                 self.main_table_model.addRow(spec_row)
                 if not fit_features is None:
-                    frow = tmbg.models.FeaturesRow((spectra, fit_features, feat_spec_idxs, self.options.display_width), features_name)
+                    frow = tmbg.models.FeaturesRow(fit_features, features_name)
                     self.main_table_model.addRow(frow)
             
             if self.options.features_out:
@@ -170,13 +170,14 @@ class AppForm(QMainWindow):
         self.compare_btn.clicked.connect(self.on_compare)
     
     def bad_selection(self, msg=None):
-        
+        """indicate when operations cannot be performed because of bad user selections
+        """
         if msg == None:
             msg = "invalid selection\n"
         else:
             msg = "invalid selection\n" + msg
-        wd = tmbg.dialogs.WarningDialog(msg)
-        wd.warn()
+        self.wd = tmbg.dialogs.WarningDialog(msg)
+        self.wd.warn()
     
     def get_row(self, row):
         return self.main_table_model.rows[row]
@@ -279,14 +280,14 @@ class AppForm(QMainWindow):
                 ll = row.data
                 ll_name = row.name
         if spec != None and ll != None:
-            culled, feat_spec_idxs = self.pre_cull_lines(spec, ll)
-            if len(culled) == 0:
-                wd = tmbg.dialogs.WarningDialog("There were no features in the overlap! \n Check your wavelength solution")
-                wd.warn()
+            culled_features = self.pre_cull_lines(spec, ll)
+            if len(culled_features) == 0:
+                self.wd = tmbg.dialogs.WarningDialog("There were no features in the overlap! \n Check your wavelength solution")
+                self.wd.warn()
                 return
-            fit_features = self.initial_feature_fit(spec, culled, feat_spec_idxs)
+            fit_features = self.fit_features(culled_features)
             features_name = "features from %s %s" % (spec_name, ll_name)
-            frow = tmbg.models.FeaturesRow((spec, fit_features, feat_spec_idxs, self.options.display_width), features_name)
+            frow = tmbg.models.FeaturesRow(fit_features, features_name)
             self.main_table_model.addRow(frow)
         else:
             self.bad_selection("need one line list and one spectrum")
@@ -321,7 +322,6 @@ class AppForm(QMainWindow):
             self.main_table_model.addRow(new_row)
     
     def pre_cull_lines(self, spectra, ldat):
-        new_ldat = []
         accepted_mask = np.zeros(len(ldat), dtype=bool)
         line_spec_idxs = np.zeros(len(ldat), dtype=int)
         for spec_idx in range(len(spectra)):
@@ -345,17 +345,51 @@ class AppForm(QMainWindow):
                         if accepted:
                             accepted_mask[feat_idx] = True
                             line_spec_idxs[feat_idx] = spec_idx
+        culled_features = []
         for feat_idx in range(len(ldat)):
             if accepted_mask[feat_idx]:
+                sample_width = max(self.options.display_width, self.options.fit_width)
                 cwv, cid, cep, cloggf = ldat[feat_idx]
-                new_ldat.append((cwv, cid, cep, cloggf))
-        new_ldat = np.array(new_ldat)
-        return new_ldat, line_spec_idxs
+                sample_bounds = (cwv-sample_width, cwv+sample_width)
+                bspec = spectra[line_spec_idxs[feat_idx]].bounded_sample(sample_bounds, copy=False)
+                
+                tp = tmb.features.AtomicTransition(cwv, cid, cloggf, cep)
+                wvdel = np.abs(bspec.wv[1]-bspec.wv[0])
+                start_p = np.array([0.0, wvdel, 0.0])
+                lprof = tmb.line_profiles.Voigt(cwv, start_p)
+                nf = tmb.features.Feature(lprof, 0.00, 0.00, tp, data_sample=bspec)
+                culled_features.append(nf)
+        return culled_features
     
-    def initial_feature_fit(self, spectra, ldat, feat_spec_idxs):
-        first_feats = self.preconditioned_feature_fit(spectra, ldat, feat_spec_idxs, None, None, None)
+    def fit_features(self, features):
+        self.quick_fit(features)
+        #self.preconditioned_feature_fit(features)
         #TODO: refit and condition on the distribution of parameters
-        return first_feats
+        return features
+    
+    def quick_fit(self, features):
+        for feature in features:
+            bspec = feature.data_sample
+            wvs = bspec.wv
+            cent_wv = feature.wv
+            flux = bspec.flux
+            minima = tmb.utils.misc.get_local_maxima(-flux)
+            if np.sum(minima) == 0:
+                feature.set_eq_width(0.0)
+                continue
+            minima_idxs = np.where(minima)[0]
+            minima_wvs = wvs[minima_idxs]
+            best_minimum_idx = np.argmin(np.abs(minima_wvs-cent_wv))
+            closest_idx = minima_idxs[best_minimum_idx]
+            fit_center, fit_sigma, fit_y = tmb.utils.misc.local_gaussian_fit(yvalues=flux, peak_idx=closest_idx, fit_width=2, xvalues=wvs)
+            norm_flux = bspec.norm[closest_idx]
+            depth = (norm_flux - fit_y)/norm_flux
+            offset = fit_center-cent_wv
+            new_params = [offset, fit_sigma, 0.0]
+            feature.profile.set_parameters(new_params)
+            feature.set_depth(depth)
+        return features
+        
     
     def load_linelist(self):
         ldat = None
@@ -385,41 +419,22 @@ class AppForm(QMainWindow):
         if self.options.norm == "auto":
             for spec in spectra:
                 spec.approx_norm()
+        
         #apply the radial velocity shift
         for spec in spectra:
             spec.set_rv(self.options.rv)
         
         if self.ldat is None:
             print "cannot carry out a fit without a feature line list"
-            return spectra, None, None
+            return None
         
         if self.options.fit == "individual":
-            culled, feat_spec_idxs = self.pre_cull_lines(spectra, self.ldat)
-            fit_features = self.initial_feature_fit(spectra, culled, feat_spec_idxs)
-        return spectra, fit_features, feat_spec_idxs
+            culled_features = self.pre_cull_lines(spectra, self.ldat)
+            fit_features = self.fit_features(culled_features)
+        return fit_features
     
-    def preconditioned_feature_fit(self, spectra, ldat, feat_spec_idxs, pvec_min, pvec_max, bound_sig):
-        features = []
-        for feat_idx in range(len(ldat)):
-            cwv, cid, cep, cloggf = ldat[feat_idx]
-            print "fitting feature", feat_idx + 1
-            print "% 10.3f% 10.1f% 10.2f%10.2f" % (cwv, cid, cep, cloggf)
-            spec = spectra[feat_spec_idxs[feat_idx]]
-            bspec = spec.bounded_sample((cwv-self.options.fit_width, cwv+self.options.fit_width))
-            if bspec == None:
-                continue
-            wvs = bspec.wv
-            flux = bspec.flux
-            norm = bspec.norm
-            nflux = flux/norm
-            
-            tp = tmb.features.AtomicTransition(cwv, cid, cloggf, cep)
-            wvdel = np.abs(wvs[1]-wvs[0])
-            start_p = np.array([0.0, wvdel, 0.0])
-            lprof = tmb.line_profiles.Voigt(cwv, start_p)
-            eq = 0.005
-            nf = tmb.features.Feature(lprof, eq, 0.00, tp)
-            
+    def preconditioned_feature_fit(self, features):
+        for feat_idx in range(len(features)):            
             wv_del = (np.max(wvs)-np.min(wvs))/float(len(wvs))
             gam_thresh = self.options.gamma_max
             def resids(pvec):
@@ -447,7 +462,6 @@ class AppForm(QMainWindow):
         fparams = np.array([f.profile.get_parameters() for f in features])
         pmed = np.median(fparams, axis=0)
         pmad = np.median(np.abs(fparams-pmed), axis=0)
-        
         return features
     
     def _init_fit_widget(self):

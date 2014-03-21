@@ -22,6 +22,7 @@ import models
 import views
 import user_namespace
 import thimbles as tmb
+from options import options
 
 class NormalizationWidget(QWidget):
     
@@ -374,14 +375,13 @@ class PrevNext(QWidget):
 class FeatureFitWidget(QWidget):
     slidersChanged = Signal(int)
     
-    def __init__(self, spectra, features, feature_idx, feat_spec_idxs, display_width, parent=None):
+    def __init__(self, features, feature_idx, parent=None):
         super(FeatureFitWidget, self).__init__(parent)
         
-        self.display_width = display_width
-        self.spectra = spectra
+        self.display_width = options.display_width
+        #self.spectra = spectra
         self.features = features
         self.feature = features[feature_idx]
-        self.feat_spec_idxs = feat_spec_idxs
         self.feature_idx = feature_idx
         self.norm_hint_wvs = []
         self.norm_hint_fluxes = []
@@ -437,11 +437,11 @@ class FeatureFitWidget(QWidget):
     
     @property
     def hint_click_on(self):
-        return True
+        return False
     
     def handle_plot_click(self, eventl):
         event ,= eventl
-        print "clicked!", event.button
+        #print "clicked!", event.button
         if event.button == 2:
             if self.hint_click_on:
                 hwv = event.xdata
@@ -470,7 +470,6 @@ class FeatureFitWidget(QWidget):
         self.linelist_view.doubleClicked.connect(self.set_feature)
         self.prev_next.next.connect(self.next_feature)
         self.prev_next.prev.connect(self.prev_feature)
-        
         self.use_cb.stateChanged.connect(self.set_use)
     
     def set_use(self, state_val):
@@ -530,11 +529,9 @@ class FeatureFitWidget(QWidget):
     
     def bounded_spec(self):
         feat_wv = self.feature.wv
-        print "feature wv", feat_wv
-        min_wv = feat_wv-1.5*self.display_width
-        max_wv = feat_wv+1.5*self.display_width
-        print "spectra wvs", self.spectra[self.feat_spec_idxs[self.feature_idx]].wv[[0, -1]]
-        bspec = self.spectra[self.feat_spec_idxs[self.feature_idx]].bounded_sample((min_wv, max_wv))
+        #min_wv = feat_wv-1.5*self.display_width
+        #max_wv = feat_wv+1.5*self.display_width
+        bspec = self.feature.data_sample
         return bspec
     
     def sliders_changed(self, intval):

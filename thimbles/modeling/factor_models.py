@@ -154,6 +154,22 @@ class LocallyLinearModel(object):
     def pbag(self):
         return self._pbag
 
+class IdentityModel(LocallyLinearModel):
+    
+    def __init__(self):
+        self._alpha = None
+        self._beta = None
+        self._pbag = None
+        self._recalculate = True
+    
+    def recalculate(self):
+        alpha, beta, pbag = self.get_params()
+        self._lop, self._alpha_der, self._alpha_curve = self.get_differential_operators(alpha, beta, pbag)
+        self._recalculate=False
+    
+    def get_lop(self, alpha=None, beta=None, pbag=None):
+        alpha, beta, pbag = self.get_params(alpha, beta, pbag)
+        
 
 class MatrixModel(LocallyLinearModel):
     

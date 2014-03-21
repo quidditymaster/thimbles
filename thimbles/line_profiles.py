@@ -73,7 +73,7 @@ class Voigt(LineProfile):
     
     def set_parameters(self, vec):
         """offset, g_width, l_width = vec"""
-        self.param_vec = vec
+        self.param_vec = np.asarray(vec)
     
     def get_parameters(self):
         return self.param_vec

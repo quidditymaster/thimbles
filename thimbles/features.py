@@ -57,7 +57,7 @@ class AtomicTransition:
     def molecular_weight(self):
         """molecular weight in amu of the species"""
         #TODO: use the real molecular weight instead of the species number
-        return np.around(self._id)
+        return np.around(2*self._id)
     
     @property
     def species(self):
@@ -107,11 +107,13 @@ class Feature(object):
                  abundance, 
                  trans_parameters,
                  relative_continuum=1.0, 
+                 data_sample=None,
                  flags=None):
         self.profile = profile
         self._eq_width = eq_width
         self.abundance = abundance
         self.trans_parameters = trans_parameters
+        self.data_sample=data_sample
         if flags == None:
             flags = FeatureFlags()
         self.flags = flags
@@ -127,6 +129,10 @@ class Feature(object):
         cur_p = self.profile.get_parameters()
         cur_p[0] = new_off
         self.profile.set_parameters(cur_p)
+    
+    @property
+    def molecular_weight(self):
+        return self.trans_parameters.molecular_weight
     
     @property
     def wv(self):
@@ -179,8 +185,17 @@ class Feature(object):
     def logrw(self):
         return np.log10(self.eq_width/self.wv)
     
-    def get_cog_point(self, theta):
+    def thermal_width(self, teff):
+        4.301e-7*np.sqrt(teff/self.molecular_weight)*self.wv
+    
+    def get_cog_point(self, teff, vturb=2.0, abundance_offset=0.0):
+        #most likely velocity
+        vml = np.sqrt(self.thermal_width(teff)**2 + vturb**2) 
         solar_logeps = tmb.stellar_atmospheres.solar_abundance[self.species]["abundance"]
-        x = solar_logeps+self.trans_parameters.loggf-self.trans_parameters.ep*theta
-        y = self.logrw
+        theta = 5040.0/teff
+        x = solar_logeps+self.loggf-self.ep*theta
+        x += abundance_offset
+        logvml = np.log10(vml)
+        x -= logvml
+        y = self.logrw - logvml
         return x, y

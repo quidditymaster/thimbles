@@ -289,8 +289,8 @@ class RVSettingDialog(QDialog):
 
 class WarningDialog(QDialog):
     
-    def __init__(self, message, error_message=None):
-        super(WarningDialog, self).__init__()
+    def __init__(self, message, error_message=None, parent=None):
+        super(WarningDialog, self).__init__(parent)
         lay = QGridLayout()
         self.message_label = QLabel(message)
         lay.addWidget(self.message_label, 0, 0, 1, 3)

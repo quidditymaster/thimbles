@@ -363,7 +363,7 @@ class AppForm(QMainWindow):
     
     def fit_features(self, features):
         self.quick_fit(features)
-        #self.preconditioned_feature_fit(features)
+        self.preconditioned_feature_fit(features)
         #TODO: refit and condition on the distribution of parameters
         return features
     
@@ -385,7 +385,7 @@ class AppForm(QMainWindow):
             norm_flux = bspec.norm[closest_idx]
             depth = (norm_flux - fit_y)/norm_flux
             offset = fit_center-cent_wv
-            new_params = [offset, fit_sigma, 0.0]
+            new_params = [offset, np.abs(fit_sigma), 0.0]
             feature.profile.set_parameters(new_params)
             feature.set_depth(depth)
         return features
@@ -434,34 +434,42 @@ class AppForm(QMainWindow):
         return fit_features
     
     def preconditioned_feature_fit(self, features):
-        for feat_idx in range(len(features)):            
-            wv_del = (np.max(wvs)-np.min(wvs))/float(len(wvs))
-            gam_thresh = self.options.gamma_max
-            def resids(pvec):
-                pr = lprof.get_profile(wvs, pvec[2:])
-                ew, relnorm, _off, g_sig, l_sig = pvec
-                sig_reg = 0
-                rndiff = np.abs(relnorm-1.0)
-                sig_reg += 10.0*np.abs(rndiff)
-                if g_sig < 0.5*wv_del:
-                    sig_reg += 20.0*np.abs(g_sig-0.5*wv_del)
-                if np.abs(l_sig) > gam_thresh:
-                    sig_reg += np.abs((l_sig-gam_thresh))/wv_del
-                fdiff = nflux-(1.0-ew*pr)*relnorm
-                return np.hstack((fdiff ,sig_reg))
-            
-            guessv = np.hstack((0.05, 1.0, start_p))
-            fit_res = scipy.optimize.leastsq(resids, guessv)
+        lparams = np.array([f.profile.get_parameters() for f in features])
+        sig_med = np.median(lparams[:, 1])
+        sig_mad = np.median(np.abs(lparams[:, 1]-sig_med))
+
+        gam_thresh = self.options.gamma_max
+        
+        def resids(pvec, wvs, lprof, nflux):
+            pr = lprof.get_profile(wvs, pvec[2:])
+            ew, relnorm, _off, g_sig, l_sig = pvec
+            sig_reg = 0
+            rndiff = np.abs(relnorm-1.0)
+            sig_reg += 10.0*np.abs(rndiff)
+            sig_diff = np.abs(g_sig-sig_med)
+            if sig_diff > 3.0*sig_mad:
+                sig_reg += 20.0*(sig_diff-3.0*sig_mad)
+            if np.abs(l_sig) > gam_thresh:
+                sig_reg += np.abs((l_sig-gam_thresh))
+            fdiff = nflux-(1.0-ew*pr)*relnorm
+            return np.hstack((fdiff ,sig_reg))
+        
+        for feat_idx in range(len(features)):
+            feat = features[feat_idx]
+            cwv = feat.wv
+            delta_wv = self.options.fit_width
+            fit_bounds = (cwv-delta_wv, cwv+delta_wv)
+            bspec = feat.data_sample.bounded_sample(fit_bounds)
+            start_p = feat.profile.get_parameters()
+            guessv = np.hstack((feat.eq_width, 1.0, start_p))
+            nflux = bspec.flux/bspec.norm
+            lprof=feat.profile
+            fit_res = scipy.optimize.leastsq(resids, guessv, args=(bspec.wv, lprof, nflux))
             fit = fit_res[0]
             fit[3:] = np.abs(fit[3:])
             lprof.set_parameters(fit[2:])
-            nf.relative_continuum = fit[1]
-            nf.set_eq_width(fit[0]) 
-            features.append(nf)
-        
-        fparams = np.array([f.profile.get_parameters() for f in features])
-        pmed = np.median(fparams, axis=0)
-        pmad = np.median(np.abs(fparams-pmed), axis=0)
+            feat.relative_continuum = fit[1]
+            feat.set_eq_width(fit[0]) 
         return features
     
     def _init_fit_widget(self):

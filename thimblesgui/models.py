@@ -110,8 +110,6 @@ class SpectraRow(MainTableRow):
     
     def on_double_click(self):
         fig = plt.figure()
-        print self.data
-        print "len of data", len(self.data)
         ax = fig.add_subplot(111)
         for i in range(len(self.data)):
             ax.plot(self.data[i].wv, self.data[i].flux, c="b")
@@ -126,17 +124,18 @@ class LineListRow(MainTableRow):
 
 class FeaturesRow(MainTableRow):
     
-    def __init__(self, data, name="some features"):
+    def __init__(self, data, name="some features", parent_widget=None):
         super(FeaturesRow, self).__init__(data, name)
         self.type_id = "features"
+        self.parent_widget = parent_widget
         self.widget = None
     
     def on_double_click(self):
         features = self.data
-        fw = tmbg.widgets.FeatureFitWidget(features, 0, None)
+        fw = tmbg.widgets.FeatureFitWidget(features, 0, self.parent_widget)
         self.fit_widget = fw
         self.fit_widget.show()
-    
+
 class MainTableModel(QAbstractTableModel):
     
     def __init__(self, rows=None):

@@ -47,6 +47,9 @@ parser.add_argument("--continuum-weight", default=0.1, type=float, help=ctmw_hel
 fit_help="the type of spectral fit to run"
 parser.add_argument("--fit", default="individual", help=fit_help)
 
+iter_help="the fit iteration strategy"
+parser.add_argument("--iteration", default="2", help=iter_help)
+
 mout_help="automatically output a moog readable ew file if set"
 parser.add_argument("--moog-out", action="store_true", help=mout_help)
 

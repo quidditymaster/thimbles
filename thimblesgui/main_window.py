@@ -363,8 +363,8 @@ class AppForm(QMainWindow):
     
     def fit_features(self, features):
         self.quick_fit(features)
-        self.preconditioned_feature_fit(features)
-        #TODO: refit and condition on the distribution of parameters
+        for i in range(int(self.options.iteration)):
+            self.preconditioned_feature_fit(features)
         return features
     
     def quick_fit(self, features):
@@ -437,20 +437,42 @@ class AppForm(QMainWindow):
         lparams = np.array([f.profile.get_parameters() for f in features])
         sig_med = np.median(lparams[:, 1])
         sig_mad = np.median(np.abs(lparams[:, 1]-sig_med))
-
+        
+        print "sig_med", sig_med, "sig_mad", sig_mad
+        
+        cent_wvs = np.array([f.wv for f in features])
+        vel_offs = lparams[:, 0]/cent_wvs
+        
+        vel_med = np.median(vel_offs)
+        vel_mad = np.median(np.abs(vel_offs - vel_med))
+        print "vel median", vel_med, "vel mad", vel_mad
+        
+        gam_med = np.median(np.abs(lparams[:, 2]))
+        gam_mad = np.median(np.abs(lparams[:, 2]-gam_med))
+        print "gam med", gam_med, "gam_mad", gam_mad
+        
         gam_thresh = self.options.gamma_max
         
         def resids(pvec, wvs, lprof, nflux):
             pr = lprof.get_profile(wvs, pvec[2:])
             ew, relnorm, _off, g_sig, l_sig = pvec
+            g_sig = np.abs(g_sig)
+            l_sig = np.abs(l_sig)
             sig_reg = 0
             rndiff = np.abs(relnorm-1.0)
-            sig_reg += 10.0*np.abs(rndiff)
+            sig_reg += 5.0*np.abs(rndiff)
+            wv_delta = np.abs(wvs[-1]-wvs[0])/len(wvs)
+            vel_off = _off/wvs[int(len(wvs)/2)]
+            vel_diff =  np.abs(vel_off-vel_med)
+            if vel_diff > 3.0*vel_mad:
+                sig_reg += (vel_diff - 3.0*vel_mad)/vel_mad
             sig_diff = np.abs(g_sig-sig_med)
             if sig_diff > 3.0*sig_mad:
-                sig_reg += 20.0*(sig_diff-3.0*sig_mad)
+                sig_reg += (sig_diff-3.0*sig_mad)/sig_mad
             if np.abs(l_sig) > gam_thresh:
-                sig_reg += np.abs((l_sig-gam_thresh))
+                sig_reg += np.abs((l_sig-gam_thresh))/np.max(0.1*wv_delta, gam_mad)
+            gam_diff = np.abs(l_sig-gam_med)
+            sig_reg += gam_diff/np.max(0.3*wv_delta, gam_mad)
             fdiff = nflux-(1.0-ew*pr)*relnorm
             return np.hstack((fdiff ,sig_reg))
         
@@ -461,6 +483,11 @@ class AppForm(QMainWindow):
             fit_bounds = (cwv-delta_wv, cwv+delta_wv)
             bspec = feat.data_sample.bounded_sample(fit_bounds)
             start_p = feat.profile.get_parameters()
+            start_p[1:] = np.abs(start_p[1:])
+            if np.abs(start_p[1]-sig_med) > 3.0*sig_mad:
+                start_p[1] = sig_med
+            if np.abs(start_p[2]-gam_med) > 3.0*gam_mad:
+                start_p[2] = gam_med
             guessv = np.hstack((feat.eq_width, 1.0, start_p))
             nflux = bspec.flux/bspec.norm
             lprof=feat.profile

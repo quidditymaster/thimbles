@@ -122,13 +122,15 @@ class AppForm(QMainWindow):
         self.load_btn = QPushButton("load")
         self.norm_btn = QPushButton("norm")
         self.rv_btn = QPushButton("set rv")
+        self.extract_order_btn = QPushButton("extract order")
         self.ex_norm_btn = QPushButton("extract normalized")
         self.fit_features_btn = QPushButton("fit features")
         #self.tell_btn = QPushButton("extract telluric")
         btn_grid.addWidget(self.load_btn, 0, 0, 1, 1)
         btn_grid.addWidget(self.norm_btn, 1, 0, 1, 1)
         btn_grid.addWidget(self.rv_btn, 2, 0, 1, 1)
-        btn_grid.addWidget(self.fit_features_btn, 3, 0, 1, 1)
+        btn_grid.addWidget(self.extract_order_btn, 3, 0, 1, 1)
+        btn_grid.addWidget(self.fit_features_btn, 4, 0, 1, 1)
         #btn_grid.addWidget(self.tell_btn, 1, 0, 1, 1)
         op_box.setLayout(btn_grid)
         return op_box
@@ -140,12 +142,10 @@ class AppForm(QMainWindow):
         self.sub_btn = QPushButton("-")
         self.mul_btn = QPushButton("*")
         self.div_btn = QPushButton("/")
-        self.eq_btn = QPushButton("=")
         btn_grid.addWidget(self.add_btn, 0, 0, 1, 1)
         btn_grid.addWidget(self.sub_btn, 0, 1, 1, 1)
         btn_grid.addWidget(self.mul_btn, 1, 0, 1, 1)
         btn_grid.addWidget(self.div_btn, 1, 1, 1, 1)
-        btn_grid.addWidget(self.eq_btn, 2, 0, 1, 2)
         op_box.setLayout(btn_grid)
         return op_box
     
@@ -168,6 +168,7 @@ class AppForm(QMainWindow):
         self.fit_features_btn.clicked.connect(self.on_fit_features)
         self.norm_btn.clicked.connect(self.on_norm)
         self.compare_btn.clicked.connect(self.on_compare)
+        self.extract_order_btn.clicked.connect(self.on_extract_order)
     
     def bad_selection(self, msg=None):
         """indicate when operations cannot be performed because of bad user selections
@@ -181,6 +182,9 @@ class AppForm(QMainWindow):
     
     def get_row(self, row):
         return self.main_table_model.rows[row]
+    
+    def match_standard(self, spectra):
+        return 
     
     def on_double_click(self, index):
         col_index = index.column()
@@ -218,55 +222,60 @@ class AppForm(QMainWindow):
         selrows = smod.selectedRows()
         self.main_table_model.beginRemoveRows()
     
+    def on_add(self):
+        self.on_op("+")
+    
+    def on_sub(self):
+        self.on_op("-")
+    
     def on_div(self):
+        self.on_op("/")
+    
+    def on_mul(self):
+        self.on_op("*")
+    
+    def on_op(self, operation):
         smod = self.main_table_view.selectionModel()
         selrows = smod.selectedRows()
-        if len(selrows) != 1:
-            #self.statusBar.setText("one at a time!")
+        if len(selrows) != 2:
+            self.bad_selection("need 2 spectra selected")
             return
-        row = selrows[0].row()
-        if self.main_table_model.types[row] != "spectra":
-            #self.status_bar.setText("spectra only!")
+        row_idx1, row_idx2 = selrows[0].row(), selrows[1].row()
+        row1, row2 = self.get_row(row_idx1), self.get_row(row_idx2)
+        if row1.type_id != "spectra" or row2.type_id != "spectra":
+            self.bad_selection("operations only work on 2 spectra")
             return
-        else:
-            self.partial_result = self.main_table_model.internalData(row)
-            self.current_operation = "/"
+        if len(row1.data) != len(row2.data):
+            self.wd = tmbg.dialogs.WarningDialog("incompatible numbers of spectral orders")
+            self.wd.warn()
+            return
+        
     
-    def on_eq(self):
+    def on_extract_order(self):
         smod = self.main_table_view.selectionModel()
         selrows = smod.selectedRows()
-        if len(selrows) != 1:
-            #self.statusBar.setText("one at a time!")
+        if len(selrows) > 1:
+            self.bad_selection("extract one at a time")
             return
-        row = selrows[0].row()
-        if self.main_table_model.types[row] != "spectra":
-            #self.status_bar.setText("spectra only!")
+        row_idx = selrows[0].row()
+        row = self.get_row(row_idx)
+        if row.type_id != "spectra":
+            self.bad_selection("can only extract orders from spectra")
             return
-        else:
-            if self.partial_result != None:
-                second_operand = self.main_table_model.internalData(row)
-                n2 = len(second_operand)
-                n1 = len(self.partial_result)
-                if n1 == 1 or n2 == 1:
-                    match_type = "one to many"
-                elif n1 == n2:
-                    match_type = "ordering"
-                else:
-                    print "unable to match spectra"
-                    return
-                if match_type == "ordering":
-                    for pair_idx in range(n1):
-                        left_spec = self.partial_result[pair_idx]
-                        right_spec = second_operand[pair_idx]
-    
-    
+        ex_ord_res = QInputDialog.getInt(self, "extract order dialog", "enter order number (0 indexed)")
+        ex_ord, input_success = ex_ord_res
+        if not input_success:
+            return
+        new_name = "%s_order_%d" % (row.name, ex_ord)
+        
+        new_spec = [row.data[ex_ord]]
+        self.main_table_model.addRow(tmbg.models.SpectraRow(new_spec, new_name))
     
     def on_fit_features(self):
         smod = self.main_table_view.selectionModel()
         selrows = smod.selectedRows()
-        selection_warn = False
         if len(selrows) != 2:
-            self.bad_selection()
+            self.bad_selection("need one line list and one spectrum selected")
             return
         row1, row2 = selrows[0].row(), selrows[1].row()
         spec = None
@@ -290,7 +299,7 @@ class AppForm(QMainWindow):
             frow = tmbg.models.FeaturesRow(fit_features, features_name)
             self.main_table_model.addRow(frow)
         else:
-            self.bad_selection("need one line list and one spectrum")
+            self.bad_selection("need one line list and one spectrum selected")
     
     def on_set_rv(self):
         smod = self.main_table_view.selectionModel()
@@ -421,8 +430,13 @@ class AppForm(QMainWindow):
                 spec.approx_norm()
         
         #apply the radial velocity shift
+        if self.options.rv == "cc":
+            best_template = self.match_standard(spectra)
+            rv = tmb.velocity.template_rv_estimate(spectra, template=best_template, delta_max=self.options.max_rv)
+        else:
+            rv = float(self.options.rv)
         for spec in spectra:
-            spec.set_rv(self.options.rv)
+            spec.set_rv(rv)
         
         if self.ldat is None:
             print "cannot carry out a fit without a feature line list"

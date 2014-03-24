@@ -25,17 +25,36 @@ if not os.path.isfile(rv_template_h5file):
 speed_of_light = 299792.458
 
 
-def template_rv_estimate(spectra, template, shift_together=True, overwrite=True):
-    """use a template spectrum to estimate an rv shift for a collection
+def template_rv_estimate(spectra, template, delta_max=500, pix_poly_width=2):
+    """use a template spectrum to estimate a common rv shift for a collection
     of spectra.
     
     spectra: list of spectrum objects
-    template: a template spectrum to use to do the shifting
-    
+    template: a template spectrum to use to do the shifting to
+        (expects a log-linear wavelength sampled template)
     
     """
-    
-
+    log_delta = np.log10(template.wv[-1]/template.wv[0])/len(template)
+    spec_wv_max = np.max([np.max(s.wv) for s in spectra])
+    wv_delta_max = (delta_max/speed_of_light)*spec_wv_max
+    ccors = []
+    for spec in spectra:
+        wv_bnds = spec.wv[0], spec.wv[1]
+        wv_min = min(wv_bnds)
+        wv_max = max(wv_bnds)
+        spec_bounds = (wv_min-wv_delta_max, wv_max+wv_delta_max) 
+        bounded_template = template.bounded_sample(spec_bounds)
+        normed = spec.normalized()
+        rebinned = normed.rebin(bounded_template.wv_soln)
+        max_pix_off = int(np.log10(1.0+delta_max/speed_of_light)/log_delta) + 1
+        ccors.append(cross_corr(rebinned.flux-1.0, bounded_template.flux-1.0, max_pix_off))
+    ccors = np.array(ccors)
+    ccors /= np.max(ccors, axis=1).reshape((-1, 1))
+    ccor_med = np.median(ccors, axis=0)
+    max_idx = np.argmax(ccor_med)
+    ccor_vels = (np.arange(len(template)) - (len(template)-1.0)/2.0)*log_delta*speed_of_light
+    rv, ccor_sig, ccor_peak = local_gaussian_fit(ccor_med, max_idx, pix_poly_width, xvalues=ccor_vels)
+    return rv
 
 # ########################################################################### #
 
@@ -47,7 +66,7 @@ class RVTemplates:
         self.resolutions = np.array(self.template_data["resolutions"])
     
     def get_best_resolution_index(self, input_spectrum):
-        in_wvs = input_spectrum.get_wvs(frame="telescope")
+        in_wvs = input_spectrum.get_wvs(frame="observer")
         in_diffs = in_wvs[1:]-in_wvs[:-1]
         approx_res = np.median(0.5*(in_wvs[1:]+in_wvs[:-1])/in_diffs)
         res_idx = np.argmin(np.abs(self.resolutions-approx_res))
@@ -67,7 +86,7 @@ class RVTemplates:
             Ideally the detrender would return (flux/continuum - 1)
         """
         #estimate resolution of input_spectrum
-        in_wvs = input_spectrum.get_wvs(frame="telescope")
+        in_wvs = input_spectrum.get_wvs(frame="observer")
         if resolution_index == None:
             res_idx = self.get_best_resolution_index(input_spectrum)
         else:
@@ -87,7 +106,7 @@ class RVTemplates:
         corr_max_idx = min(len(template_wvs)-1, int(max_log_diff/log_delta))
         cwvs = template_wvs[corr_min_idx:corr_max_idx]
         wv_soln = WavelengthSolution(cwvs)
-        resampled_input = input_spectrum.rebin(wv_soln, frame="telescope")
+        resampled_input = input_spectrum.rebin(wv_soln, frame="observer")
         fluxes_data = self.template_data["%s_fluxes" % res_string]
         n_templates, npts = fluxes_data.shape
         max_pix_off = int(np.log10(1.0+max_rv/speed_of_light)/log_delta) + 1

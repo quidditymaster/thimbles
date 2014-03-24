@@ -331,37 +331,37 @@ class WavelengthSolution(CoordinateBinning1d):
     def obs_wvs(self):
         return self.coordinates
     
-    def telescope_to_frame(self, telescope_wvs, frame="emitter"):
+    def observer_to_frame(self, observer_wvs, frame="emitter"):
         if frame == "emitter":
             delta_v = self.emitter_frame - self.observer_frame
-        elif frame == "telescope":
+        elif frame == "observer":
             delta_v = 0.0
         else:
             delta_v = frame - self.observer_frame
-        return telescope_wvs*(1.0-delta_v/speed_of_light)
+        return observer_wvs*(1.0-delta_v/speed_of_light)
     
-    def frame_to_telescope(self, frame_wvs, frame="emitter"):
+    def frame_to_observer(self, frame_wvs, frame="emitter"):
         if frame == "emitter":
             delta_v = self.emitter_frame - self.observer_frame
-        elif frame == "telescope":
+        elif frame == "observer":
             delta_v = 0.0
         else:
             delta_v = frame - self.observer_frame
         return frame_wvs*(1.0+delta_v/speed_of_light)
     
     def frame_conversion(self, wvs, wv_frame, target_frame):
-        rest_wvs = self.frame_to_telescope(wvs, frame=wv_frame)
-        return self.telescope_to_frame(rest_wvs, frame=target_frame)
+        rest_wvs = self.frame_to_observer(wvs, frame=wv_frame)
+        return self.observer_to_frame(rest_wvs, frame=target_frame)
     
     def get_wvs(self, pixels=None, frame="emitter"):
         if pixels == None:
             obs_wvs = self.obs_wvs
         else:
             obs_wvs = self.indicies_to_coordinates(pixels)
-        return self.telescope_to_frame(obs_wvs, frame=frame)
+        return self.observer_to_frame(obs_wvs, frame=frame)
     
     def get_pix(self, wvs, frame="emitter"):
-        shift_wvs = self.frame_to_telescope(wvs, frame="emitter")
+        shift_wvs = self.frame_to_observer(wvs, frame="emitter")
         return self.coordinates_to_indicies(shift_wvs)
     
     def set_rv(self, rv):
@@ -478,6 +478,9 @@ class Spectrum(object):
     def get_var(self):
         #TODO deal with zeros appropriately
         return inv_var_2_var(self.inv_var)
+    
+    def normalized(self):
+        return Spectrum(self.wv_soln, self.flux/self.norm, self.get_inv_var()*self.norm**2)
     
     def rebin(self, new_wv_soln, frame="emitter"):
         #check if we have the transform stored

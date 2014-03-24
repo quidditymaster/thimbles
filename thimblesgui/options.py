@@ -35,8 +35,11 @@ parser.add_argument("--gamma-max", "--gm", type=float, default=0.0)
 read_help = "name of function to load the data files with"
 parser.add_argument("--read-func", default="read")
 
-rv_help = "optional radial velocity shift to apply"
-parser.add_argument("--rv", type=float, default=0.0, help=rv_help)
+rv_help = "optional radial velocity shift to apply set to 'cc' to estimate via cross correlation with a template"
+parser.add_argument("--rv", default=0.0, help=rv_help)
+
+dmaxh="maximum velocity shift to search for by default (in Km/s)"
+parser.add_argument("--max-rv", default=500, help=dmaxh)
 
 norm_help="type of normalization to apply to spectra"
 parser.add_argument("--norm", default="auto", help=norm_help)

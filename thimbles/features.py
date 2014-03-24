@@ -1,6 +1,7 @@
 import numpy as np
 #from .stellar_atmospheres import periodic_table
 import thimbles as tmb
+from flags import FeatureFlags
 
 class AtomicTransition:
     """
@@ -70,35 +71,6 @@ class AtomicTransition:
                format(self.ep,'5.2f'))
         return "  ".join(out)
 
-class FeatureFlags(object):
-    
-    def __init__(self):
-        self.flags = {}
-        self.flags["use"] = True
-        self.flags["in_range"] = False
-        self.flags["bad_data"] = False
-        self.flags["bad_fit"]  = False
-        self.flags["viewed"] = False
-    
-    def set_true(self, *flag_names):
-        if not len(flag_names):
-            flag_names = self.flags.keys()
-        
-        for flag_name in flag_names:
-            self.flags[flag_name] = True
-    
-    def set_false(self, *flag_names):
-        if not len(flag_names):
-            flag_names = self.flags.keys()
-        for flag_name in flag_names:
-            self.flags[flag_name] = False
-    
-    def __getitem__(self, index):
-        return self.flags[index]
-    
-    def __setitem__(self, index, value):
-        self.flags[index] = value
-
 class Feature(object):
     
     def __init__(self, 
@@ -120,7 +92,8 @@ class Feature(object):
         self.relative_continuum=relative_continuum
     
     def __repr__ (self):
-        return "Feature : "+repr(self.trans_parameters)
+        rep_str = """Feature : %s"""
+        return rep_str % repr(self.trans_parameters) 
     
     def get_offset(self):
         return self.profile.get_parameters()[0]

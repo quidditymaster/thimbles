@@ -19,8 +19,8 @@ __all__ = ["template_rv_estimate"]
 
 resource_dir = os.path.join(os.path.dirname(__file__), "resources")
 hf = h5py.File(os.path.join(resource_dir, "g2_mp_giant.h5"))
-import pdb; pdb.set_trace()
 rv_standard = Spectrum(np.array(hf["wv"]), np.array(hf["flux"]))
+hf.close()
     
 speed_of_light = 299792.458
 

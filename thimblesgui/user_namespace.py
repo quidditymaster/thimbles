@@ -22,16 +22,17 @@ template_dir = os.path.join(os.path.join(os.path.dirname(tmb.__file__), "resourc
 #load specified template spectra
 for template_name in options.templates:
     store_name = template_name.split(".")[0]
+    tf_path = None
     if os.path.isfile(template_name):
-        try:
-            exec("%s = read(%s)" % (store_name, template_name) )
-        except Exception as e:
-            print "unable to read template %s" % template_name
-            print e
+        tf_path=template_name
     elif os.path.isfile(os.path.join(template_dir, template_name)):
-        tfname = os.path.isfile(os.path.join(template_dir, template_name))
-        exec("%s = read(%s)" % (store_name, tfname))
-
+        tf_path= os.path.isfile(os.path.join(template_dir, template_name))
+    try:
+        exec("%s = read(%s)" % (store_name, tf_path) )
+    except Exception as e:
+        print "unable to read template %s" % template_name
+        print e
+    
 def eval_(cmd_str):
     return eval(cmd_str)
 

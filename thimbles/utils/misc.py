@@ -126,11 +126,13 @@ def reduce_output_shape (arr):
     return arr.reshape(new_shape)
 
 #TODO: write this cross correlator in cython
-def cross_corr(arr1, arr2, offset_number):
+def cross_corr(arr1, arr2, offset_number, overlap_adj=False):
     """cross correlate two arrays of the same size.
-    correlating over a range of pixel offsets from 
-    -offset_number to +offset_number and returning
-    a 2*offset_number+1 length array.
+    correlating over a range of pixel offsets from -offset_number to 
+    +offset_number and returning a 2*offset_number+1 length array. 
+    To adjust for differences in the number of pixels overlapped if 
+    overlap_adj==True we divide the result by the number of pixels
+    included in the overlap of the two spectra.
     """
     assert len(arr1) == len(arr2)
     npts = len(arr1)
@@ -144,6 +146,10 @@ def cross_corr(arr1, arr2, offset_number):
         lb1, ub1 = max(0, coff), min(npts, npts+coff)
         lb2, ub2 = max(0, -coff), min(npts, npts-coff)
         cur_corr = np.sum(arr1[lb1:ub1]*arr2[lb2:ub2])
+        if overlap_adj:
+            n_overlap = min(ub1, ub2) - max(lb1, lb2)
+            assert n_overlap > 0
+            cur_corr /= float(n_overlap)
         cor_out[offset_idx] = cur_corr
     return cor_out
 

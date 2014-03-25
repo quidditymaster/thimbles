@@ -163,7 +163,9 @@ class AppForm(QMainWindow):
         self.main_table_view.doubleClicked.connect(self.on_double_click)
         self.rv_btn.clicked.connect(self.on_set_rv)
         self.div_btn.clicked.connect(self.on_div)
-        self.eq_btn.clicked.connect(self.on_eq)
+        self.mul_btn.clicked.connect(self.on_mul)
+        self.add_btn.clicked.connect(self.on_add)
+        self.sub_btn.clicked.connect(self.on_sub)
         self.load_btn.clicked.connect(self.on_load)
         self.fit_features_btn.clicked.connect(self.on_fit_features)
         self.norm_btn.clicked.connect(self.on_norm)
@@ -430,8 +432,13 @@ class AppForm(QMainWindow):
                 spec.approx_norm()
         
         #apply the radial velocity shift
+        import pdb; pdb.set_trace()
         if self.options.rv == "cc":
-            best_template = self.match_standard(spectra)
+            import h5py
+            hf = h5py.File("/home/tim/data/caelho_grid/extracted_log_linear.h5")
+            best_template = tmb.Spectrum(np.array(hf["wv"]), np.array(hf["flux"]))
+            #best_template = self.match_standard(spectra)
+            import pdb; pdb.set_trace()
             rv = tmb.velocity.template_rv_estimate(spectra, template=best_template, delta_max=self.options.max_rv)
         else:
             rv = float(self.options.rv)

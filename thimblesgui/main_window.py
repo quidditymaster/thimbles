@@ -400,7 +400,6 @@ class AppForm(QMainWindow):
             feature.profile.set_parameters(new_params)
             feature.set_depth(depth)
         return features
-        
     
     def load_linelist(self):
         ldat = None
@@ -432,14 +431,11 @@ class AppForm(QMainWindow):
                 spec.approx_norm()
         
         #apply the radial velocity shift
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
         if self.options.rv == "cc":
-            import h5py
-            hf = h5py.File("/home/tim/data/caelho_grid/extracted_log_linear.h5")
-            best_template = tmb.Spectrum(np.array(hf["wv"]), np.array(hf["flux"]))
             #best_template = self.match_standard(spectra)
-            import pdb; pdb.set_trace()
-            rv = tmb.velocity.template_rv_estimate(spectra, template=best_template, delta_max=self.options.max_rv)
+            #import pdb; pdb.set_trace()
+            rv = tmb.velocity.template_rv_estimate(spectra, delta_max=self.options.max_rv)
         else:
             rv = float(self.options.rv)
         for spec in spectra:

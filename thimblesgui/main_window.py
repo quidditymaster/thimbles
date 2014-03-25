@@ -223,18 +223,18 @@ class AppForm(QMainWindow):
         self.main_table_model.beginRemoveRows()
     
     def on_add(self):
-        self.on_op("+")
+        self.on_op(lambda x, y: x+y, "+")
     
     def on_sub(self):
-        self.on_op("-")
+        self.on_op(lambda x, y: x-y, "-")
     
     def on_div(self):
-        self.on_op("/")
+        self.on_op(lambda x, y: x/y, "/")
     
     def on_mul(self):
-        self.on_op("*")
+        self.on_op(lambda x, y: x*y, "*")
     
-    def on_op(self, operation):
+    def on_op(self, operation_func, op_symbol):
         smod = self.main_table_view.selectionModel()
         selrows = smod.selectedRows()
         if len(selrows) != 2:
@@ -246,10 +246,21 @@ class AppForm(QMainWindow):
             self.bad_selection("operations only work on 2 spectra")
             return
         if len(row1.data) != len(row2.data):
-            self.wd = tmbg.dialogs.WarningDialog("incompatible numbers of spectral orders")
+            self.wd = tmbg.dialogs.WarningDialog("combining different numbers of spectra doesn't work yet")
             self.wd.warn()
             return
-        
+        try:
+            out_spectra = []
+            for spec1, spec2 in zip(row1.data, row2.data):
+                nflux1 = spec1.flux/spec1.norm
+                nflux2 = spec2.flux/spec2.norm
+                op_flux = operation_func(spec1, spec2)
+                tmb.Spectrum(spec1.wv, op_flux)
+                row_name = "%s %s %s" (row1.name, op_symbol, row2.name)
+                new_row = tmbg.models.SpectraRow(new_spec, new_name)
+                self.main_table_model.addRow(new_row, row_name)
+        except:
+            pass
     
     def on_extract_order(self):
         smod = self.main_table_view.selectionModel()

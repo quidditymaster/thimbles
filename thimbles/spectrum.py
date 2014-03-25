@@ -488,6 +488,8 @@ class Spectrum(object):
             transform = self._last_rebin_transform
         else:
             in_wvs = self.get_wvs(frame=frame)
+            if not isinstance(new_wv_soln, WavelengthSolution):
+                new_wv_soln = WavelengthSolution(new_wv_soln)
             out_wvs = new_wv_soln.get_wvs()
             transform = resampling.get_resampling_matrix(in_wvs, out_wvs, preserve_normalization=True)
             self._last_rebin_transform = transform

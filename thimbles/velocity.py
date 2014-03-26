@@ -22,7 +22,7 @@ resource_dir = os.path.join(os.path.dirname(__file__), "resources")
 def try_load_template():
     rv_standard = None
     try:
-        hf = h5py.File(os.path.join(resource_dir, "g2_mp_giant.h5"))
+        hf = h5py.File(os.path.join(resource_dir, "g2_mp_giant.h5"), "r")
         rv_standard = Spectrum(np.array(hf["wv"]), np.array(hf["flux"]))
         hf.close()
     except Exception as e:

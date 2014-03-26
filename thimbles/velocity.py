@@ -18,10 +18,25 @@ __all__ = ["template_rv_estimate"]
 # ########################################################################### #
 
 resource_dir = os.path.join(os.path.dirname(__file__), "resources")
-hf = h5py.File(os.path.join(resource_dir, "g2_mp_giant.h5"))
-rv_standard = Spectrum(np.array(hf["wv"]), np.array(hf["flux"]))
-hf.close()
-    
+
+def try_load_template():
+    rv_standard = None
+    try:
+        hf = h5py.File(os.path.join(resource_dir, "g2_mp_giant.h5"))
+        rv_standard = Spectrum(np.array(hf["wv"]), np.array(hf["flux"]))
+        hf.close()
+    except Exception as e:
+        print e
+        print "there was an exception loading the template file, trying again"
+    return rv_standard
+
+for i in range(3): #number of times to retry if load fails
+    rv_standard = try_load_template()
+    if rv_standard is None:
+        time.sleep(0.01+0.1*np.random.random())
+    else:
+        break
+
 speed_of_light = 299792.458
 
 def template_rv_estimate(spectra, template=rv_standard, delta_max=500, pix_poly_width=2):

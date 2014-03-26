@@ -5,9 +5,10 @@ import matplotlib.pyplot as plt
 from PySide.QtGui import *
 from PySide.QtCore import *
 
+from options import options
 import thimblesgui as tmbg
 from thimblesgui import user_namespace
-#import thimbles as tmb
+import thimbles as tmb
 
 class SaveDialog(QDialog):
     
@@ -237,9 +238,10 @@ class RVSettingDialog(QDialog):
         self.units_label = QLabel("Km/S")
         self.rv_le = QLineEdit("", self)
         self.reset_rv_text()
+        self.ccor_btn = QPushButton("Cross Correlate")
         self.apply_btn = QPushButton("Apply")
         self.cancel_btn = QPushButton("Cancel")
-        self.finish_btn = QPushButton("finish")
+        self.finish_btn = QPushButton("Finish")
         
         #do the layout
         lay = QGridLayout()
@@ -250,17 +252,24 @@ class RVSettingDialog(QDialog):
         lay.addWidget(self.units_label, 0, 2, 1, 1)
         
         #row2
-        lay.addWidget(self.cancel_btn, 1, 0, 1, 1)
-        lay.addWidget(self.apply_btn, 1, 1, 1, 1)
-        lay.addWidget(self.finish_btn, 1, 2, 1, 1)
+        lay.addWidget(self.ccor_btn, 1, 0, 1, 1)
+        lay.addWidget(self.cancel_btn, 1, 1, 1, 1)
+        lay.addWidget(self.apply_btn, 1, 2, 1, 1)
+        lay.addWidget(self.finish_btn, 1, 3, 1, 1)
         
         #connect
         self.rv_le.editingFinished.connect(self.on_rv_le_changed)
+        self.ccor_btn.clicked.connect(self.on_ccor)
         self.apply_btn.clicked.connect(self.on_apply)
         self.cancel_btn.clicked.connect(self.on_cancel)
         self.finish_btn.clicked.connect(self.on_finish)
         
         self.setLayout(lay)
+    
+    def on_ccor(self):
+        ccor_rv = tmb.velocity.template_rv_estimate(self.spectra, delta_max=options.max_rv)
+        self.current_rv = ccor_rv
+        self.reset_rv_text()
     
     def on_rv_le_changed(self):
         try:

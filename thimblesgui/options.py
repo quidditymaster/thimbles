@@ -26,8 +26,8 @@ dwhelp = "default number of angstroms to display"
 parser.add_argument("--display-width", "--dw", type=float, default=3.0, help=dwhelp)
 
 #TODO: replace these options with a kwarg for the individual mode using --fit
-fwhelp = "default individual line fit width"
-parser.add_argument("--fit-width", "--fw", type=float, default=0.3, help=fwhelp)
+fwhelp = "default individual line fit width in angstroms"
+parser.add_argument("--fit-width", "--fw", default="average", help=fwhelp)
 
 dgamma_help = "penalize lorentz width values above this threshold"
 parser.add_argument("--gamma-max", "--gm", type=float, default=0.0)
@@ -41,14 +41,20 @@ parser.add_argument("--rv", default=0.0, help=rv_help)
 dmaxh="maximum velocity shift to search for by default (in Km/s)"
 parser.add_argument("--max-rv", default=500, help=dmaxh)
 
-norm_help="type of normalization to apply to spectra"
+norm_help="type of normalization to apply to spectra options are ones and auto"
 parser.add_argument("--norm", default="auto", help=norm_help)
 
 ctmw_help="how heavily to weight the global continuum when determinging local continuum"
-parser.add_argument("--continuum-weight", default=0.1, type=float, help=ctmw_help)
+parser.add_argument("--continuum-weight", default=5.0, type=float, help=ctmw_help)
 
 fit_help="the type of spectral fit to run"
 parser.add_argument("--fit", default="individual", help=fit_help)
+
+outmulth="consider differences from the median of greater than 1.4*(outlier multiplier)*(median absolute deviation) to constitute an outlier and exclude them from consideration"
+parser.add_argument("--outlier-threshold", type=float, default=5.0, help=outmulth)
+
+inmulth="consider differences from the median of less than 1.4*(inlier multiplier)*(median absolute deviation) to constitute core trusted values"
+parser.add_argument("--inlier-threshold", type=float, default=1.0, help=inmulth)
 
 iter_help="the fit iteration strategy"
 parser.add_argument("--iteration", default="2", help=iter_help)

@@ -1,7 +1,29 @@
 from datetime import datetime 
+import re
 import numpy as np
 import pandas as pd
 import thimbles as tmb
+
+def read_vald_linelist(fname):
+    """read a vald long format linelist
+    """
+    lines = open(fname, "r").readlines()
+    ldat = []
+    input_re = re.compile("'[A-Z][a-z] [12]', ")
+    ptable = tmb.stellar_atmospheres.periodic_table
+    for line in lines:
+        m = input_re.match(line)
+        if m is None:
+            continue
+        spl = line.rstrip().split(",")
+        species_name, ion_number = spl[0].replace("'", "").split()
+        proton_number = ptable[species_name]["z"]
+        species_id = proton_number + 0.1*(int(ion_number)-1)
+        wv, loggf, elow, jlo, eup, jup = map(float, spl[1:7])
+        ldat.append((wv, species_id, elow, loggf))
+        #import pdb; pdb.set_trace()
+    return np.array(ldat)
+    
 
 def read_moog_linelist (fname,formatted=True, output_pandas=False, defaults=None,convert_gf=False):
     """
@@ -126,7 +148,7 @@ MODIFICATION HISTORY:
             else: raise ValueError("Wrong columns length when split on white space for: "+line)
             data.append([wl,spe,ep,loggf,vwdamp,d0,ew,info])
         
-    dtypes = [('wl',float),
+    dtypes = [('wv',float),
               ('species',float),
               ('ep',float),
               ('loggf',float),

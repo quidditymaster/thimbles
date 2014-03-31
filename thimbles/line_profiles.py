@@ -140,6 +140,16 @@ class HalfGaussian(LineProfile):
         return avg_norm*np.exp(-(wvs-self.center)**2/(2*sig_vec**2))
 
 
+class SaturatedVoigt(LineProfile):
+    #TODO: full implementation
+    def __init__(self, center, param_vec):
+        """the result of a voigt profile in opacity l relative to some
+        continuous opacity k and evaluating the line profile as l/(l+k)
+        """
+        self.center = center
+        self.param_vec = np.asarray(param_vec)
+
+
 def profile_fit(x, y, y_inv_var, center, profile, offset_sigma=None, additive_background=True):
     """ fits a profile 
     
@@ -169,7 +179,6 @@ def profile_fit(x, y, y_inv_var, center, profile, offset_sigma=None, additive_ba
     elif profile == "voigt":
         sig_start = 2.5*(x[1]-x[0])
         profile = Voigt(center, [0.0, sig_start, 0.0])
-
     tmb.modeling
 
 #def voigt_fit(x, y, y_error, center):

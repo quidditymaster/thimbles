@@ -35,11 +35,11 @@ class SaveDialog(QDialog):
         self.function_label = QLabel("readin function")
         lay.addWidget(self.function_label, 3, 0, 1, 1)
         lay.addWidget(self.function_dd, 3, 1, 1, 1)
-        spec_io_names = [f for f in dir(user_namespace) if "read" in f]
+        spec_io_names = [f for f in dir(tmb.io.spec_io) if "read" in f]
         spec_io_funcs = [user_namespace.eval_(x) for x in spec_io_names]
         
-        ll_io_names = ["loadtxt"]
-        ll_io_funcs = [skipload] 
+        ll_io_names = [f for f in dir(tmb.io.linelist_io) if "read" in f]
+        ll_io_funcs = [user_namespace.eval_(x) for x in ll_io_names] 
         self.loading_functions = {}
         self.loading_function_names = {}
         self.loading_functions["spectra"] = spec_io_funcs

@@ -16,11 +16,14 @@ parser.add_argument("--line-list", "--ll", help=line_list_help)
 pre_cullh="method for culling the line list before measurement"
 parser.add_argument("--pre-cull", default="snr", help=pre_cullh)
 
+cullthreshh="a threshold for quick culling of lines for strength"
+parser.add_argument("--cull-threshold", default=-2.0, type=float, help=cullthreshh)
+
 post_cullh="method for culling the output measurements"
 parser.add_argument("--post-cull", default="none", help=post_cullh)
 
 tgh="a guess at the effective temperature"
-parser.add_argument("--teff-start", default=5500.0, type=float, help=tgh)
+parser.add_argument("--start_teff", default=5500.0, type=float, help=tgh)
 
 dwhelp = "default number of angstroms to display" 
 parser.add_argument("--display-width", "--dw", type=float, default=3.0, help=dwhelp)
@@ -72,7 +75,10 @@ outdir_help="directory to store outputs in"
 parser.add_argument("--output-dir", default="", help=outdir_help)
 
 nwhelp="suppress the GUI window"
-parser.add_argument("--no-window", "--nw", action="store_true", help=nwhelp) 
+parser.add_argument("--no-window", "--nw", action="store_true", help=nwhelp)
+
+nsplashh="suppres the splash screen"
+parser.add_argument("--no-splash", "--nsplash", action="store_true", help=nsplashh)
 
 templ_help="specify template spectra to load from the thimbles/resources/templates directory"
 parser.add_argument("--templates", nargs="*", default=[], help=templ_help)
@@ -81,6 +87,10 @@ st_help = "a valid python script or expression to execute in the user name space
 parser.add_argument("--startup", default="", help=st_help)
 
 options = parser.parse_args()
+
+if options.no_window:
+    options.no_splash = True
+
 #in batch mode always give some output and never open the window
 if options.batch_mode:
     options.no_window=True

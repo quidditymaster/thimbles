@@ -259,7 +259,7 @@ class AppForm(QMainWindow):
                 op_flux = operation_func(spec1, spec2)
                 out_spectra.append(tmb.Spectrum(spec1.wv, op_flux))
             row_name = "%s %s %s" (row1.name, op_symbol, row2.name)
-            new_row = tmbg.models.SpectraRow(out_spectra, new_name)
+            new_row = tmbg.models.SpectraRow(out_spectra, row_name)
             self.main_table_model.addRow(new_row, row_name)
         except Exception as e:
             self.wd = tmbg.dialogs.WarningDialog("error carrying out the operation", e)
@@ -355,6 +355,8 @@ class AppForm(QMainWindow):
             for feat_idx in range(len(ldat)):
                 cwv, cid, cep, cloggf = ldat[feat_idx]
                 samp_bounds = (cwv-2*wv_del, cwv+2*wv_del)
+                solar_logeps = tmb.stellar_atmospheres.solar_abundance[cid]["abundance"]
+                strength = solar_logeps + cloggf - cep*5040.0/self.options.start_teff
                 bspec = spectra[spec_idx].bounded_sample(samp_bounds)
                 if not bspec is None:
                     if len(bspec) > 3:
@@ -362,7 +364,8 @@ class AppForm(QMainWindow):
                         if self.options.pre_cull=="snr":
                             min_snr = np.min(bspec.flux*np.sqrt(bspec.get_inv_var()))
                             if min_snr > 10:
-                                accepted=True
+                                if strength > self.options.cull_threshold:
+                                    accepted=True
                         else:
                             accepted = True
                             print "no pre culling of linelist done"
@@ -386,32 +389,10 @@ class AppForm(QMainWindow):
         return culled_features
     
     def fit_features(self, features):
-        self.quick_fit(features)
+        #import pdb; pdb.set_trace()
+        tmb.modeling.spectral_models.quick_quadratic_fit(features)
         for i in range(int(self.options.iteration)):
-            self.preconditioned_feature_fit(features)
-        return features
-    
-    def quick_fit(self, features):
-        for feature in features:
-            bspec = feature.data_sample
-            wvs = bspec.wv
-            cent_wv = feature.wv
-            flux = bspec.flux
-            minima = tmb.utils.misc.get_local_maxima(-flux)
-            if np.sum(minima) == 0:
-                feature.set_eq_width(0.0)
-                continue
-            minima_idxs = np.where(minima)[0]
-            minima_wvs = wvs[minima_idxs]
-            best_minimum_idx = np.argmin(np.abs(minima_wvs-cent_wv))
-            closest_idx = minima_idxs[best_minimum_idx]
-            fit_center, fit_sigma, fit_y = tmb.utils.misc.local_gaussian_fit(yvalues=flux, peak_idx=closest_idx, fit_width=2, xvalues=wvs)
-            norm_flux = bspec.norm[closest_idx]
-            depth = (norm_flux - fit_y)/norm_flux
-            offset = fit_center-cent_wv
-            new_params = [offset, np.abs(fit_sigma), 0.0]
-            feature.profile.set_parameters(new_params)
-            feature.set_depth(depth)
+            tmb.modeling.spectral_models.ensemble_feature_fit(features)
         return features
     
     def load_linelist(self):
@@ -460,82 +441,9 @@ class AppForm(QMainWindow):
         
         if self.options.fit == "individual":
             culled_features = self.pre_cull_lines(spectra, self.ldat)
+            tmb.modeling.quick_quadratic_fit(culled_features)
             fit_features = self.fit_features(culled_features)
         return fit_features
-    
-    def preconditioned_feature_fit(self, features):
-        lparams = np.array([f.profile.get_parameters() for f in features])
-        
-        cent_wvs = np.array([f.wv for f in features])
-        vel_offs = lparams[:, 0]/cent_wvs
-        
-        sig_over_wv = lparams[:, 1]/cent_wvs
-        sig_med = np.median(sig_over_wv)
-        sig_mad = np.median(np.abs(sig_over_wv-sig_med))
-        print "sig_med", sig_med, "sig_mad", sig_mad
-        
-        vel_med = np.median(vel_offs)
-        vel_mad = np.median(np.abs(vel_offs - vel_med))
-        print "vel median", vel_med, "vel mad", vel_mad
-        
-        gam_med = np.median(np.abs(lparams[:, 2]))
-        gam_mad = np.median(np.abs(lparams[:, 2]-gam_med))
-        print "gam med", gam_med, "gam_mad", gam_mad
-        
-        gam_thresh = self.options.gamma_max
-        mpt = 1.4*self.options.inlier_threshold
-        
-        def resids(pvec, wvs, lprof, nflux, cent_wv):
-            pr = lprof.get_profile(wvs, pvec[2:])
-            ew, relnorm, _off, g_sig, l_sig = pvec
-            g_sig = np.abs(g_sig)
-            l_sig = np.abs(l_sig)
-            sig_reg = 0
-            rndiff = np.abs(relnorm-1.0)
-            sig_reg += self.options.continuum_weight*np.abs(rndiff)
-            wv_delta = np.abs(wvs[-1]-wvs[0])/len(wvs)
-            vel_off = _off/wvs[int(len(wvs)/2)]
-            vel_diff =  np.abs(vel_off-vel_med)
-            
-            if vel_diff > mpt*vel_mad:
-                sig_reg += (vel_diff - mpt*vel_mad)/vel_mad
-            sig_diff = np.abs(g_sig/cent_wv-sig_med)
-            if sig_diff > mpt*sig_mad:
-                sig_reg += (sig_diff-3.0*sig_mad)/sig_mad
-            if np.abs(l_sig) > gam_thresh:
-                sig_reg += np.abs((l_sig-gam_thresh))/np.max(0.1*wv_delta, gam_mad)
-            gam_diff = np.abs(l_sig-gam_med)
-            sig_reg += gam_diff/np.max(0.3*wv_delta, gam_mad)
-            fdiff = nflux-(1.0-ew*pr)*relnorm
-            return np.hstack((fdiff ,sig_reg))
-        
-        for feat_idx in range(len(features)):
-            feat = features[feat_idx]
-            cwv = feat.wv
-            fit_width = self.options.fit_width
-            if isinstance(fit_width, basestring):
-                if "average" == fit_width:
-                    delta_wv=4.2*sig_med*cwv
-            else:
-                delta_wv = float(self.options.fit_width)
-            fit_bounds = (cwv-delta_wv, cwv+delta_wv)
-            bspec = feat.data_sample.bounded_sample(fit_bounds)
-            start_p = feat.profile.get_parameters()
-            start_p[1:] = np.abs(start_p[1:])
-            if np.abs(start_p[1]/cwv-sig_med) > 3.0*sig_mad:
-                start_p[1] = sig_med*cwv
-            if np.abs(start_p[2]-gam_med) > 3.0*gam_mad:
-                start_p[2] = gam_med
-            guessv = np.hstack((feat.eq_width, 1.0, start_p))
-            nflux = bspec.flux/bspec.norm
-            lprof=feat.profile
-            fit_res = scipy.optimize.leastsq(resids, guessv, args=(bspec.wv, lprof, nflux, cwv))
-            fit = fit_res[0]
-            fit[3:] = np.abs(fit[3:])
-            lprof.set_parameters(fit[2:])
-            feat.relative_continuum = fit[1]
-            feat.set_eq_width(fit[0]) 
-        return features
     
     def _init_fit_widget(self):
         self.fit_widget = tmbg.widgets.FeatureFitWidget(self.spec, self.features, 0, self.options.fwidth, parent=self)

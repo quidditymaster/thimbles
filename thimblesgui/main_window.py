@@ -382,7 +382,7 @@ class AppForm(QMainWindow):
                 
                 tp = tmb.features.AtomicTransition(cwv, cid, cloggf, cep)
                 wvdel = np.abs(bspec.wv[1]-bspec.wv[0])
-                start_p = np.array([0.0, wvdel, 0.0])
+                start_p = np.asarray([0.0, wvdel, 0.0])
                 lprof = tmb.line_profiles.Voigt(cwv, start_p)
                 nf = tmb.features.Feature(lprof, 0.00, 0.00, tp, data_sample=bspec)
                 culled_features.append(nf)

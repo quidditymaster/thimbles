@@ -105,7 +105,7 @@ class CoordinateBinning1d:
         If a coordinate outside of the bins is asked for a linear extrapolation of the 
         bin index is returned. (so be warned indexes can be less than 0 and greaterh than n!)
         """
-        xv = np.array(xvec)
+        xv = np.asarray(xvec)
         out_idxs = np.zeros(len(xv.flat), dtype = int)
         for x_idx in xrange(len(xv.flat)):
             cur_x = xvec[x_idx]
@@ -150,7 +150,7 @@ class LinearBinning1d(CoordinateBinning1d):
     
     def get_bin_index(self, input_coordinates):
         #TODO make this handle negatives properly
-        return np.array(self.coordinates_to_indicies(input_coordinates), dtype = int)
+        return np.asarray(self.coordinates_to_indicies(input_coordinates), dtype = int)
 
 n_delts = 1024
 z_scores = np.linspace(-6, 6, n_delts)
@@ -285,7 +285,7 @@ class WavelengthSolution(CoordinateBinning1d):
     
     def __init__(self, obs_wavelengths, rv=None, emitter_frame=None, lsf=None, observer_frame=None):
         """a class that encapsulates the manner in which a spectrum is sampled
-        pixel_num_array: an array of the pixel indicies
+        pixel_num_array: an asarray of the pixel indicies
         wv_func; a function that takes pixel indicies and returns 
         wavelengths in the telescope frame
         rv: float
@@ -359,6 +359,9 @@ class WavelengthSolution(CoordinateBinning1d):
         else:
             obs_wvs = self.indicies_to_coordinates(pixels)
         return self.observer_to_frame(obs_wvs, frame=frame)
+    
+    def __call__(self, pixels, frame="emitter"):
+        return self.get_wvs(pixels, frame=frame)
     
     def get_pix(self, wvs, frame="emitter"):
         shift_wvs = self.frame_to_observer(wvs, frame="emitter")

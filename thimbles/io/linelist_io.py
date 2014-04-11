@@ -22,7 +22,7 @@ def read_vald_linelist(fname):
         wv, loggf, elow, jlo, eup, jup = map(float, spl[1:7])
         ldat.append((wv, species_id, elow, loggf))
         #import pdb; pdb.set_trace()
-    return np.array(ldat)
+    return np.asarray(ldat)
     
 
 def read_moog_linelist (fname,formatted=True, output_pandas=False, defaults=None,convert_gf=False):
@@ -49,7 +49,7 @@ INPUT KEYWORD ARGUMENTS:
     convert_gf: (bool) if True then will take the log10 of column 4
 
 OUTPUTS:
-    (numpy recarray) Returns a numpy record array with columns associated to the short names for the columns (see NOTES 1 and 2)
+    (numpy recarray) Returns a numpy record asarray with columns associated to the short names for the columns (see NOTES 1 and 2)
     
 DEPENDENCIES:
    External Modules Required
@@ -157,7 +157,7 @@ MODIFICATION HISTORY:
               ('ew',float),
               ('notes','a200')]
     
-    data = np.rec.array(data,dtype=dtypes)
+    data = np.rec.asarray(data,dtype=dtypes)
     if convert_gf: data['loggf'] = np.log10(data['loggf'])
     return data
 

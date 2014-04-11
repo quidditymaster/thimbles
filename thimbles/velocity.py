@@ -23,7 +23,7 @@ def try_load_template():
     rv_standard = None
     try:
         hf = h5py.File(os.path.join(resource_dir, "g2_mp_giant.h5"), "r")
-        rv_standard = Spectrum(np.array(hf["wv"]), np.array(hf["flux"]))
+        rv_standard = Spectrum(np.asarray(hf["wv"]), np.asarray(hf["flux"]))
         hf.close()
     except Exception as e:
         print e
@@ -64,7 +64,7 @@ def template_rv_estimate(spectra, template=rv_standard, delta_max=500, pix_poly_
         rebinned_med = np.median(rebinned.flux)
         template_med = np.median(bounded_template.flux)
         ccors.append(cross_corr(rebinned.flux-rebinned_med, bounded_template.flux-template_med, max_pix_off, overlap_adj=True))
-    ccors = np.array(ccors)
+    ccors = np.asarray(ccors)
     ccor_maxes = np.max(ccors, axis=1)
     normed_ccors = ccors/ccor_maxes.reshape((-1, 1))
     ccor_med = np.median(normed_ccors, axis=0)

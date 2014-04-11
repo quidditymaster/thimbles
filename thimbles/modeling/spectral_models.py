@@ -39,10 +39,10 @@ def feature_predictors_from_ensemble(features, verbose=False):
      the feature objects
     
     """
-    lparams = np.array([f.profile.get_parameters() for f in features])
-    cent_wvs = np.array([f.wv for f in features])
-    rel_norms = np.array([f.relative_continuum for f in features])
-    delta_wvs = np.array([np.mean(scipy.gradient(f.data_sample.wv)) for f in features])
+    lparams = np.asarray([f.profile.get_parameters() for f in features])
+    cent_wvs = np.asarray([f.wv for f in features])
+    rel_norms = np.asarray([f.relative_continuum for f in features])
+    delta_wvs = np.asarray([np.mean(scipy.gradient(f.data_sample.wv)) for f in features])
     dwv_over_wv = delta_wvs/cent_wvs
     med_inv_r = np.median(dwv_over_wv)
     
@@ -96,7 +96,7 @@ def feature_residuals_factory(feature, predictors):
         pred_sig = predictors["sigma"].predict(feature)
         pred_gam = predictors["gamma"].predict(feature)
         #pred_rn  = predictors["rel_norm"].predict(feature)
-        pred_vec = np.array([pred_off-offset, pred_sig-sigma, pred_gam-gamma]) #pred_rn-rel_norm])
+        pred_vec = np.asarray([pred_off-offset, pred_sig-sigma, pred_gam-gamma]) #pred_rn-rel_norm])
         return np.hstack((resids ,pred_vec))
     return resids
 

@@ -68,6 +68,87 @@ class query_fits_header (object):
     def __repr__ (self):
         return self.val
 
+
+def wv_soln_log_linear (pts,coefficients):
+
+    
+    
+    
+    def wl_soln_no_solution_prog (self,pts,coeff):
+        start_pt = 1
+
+        try: coeff = np.array(coeff,dtype=int)
+        except: coeff = None
+
+        if str(type(coeff[0])).find('int') != -1:
+            start_pt = int(coeff[0])
+
+        return np.arange(start_pt,start_pt+len(pts))
+
+    def wl_soln_no_solution (self,pts):
+        return self.wl_soln_no_solution_prog(pts,None)
+
+    def wl_soln_pts (self,pts):
+        return pts
+
+    def wl_soln_log_linear_2_linear (self,pts,coeff):
+        return 10**(coeff[0] + coeff[1]*pts)
+    
+    def wl_soln_linear (self,pts,coeff):
+        return coeff[0] + coeff[1]*pts
+    
+    def wl_soln_legrandre_poly (self,pts,coeff):
+        xpt = (2.*pts - (len(pts)+1))/(len(pts)-1)
+        wl = coeff[0] + coeff[1]*xpt
+        return wl
+
+    def wl_soln_cubic_spline (self,pts,coeff):
+        print "!! DOUBLE CHECK SPLINE SOLUTION"
+        # This matches what spectre gives but it seems like it give redundant solutions, i.e. all wl are the same
+        s= (pts - 1)/(len(pts)-1) * coeff[7]
+        J = np.asarray(s,dtype=int)
+        a = (J+1) - s
+        b = s - J
+        z0 = a**3
+        z1 = 1. + 3.*a*(1.+a*b)
+        z2 = 1. + 3.*b*(1.+a*b)
+        z3 = b**3
+        c  = [coeff[x] for x in J]
+        c1 = [coeff[x+1] for x in J]
+        c2 = [coeff[x+2] for x in J]
+        c3 = [coeff[x+3] for x in J]
+        wl = c*z0 + c1*z1 + c2*z2 + c3*z3
+        return wl 
+    
+    def wl_soln_chebyshev_poly (self,pts,coeff):
+        if len(coeff) < 4: 
+            raise ValueError("Number of coefficients insufficent for Chebyshev")
+        #c20    p = (point - c(6))/c(7)
+        #c      xpt = (2.*p-(c(9)+c(8)))/(c(9)-c(8))
+        # !! is this right?
+        xpt = (2.*pts - (len(pts)+1.))/(len(pts)-1.) 
+        
+        # xpt = (2.*point-real(npt+1))/real(npt-1)
+
+        wl =  coeff[0] + xpt*coeff[1] + coeff[2]*(2.0*xpt**2.0-1.0) + coeff[3]*xpt*(4.0*xpt**2.0-3.0)+coeff[4]*(8.0*xpt**4.0-8.0*xpt**2.0+1.0)
+        return wl
+    
+    def wl_soln_ordinary_poly (self,pts,coeff):
+        # maximum degree polynomial will be determined
+        # as degree 7
+        degree = 7
+        coeff = coeff[:degree]
+        coeff = list(coeff)
+        # must reverse my coeff
+        coeff.reverse()
+        return scipy.polyval(coeff,pts)
+
+
+
+
+
+
+
 def pts_2_phys_pixels (pts,bzero=1,bscale=1):
     """
     convert points to wavelength in Angstroms via the wavelength solution
@@ -184,105 +265,6 @@ class WavelengthSolutionFunctions (object):
         func = self._function_types[ft][1]
         return func(pts,coeff)
 
-    def get_function_types (self):
-        return (self._function_types.keys())
-    
-    def get_func_name (self,name):
-        if name not in self._function_types: 
-            raise ValueError("Unknown function type:"+name)
-        else: 
-            return name
-    
-    def _check_pts_coeff (self,pts,coeff):
-        no_solution = False
-        try: pts = np.array(pts)
-        except: no_solution = True
-        
-        try: coeff = np.array(coeff)
-        except: no_solution = True
-        
-        if not no_solution:
-            # check length of dispersion equation
-            if len(coeff) < 2:
-                print "WARNING: ARRAY coeff MUST BE len(coeff) >= 2, RUNNING coeff = array([0.,1.])"
-                coeff = np.array([0.,1.])
-                
-            if len(coeff) < 8:
-                coeff = np.concatenate((coeff,np.zeros(8-len(coeff))))
-                
-            # check the first order coefficient, if zero there is no solution
-                if coeff[1] == 0: no_solution=True
-        
-        return pts,coeff,no_solution
-    
-    def wl_soln_no_solution_prog (self,pts,coeff):
-        start_pt = 1
-
-        try: coeff = np.array(coeff,dtype=int)
-        except: coeff = None
-
-        if str(type(coeff[0])).find('int') != -1:
-            start_pt = int(coeff[0])
-
-        return np.arange(start_pt,start_pt+len(pts))
-
-    def wl_soln_no_solution (self,pts):
-        return self.wl_soln_no_solution_prog(pts,None)
-
-    def wl_soln_pts (self,pts):
-        return pts
-
-    def wl_soln_log_linear_2_linear (self,pts,coeff):
-        return 10**(coeff[0] + coeff[1]*pts)
-    
-    def wl_soln_linear (self,pts,coeff):
-        return coeff[0] + coeff[1]*pts
-    
-    def wl_soln_legrandre_poly (self,pts,coeff):
-        xpt = (2.*pts - (len(pts)+1))/(len(pts)-1)
-        wl = coeff[0] + coeff[1]*xpt
-        return wl
-
-    def wl_soln_cubic_spline (self,pts,coeff):
-        print "!! DOUBLE CHECK SPLINE SOLUTION"
-        # This matches what spectre gives but it seems like it give redundant solutions, i.e. all wl are the same
-        s= (pts - 1)/(len(pts)-1) * coeff[7]
-        J = np.array(s,dtype=int)
-        a = (J+1) - s
-        b = s - J
-        z0 = a**3
-        z1 = 1. + 3.*a*(1.+a*b)
-        z2 = 1. + 3.*b*(1.+a*b)
-        z3 = b**3
-        c  = [coeff[x] for x in J]
-        c1 = [coeff[x+1] for x in J]
-        c2 = [coeff[x+2] for x in J]
-        c3 = [coeff[x+3] for x in J]
-        wl = c*z0 + c1*z1 + c2*z2 + c3*z3
-        return wl 
-    
-    def wl_soln_chebyshev_poly (self,pts,coeff):
-        if len(coeff) < 4: 
-            raise ValueError("Number of coefficients insufficent for Chebyshev")
-        #c20    p = (point - c(6))/c(7)
-        #c      xpt = (2.*p-(c(9)+c(8)))/(c(9)-c(8))
-        # !! is this right?
-        xpt = (2.*pts - (len(pts)+1.))/(len(pts)-1.) 
-        
-        # xpt = (2.*point-real(npt+1))/real(npt-1)
-
-        wl =  coeff[0] + xpt*coeff[1] + coeff[2]*(2.0*xpt**2.0-1.0) + coeff[3]*xpt*(4.0*xpt**2.0-3.0)+coeff[4]*(8.0*xpt**4.0-8.0*xpt**2.0+1.0)
-        return wl
-    
-    def wl_soln_ordinary_poly (self,pts,coeff):
-        # maximum degree polynomial will be determined
-        # as degree 7
-        degree = 7
-        coeff = coeff[:degree]
-        coeff = list(coeff)
-        # must reverse my coeff
-        coeff.reverse()
-        return scipy.polyval(coeff,pts)
     
 wavelength_solution_functions = WavelengthSolutionFunctions()
 

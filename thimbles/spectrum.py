@@ -34,7 +34,7 @@ def centers_to_bins(coord_centers):
     bins[-1] = coord_centers[-1] + 0.5*(coord_centers[-1] - coord_centers[-2])
     return bins
 
-class CoordinateBinning1d:
+class CoordinateBinning1d (object):
     """a container for a set of coordinates
     """
     def __init__(self, coordinates):

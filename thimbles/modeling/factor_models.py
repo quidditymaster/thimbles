@@ -295,5 +295,3 @@ class IdentityOperation(object):
     
     def __rsub__(self, other):
         return other
-
-    

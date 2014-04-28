@@ -101,9 +101,9 @@ class CoordinateBinning1d:
         return out_idx_vals
     
     def get_bin_index(self, xvec):
-        """uses interval splitting to quickly find the bin belonging to the input coordinates
+        """uses interval binary search to quickly find the bin belonging to the input coordinates
         If a coordinate outside of the bins is asked for a linear extrapolation of the 
-        bin index is returned. (so be warned indexes can be less than 0 and greaterh than n!)
+        bin index is returned. (so be warned indexes can be less than 0 and greater than len!)
         """
         xv = np.asarray(xvec)
         out_idxs = np.zeros(len(xv.flat), dtype = int)
@@ -360,8 +360,8 @@ class WavelengthSolution(CoordinateBinning1d):
             obs_wvs = self.indicies_to_coordinates(pixels)
         return self.observer_to_frame(obs_wvs, frame=frame)
     
-    def __call__(self, pixels, frame="emitter"):
-        return self.get_wvs(pixels, frame=frame)
+    def __call__(self, pixels):
+        return self.get_wvs(pixels)
     
     def get_pix(self, wvs, frame="emitter"):
         shift_wvs = self.frame_to_observer(wvs, frame="emitter")

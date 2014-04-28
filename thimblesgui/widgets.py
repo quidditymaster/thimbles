@@ -490,7 +490,7 @@ class FeatureFitWidget(QWidget):
     def next_feature(self):
         next_idx = self.feature_idx + 1
         if next_idx > self.linelist_model.rowCount()-1:
-            next_idx = self.linelist_mode.rowCount()-1
+            next_idx = self.linelist_model.rowCount()-1
             self.prev_next.pause() 
         self.feature_idx = next_idx
         self.feature = self.features[self.feature_idx]

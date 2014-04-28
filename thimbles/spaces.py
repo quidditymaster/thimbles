@@ -14,6 +14,9 @@ class Dimension(object):
             mask = np.ones(shape, dtype=bool)
         self.mask=mask.reshape((-1,))
     
+    def __repr__(self):
+        return "Dimension %s of shape %d" % (self.name, self.shape)
+    
     @property
     def nfree(self):
         #TODO cache this value
@@ -79,6 +82,14 @@ class Space(object):
         joint_dims.extend(other.dimensions)
         return Space(joint_dims)
 
+class FunctionVector(object):
+    """a vector assignment of 
+    """
+    
+    def __init__(self, functions, space):
+        self._fcns = {}
+        self.space = space
+
 class Vector(object):
     
     def __init__(self, data, space=None,):
@@ -109,7 +120,7 @@ class Vector(object):
                 out.append(self._data[dim.name][dim.mask])
         return np.hstack(out)
     
-    def _set(self, subspace, value):
+    def array_set(self, subspace, value):
         value = np.asarray(value).reshape((-1,))
         lbi, ubi = 0, 0
         for dim in subspace:
@@ -121,10 +132,10 @@ class Vector(object):
     
     def __setitem__(self, index, value):
         subspace = self.space.subspace(index)
-        self._set(subspace, value)
+        self.array_set(subspace, value)
     
     def vector_set(self, vector):
-        self._set(vector.space, vector.asarray())
+        self.array_set(vector.space, vector.asarray())
     
     def subvector(self, subspace):
         subspace = self.space.subspace(subspace)

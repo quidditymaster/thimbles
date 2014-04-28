@@ -23,14 +23,15 @@ import numpy as np
 from ..utils.misc import var_2_inv_var
 from ..spectrum import Spectrum, WavelengthSolution
 from ..metadata import MetaData
+import wavelength_extractors
 
 
 # ########################################################################### #
 
 
-__all__ = ["read","read_txt","read_fits",
-           "read","read_txt","read_fits","read_fits_hdu","read_bintablehdu",
-           "read_many_fits", "read_apstar", "read_aspcap"]
+__all__ = ["read_spec","read_txt","read_fits",
+           "read_txt","read_fits","read_fits_hdu","read_bintablehdu",
+           "read_many_fits"]
 
 # ########################################################################### #
 
@@ -100,7 +101,7 @@ def read_txt (filepath,**np_kwargs):
 ############################################################################
 # readin is the main function for input
 
-def read_fits (filepath, which_hdu=0, band=0, preferred_wvsoln=None):
+def read_fits (filepath, which_hdu=0, band=0, preference=None):
     if not os.path.isfile(filepath): 
         raise IOError("File does not exist:'{}'".format(filepath))
         # TODO: add more checks of the fits header_line to see
@@ -111,7 +112,7 @@ def read_fits (filepath, which_hdu=0, band=0, preferred_wvsoln=None):
     
     kws = dict(which_hdu=which_hdu,
                band=band,
-               preferred_wvsoln=preferred_wvsoln)
+               preference=preference)
     return read_fits_hdu(hdulist,**kws)
 
 read_fits.__doc__ = """
@@ -131,7 +132,7 @@ read_fits.__doc__ = """
     band : integer
         If the hdu has NAXIS3 != 0 then this will select which
         value that dimension should be
-    preferred_wvsoln : None or "{}"
+    preference : {}, or None
         
     Returns
     -------
@@ -142,15 +143,15 @@ read_fits.__doc__ = """
     IOError : If it encounters unknown KEYWORD options when looking
         for a wavelength solution
     
-    """.format(", ".format(ExtractWavelengthCoefficients.resolve_wvsoln))
+    """.format(", ".join(wavelength_extractors.from_functions.keys()))
 
-def read_fits_hdu (hdulist,which_hdu=0,band=0,preferred_wvsoln=None):
+def read_fits_hdu (hdulist,which_hdu=0,band=0,preference=None):
     """
     Reads a fits header unit which contains a wavelength solution
     """
     hdu = hdulist[which_hdu]
     header = hdu.header
-    if query_fits_header(header,'APFORMAT').found: 
+    if header.has_key("APFORMAT"):
         warnings.warn(("Received keyword APFORMAT,"
                        " no machinary to deal with this."
                        " [thimbles.io.read_fits_hdu]"))
@@ -162,9 +163,7 @@ def read_fits_hdu (hdulist,which_hdu=0,band=0,preferred_wvsoln=None):
     
     # if there's no data return empty
     if data is None:
-        warnings.warn("no data for header unit [thimbles.io.read_fits_hdu]")
-        wvs, flux, inv_var = np.zeros((3,1))
-        return [Spectrum(wvs,flux,inv_var)]
+        raise IOError("No data found for fits file '{}'".format(hdulist.filename))
     
     # hdu selection, band select
     if data.ndim == 3:
@@ -175,46 +174,22 @@ def read_fits_hdu (hdulist,which_hdu=0,band=0,preferred_wvsoln=None):
     # and the second being the data points
     
     ##### Calculate the wavelengths for the data
-    # set up wavelength and inverse_variance
-    wvs = np.ones(data.shape)
+    wvs = wavelength_extractors.from_header(hdu.header, preference=preference)    
+    if len(wvs) != len(data):
+        raise IOError(("number of wavelength solutions n={} "
+                       "from header incompatable with number of data orders, n={}").format(len(wvs),len(data)))
     
-    # get the wavelength coefficients
-    extract_wvcoeffs = ExtractWavelengthCoefficients(hdu.header)
-    wvcoeff = extract_wvcoeffs.get_coeffs(preferred_wvsoln)
-    
-    idx_orders = xrange(len(data))
-    
-    # go through all the orders
-    do_progress = True
-    progressive_pt = 1 # this will advance and be used when there is no wavelength solution
-    
-    for i in idx_orders:
-        # get the coefficients and function type    
-        equ_type = wvcoeff.get_equation_type()
-        if equ_type in ('none',None,'no solution') and do_progress: 
-            coeff = [progressive_pt,1]
-            equ_type = 'pts'
-        else: 
-            coeff = wvcoeff.get_coeffs(i)
-        # pts[0] = 1 :: this was definitely the right thing to do for SPECTRE's 1-D output but may not be for other equations, may need pts[0]=0,  this may be for bzero,bscale
-        pts = np.arange(len(wvs[i]))+1
-        # apply function
-        wvs[i] = wavelength_solution_functions(pts, coeff, equ_type)    
-        progressive_pt += len(pts)
-
     #=================================================================#
     metadata = MetaData()
     metadata['filepath'] = hdulist.filename
     metadata['hdu_used']=which_hdu
     metadata['band_used']=band
-    metadata['wavelength_coeffs'] = wvcoeff
     metadata['header0'] = deepcopy(hdu.header)
         
     spectra = []
-    for i in idx_orders:
+    for i in xrange(len(wvs)):
         metadata['order'] = i
-        wl_soln = WavelengthSolution(wvs[i],rv=wvcoeff.rv)
-        spectra.append(Spectrum(wl_soln,data[i],metadata=metadata))
+        spectra.append(Spectrum(wvs[i],data[i],metadata=metadata))
          
     return spectra
 
@@ -322,8 +297,7 @@ def read_many_fits (filelist,relative_paths=False,are_orders=False):
 
     Return
     ------
-    spectra : list of `thimbles.Spectrum` objects
-    
+    spectra : list of `thimbles.Spectrum` objects    
     
     """
     list_of_files = []
@@ -395,7 +369,7 @@ def is_many_fits (filepath):
     else:
         return False
 
-def read (filepath,**kwargs):
+def read_spec(filepath,**kwargs):
     """
     General read 
     
@@ -420,265 +394,9 @@ def read (filepath,**kwargs):
     else: # is a fits file
         return read_fits(filepath,**kwargs)
 
-pass
-# ############################################################################# #
-# special readin functions
-
-def read_apstar (filepath, data_hdu=1, error_hdu=2, row=0):
-    """ 
-  reads the apStar APOGEE fits files.
-    
-    Paremeters
-     ----------
-     filepath : string path to fits file
-         APOGEE pipeline reduced data with a 0 header unit similar to the below
-     use_row : integer 
-         APOGEE refers to these as rows, default is row1 ("combined spectrum with individual pixel weighting")
-     get_telluric : boolean
-         If True then it will also extract the telluric data
- 
- 
-    Returns
-     -------
-    a list with a single apogee spectrum in it
-     
- 
-     =================================================================
-     Example header 0 header unit:
-     
-     HISTORY APSTAR: The data are in separate extensions:                      
-     HISTORY APSTAR:  HDU0 = Header only                                       
-     HISTORY APSTAR:  All image extensions have:                               
-     HISTORY APSTAR:    row 1: combined spectrum with individual pixel weighti 
-     HISTORY APSTAR:    row 2: combined spectrum with global weighting         
-     HISTORY APSTAR:    row 3-nvisis+2: individual resampled visit spectra     
-     HISTORY APSTAR:   unless nvists=1, which only have a single row           
-     HISTORY APSTAR:  All spectra shifted to rest (vacuum) wavelength scale    
-     HISTORY APSTAR:  HDU1 - Flux (10^-17 ergs/s/cm^2/Ang)                     
-     HISTORY APSTAR:  HDU2 - Error (10^-17 ergs/s/cm^2/Ang)                    
-     HISTORY APSTAR:  HDU3 - Flag mask (bitwise OR combined)                   
-     HISTORY APSTAR:  HDU4 - Sky (10^-17 ergs/s/cm^2/Ang)                      
-     HISTORY APSTAR:  HDU5 - Sky Error (10^-17 ergs/s/cm^2/Ang)                
-     HISTORY APSTAR:  HDU6 - Telluric                                          
-     HISTORY APSTAR:  HDU7 - Telluric Error                                    
-     HISTORY APSTAR:  HDU8 - LSF coefficients                                 
-     HISTORY APSTAR:  HDU9 - RV and CCF structure
- 
-     """
-    hdulist = fits.open(filepath)
-    metadata = MetaData()
-    metadata['filepath'] = hdulist.filename()
-    hdr = hdulist[0].header
-    metadata['header'] = hdr
-    
-    if len(hdulist[1].data.shape) == 2:
-        flux = hdulist[data_hdu].data[row].copy()
-        sigma = hdulist[error_hdu].data[row].copy()
-    elif len(hdulist[1].data.shape) == 1:
-        flux = hdulist[data_hdu].data
-        sigma = hdulist[error_hdu].data
-    crval1 = hdr["CRVAL1"]
-    cdelt1 = hdr["CDELT1"]
-    nwave  = hdr["NWAVE"]
-    wv = np.power(10.0, np.arange(nwave)*cdelt1+crval1)
-    return [Spectrum(wv, flux, var_2_inv_var(sigma**2))]
 
 
-def read_aspcap(filepath):
-    hdulist = fits.open(filepath)
-    metadata = MetaData()
-    metadata['filepath'] = hdulist.filename()
-    hdr = hdulist[0].header
-    metadata['header'] = hdr
-    
-    flux = hdulist[1].data
-    sigma = hdulist[2].data
-    invvar = var_2_inv_var(sigma**2)*(flux > 0)
-    crval1 = hdulist[1].header["CRVAL1"]
-    cdelt1 = hdulist[1].header["CDELT1"]
-    nwave  = len(flux)
-    wv = np.power(10.0, np.arange(nwave)*cdelt1+crval1)
-    return [Spectrum(wv, flux, invvar)]
 
-# 
-# def read_fits_makee (filepath,varience_filepath=None,output_list=False,verbose=False):
-# 
-#     """ 
-#     Knows how to identify the KOA MAKEE file structure which ships with extracted data
-#     and apply the eyeSpec function readin to the important directories to obtain a coherent 
-#     spectrum object from the files
-# 
-# 
-#     INPUTS:
-#     filepath : give an individual filepath for the star or give the top level Star directory from MAKEE. 
-#                It will go from TOP_LEVEL/extracted/makee/ and use directories ccd1/ etc to find the appropriate files
-# 
-#     output_list : if it finds multiple chips of data it will return as a list and not a combined object
-# 
-# 
-#     """
-#     non_std_fits=False
-#     disp_type='default'
-#     preferred_disp='makee'
-#     
-# 
-#     def obj_var_2_inv_var (obj,fill=1e50):
-#         var = deepcopy(obj._data)
-# 
-#         # !! how to treat non values, i.e. negative values
-#         zeros = (var<=0)
-#         bad = (var>=fill/2.0)
-#         infs = (var == np.inf)
-# 
-#         var[zeros] = 1.0/fill
-#         inv_var = 1.0/var
-# 
-#         # set points which are very large to the fill
-#         inv_var[zeros] = fill
-#         # set points which are almost zero to zero
-#         inv_var[bad] = 0.0
-#         inv_var[infs] = 0.0
-# 
-#         obj._inv_var = deepcopy(inv_var)
-#         return inv_var
-# 
-# 
-#     filepath = str(filepath)
-#     if not os.path.exists(filepath): raise ValueError("the given path does not exist")
-# 
-#     objs = {}
-#     inv_vars = {}
-# 
-#     if os.path.isdir(filepath):
-# 
-#         if filepath[-1:] != '/': filepath += "/"
-#         
-#         # !! could make it smarter so it would know from anywhere within the TOP_FILE/extracted/makee/ chain
-#         
-#         full_path = filepath+'extracted/makee/'
-#         
-#         if not os.path.exists(full_path): raise ValueError("Must have extracted files:"+full_path)
-#         
-#         ccds = os.listdir(full_path)
-#         
-#         for ccdir in ccds:
-#             if not os.path.isdir(full_path+ccdir): continue
-#             if not os.path.exists(full_path+ccdir+'/fits/'): continue
-# 
-#             if ccdir in objs.keys():
-#                 print "Directory was already incorporated:"+ccdir
-#                 continue
-# 
-#             fitspath = full_path+ccdir+'/fits/'
-#             fitsfiles = os.listdir(fitspath)
-# 
-#             print ""
-#             print "="*20+format("GETTING DATA FROM DIRECTORY:"+ccdir,'^40')+"="*20
-#             for ffname in fitsfiles:
-#                 fname = fitspath+ffname
-# 
-#                 # !! if file.find("_*.fits")
-#                 # !! I could add in stuff which would go as another band for the current Flux
-# 
-#                 if ffname.find("_Flux.fits") != -1: 
-#                     print "flux file:"+ccdir+'/fits/'+ffname
-#                     objs[ccdir] = read_fits(fname,preferred_disp=preferred_disp,disp_type=disp_type,non_std_fits=non_std_fits,verbose=verbose)
-# 
-#                 elif ffname.find("_Var.fits") != -1:
-#                     print "variance file:"+ccdir+'/fits/'+ffname
-#                     tmp_obj = read_fits(fname,preferred_disp=preferred_disp,disp_type=disp_type,non_std_fits=non_std_fits,verbose=verbose)
-#                     inv_vars[ccdir] = obj_var_2_inv_var(tmp_obj)
-# 
-# 
-#     else:
-#         print "Reading in flux file:"+fname
-#         objs['file'] = read_fits(filepath,preferred_disp=preferred_disp,disp_type=disp_type,non_std_fits=non_std_fits,verbose=verbose)
-# 
-#         if varience_filepath is not None:
-#             inv_var = read_fits(varience_filepath,preferred_disp=preferred_disp,disp_type=disp_type,non_std_fits=non_std_fits,verbose=verbose)
-#             inv_vars['file'] = obj_var_2_inv_var(inv_var)
-# 
-# 
-#     num_objs = 0
-# 
-#     OUTPUT_list = []
-#     OUT_header = []
-#     OUT_wl = []
-#     OUT_data = []
-#     OUT_inv_var = []
-# 
-# 
-#     for key in objs.keys():
-#         obj1 = objs[key]
-#         inv_var1 = inv_vars[key]
-#         # !! note I'm masking out the inf values
-#         mask = (inv_var1 == np.inf)
-#         inv_var1[mask] = 0.0
-# 
-#         if obj1._inv_var.shape != inv_var1.shape:
-#             print "HeadsUp: object and inverse variance shape are not the same"
-#         else: obj1._inv_var = deepcopy(inv_var1)
-#             
-#         num_objs += 1
-# 
-#         if output_list:
-#             OUTPUT_list.append(obj1)
-#         else:
-#             OUT_header.append(obj1.header)
-#             if obj1._wl.shape[0] > 1: print "HeadsUp: Multiple bands detected, only using the first"
-#             OUT_wl.append(obj1._wl[0])
-#             OUT_data.append(obj1._data[0])
-#             OUT_inv_var.append(obj1._inv_var[0])
-# 
-#     if output_list:
-#         if num_objs == 1: return OUTPUT_list[0]
-#         else: return OUTPUT_list        
-#     else:
-#         print ""
-#         print "="*30+format("COMBINING",'^20')+"="*30
-#         wl = np.concatenate(OUT_wl)
-#         data = np.concatenate(OUT_data)
-#         inv_var = np.concatenate(OUT_inv_var)
-# 
-#         obj = eyeSpec_spec(wl,data,inv_var,OUT_header[0])
-#         obj.hdrlist = OUT_header
-#         obj.filepath = fitspath
-#         obj.edit.sort_orders()
-#         return obj
-# 
-# def save_spectrum_txt (spectrum,filepath):
-#     """
-#     Outputs the eyeSpec spectrum class into a given file as text data.
-# 
-#     INPUTS:
-#     =============   ============================================================
-#     keyword         (type) Description
-#     =============   ============================================================
-#     spec_obj        (eyeSpec_spec) spectrum class for eyeSpec
-#     filepath        (str) This gives the filename to save the as
-#     band            (int,'default') This tells which of the first dimensions of
-#                       spec_obj to use. 'default' is spec_obj.get_band()
-#     use_cropped     (bool) If True it will crop off points at the begining and 
-#                       end of orders which have inverse varience = 0, i.e. have
-#                       inf errors
-#     order           (int,array,None) you can specify which orders are output
-#                       If None then it will output all possible orders
-#     clobber         (bool) If True then the function will overwrite files of the
-#                       same file name that already exis
-# 
-#     include_varience (bool) If True the third column which gives the varience 
-#                       will be included
-#     divide_orders    (bool) If True it will but a commend line with '#' between
-#                       each of the orders
-#     comment          (str) What symbol to use as a comment
-#     divide_header    (bool,None) If False it will give one long string as the first header line
-#                                  If True it will divide it up by 80 character lines with a comment of '#:' 
-#                                  If None then no header will be printed
-#     =============   ============================================================
-# 
-#     """
-#     
-#     pass
 
 
 

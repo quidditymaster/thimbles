@@ -6,7 +6,6 @@ import thimbles as tmb
 
 from ..spectrum import Spectrum
 from . import factor_models
-from . import data_models
 from . import predictors
 from predictors import GaussianPredictor
 

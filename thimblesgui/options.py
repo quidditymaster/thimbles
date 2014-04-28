@@ -36,7 +36,7 @@ dgamma_help = "penalize lorentz width values above this threshold"
 parser.add_argument("--gamma-max", "--gm", type=float, default=0.0)
 
 read_help = "name of function to load the data files with"
-parser.add_argument("--read-func", default="read")
+parser.add_argument("--read-func", default="read_spec")
 
 rv_help = "optional radial velocity shift to apply set to 'cc' to estimate via cross correlation with a template"
 parser.add_argument("--rv", default=0.0, help=rv_help)

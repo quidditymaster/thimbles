@@ -138,7 +138,7 @@ class LoadDialog(QDialog):
         self.function_label = QLabel("readin function")
         lay.addWidget(self.function_label, 3, 0, 1, 1)
         lay.addWidget(self.function_dd, 3, 1, 1, 1)
-        spec_io_names = [f for f in dir(user_namespace) if "read" in f]
+        spec_io_names = [f for f in dir(user_namespace) if "read_" in f]
         spec_io_funcs = [user_namespace.eval_(x) for x in spec_io_names]
         
         ll_io_names = ["loadtxt"]
@@ -153,10 +153,13 @@ class LoadDialog(QDialog):
         ll_io_funcs = [skipload] 
         self.loading_functions = {}
         self.loading_function_names = {}
+        self.defaults = {}
         self.loading_functions["spectra"] = spec_io_funcs
         self.loading_functions["line list"] = ll_io_funcs
         self.loading_function_names["spectra"] = spec_io_names
         self.loading_function_names["line list"] = ll_io_names
+        self.defaults["spectra"] = "read_spec"
+        self.defaults["line list"] = "loadtxt"
         
         self.on_type_changed()
         
@@ -189,6 +192,9 @@ class LoadDialog(QDialog):
         self.cur_type_id = self.type_dd.currentText()
         self.function_dd.clear()
         func_names = self.loading_function_names[self.cur_type_id]
+        default_func_name = self.defaults[self.cur_type_id]
+        default_idx = func_names.index(default_func_name)
+        self.function_dd.setCurrentIndex(default_idx)
         self.function_dd.addItems(func_names)
         self.on_function_changed()
     

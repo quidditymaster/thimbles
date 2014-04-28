@@ -4,7 +4,6 @@ import numpy as np
 from .pixel_wavelength_functions import (NoSolution, LogLinear, Polynomial, 
                                         Linear , ChebyshevPolynomial,
                                         CubicSpline, LegendrePolynomial) 
-from mayavi.preferences.preference_manager import preference_manager
 
 
 # ########################################################################### #

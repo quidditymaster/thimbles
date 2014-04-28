@@ -28,7 +28,7 @@ for template_name in options.templates:
     elif os.path.isfile(os.path.join(template_dir, template_name)):
         tf_path= os.path.isfile(os.path.join(template_dir, template_name))
     try:
-        exec("%s = read(%s)" % (store_name, tf_path) )
+        exec("%s = read_spec(%s)" % (store_name, tf_path) )
     except Exception as e:
         print "unable to read template %s" % template_name
         print e

@@ -211,10 +211,9 @@ class LoadDialog(QDialog):
             fname = self.file_le.text()
             loaded_obj = self.load_func(fname)
             row_name = self.name_le.text()
-        except:
-            qmb = QMessageBox()
-            qmb.setText("There was a problem reading the file")
-            qmb.exec_()
+        except Exception as e:
+            self.wd=WarningDialog("error reading file %s" % fname, error_message=str(e), parent=None):
+            self.wd.warn()
             return
         if self.type_dd.currentText() == "spectra":
             self.new_row = tmbg.models.SpectraRow(loaded_obj, row_name)

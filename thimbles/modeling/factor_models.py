@@ -169,7 +169,7 @@ class IdentityModel(LocallyLinearModel):
     
     def get_lop(self, alpha=None, beta=None, pbag=None):
         alpha, beta, pbag = self.get_params(alpha, beta, pbag)
-        
+
 
 class MatrixModel(LocallyLinearModel):
     
@@ -295,5 +295,3 @@ class IdentityOperation(object):
     
     def __rsub__(self, other):
         return other
-
-    

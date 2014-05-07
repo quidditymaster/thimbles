@@ -428,7 +428,7 @@ class FeatureFitWidget(QWidget):
     def save_feature_fits(self, fname):
         import cPickle
         cPickle.dump(self.features, open(fname, "wb"))
-        
+    
     def save_measurements(self):
         fname, file_filter = QFileDialog.getSaveFileName(self, "save measurements")
         tmb.io.linelist_io.write_moog_from_features(fname, self.features)
@@ -488,12 +488,21 @@ class FeatureFitWidget(QWidget):
         self.on_feature_changed()
     
     def next_feature(self):
-        self.feature_idx = min(self.feature_idx + 1, self.linelist_model.rowCount()-1) 
+        next_idx = self.feature_idx + 1
+        if next_idx > self.linelist_model.rowCount()-1:
+            next_idx = self.linelist_model.rowCount()-1
+            self.prev_next.pause() 
+        self.feature_idx = next_idx
         self.feature = self.features[self.feature_idx]
         self.linelist_view.selectRow(self.feature_idx)
         self.on_feature_changed()
     
     def prev_feature(self):
+        prev_idx = self.feature_idx - 1
+        if prev_idx < 0:
+            prev_idx = 0
+            self.prev_next.pause() 
+        self.feature_idx = prev_idx
         self.feature_idx = max(self.feature_idx - 1, 0)
         self.feature = self.features[self.feature_idx]
         self.linelist_view.selectRow(self.feature_idx)
@@ -541,7 +550,7 @@ class FeatureFitWidget(QWidget):
         lw = self.l_slider.value()
         depth = self.d_slider.value()
         relc = self.cont_slider.value()
-        self.feature.profile.set_parameters(np.array([off, gw, lw]))
+        self.feature.profile.set_parameters(np.asarray([off, gw, lw]))
         self.feature.set_relative_continuum(relc)
         self.feature.set_depth(depth)
         self.update_plots()
@@ -630,5 +639,3 @@ class FeatureFitWidget(QWidget):
             line.set_xdata([bspec.wv[0], bspec.wv[-1]])
         
         self.mpl_fit.draw()
-
-

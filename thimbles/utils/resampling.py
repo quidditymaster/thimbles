@@ -169,7 +169,7 @@ def map_indicies(input_coordinates, target_coordinates):
     for upi in upper_point_idxs:
         output_indicies[upi] = end_slope*(input_coordinates[upi]-target_max) + len(target_coordinates) -1
     return output_indicies
-    
+
 def get_resampling_matrix(input_centers, output_centers, pixel_density = None, 
                           preserve_normalization = False, upweight_ends = True):
     """
@@ -337,7 +337,7 @@ def get_transformed_covariances(transform_matrix, input_covariance, fill_varianc
     out_var = out_var.tocsr()
     return out_var
 
-def Bolton_Schlegel_Diagonalization(flux, covariance):
+def bolton_schlegel_diagonalization(flux, covariance):
     """
     covariance needs to be a dense matrix
     """

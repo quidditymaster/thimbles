@@ -54,11 +54,6 @@ class Polynomial (WavelengthSolution):
         obs_wvs = self.get_wvs(pixels)
         super(Polynomial, self).__init__(obs_wvs,**kwargs)
 
-    def get_wvs(self, pixels=None, frame='emitter'):
-        if pixels is None:
-            pixels = self.pixels
-        return np.lib.polyval(self.coefficients,pixels)
-
 class Linear (Polynomial):
     """ Linear wavelength solution of the form wvs=c1*pix+c0
     
@@ -125,7 +120,7 @@ class ChebyshevPolynomial (Polynomial):
         #c      xpt = (2.*p-(c(9)+c(8)))/(c(9)-c(8))
         # !! is this right?
         n = len(pixels)
-        xpts = (2.0*pixels - float(n+1)/(n-1))        
+        xpts = (2.0*pixels - float(n+1))/float(n-1)        
         # xpt = (2.*point-real(npt+1))/real(npt-1)
         coeff = list(reversed(self.coefficients))
         return coeff[0] + xpts*coeff[1] + coeff[2]*(2.0*xpts**2.0-1.0) + coeff[3]*xpts*(4.0*xpts**2.0-3.0)+coeff[4]*(8.0*xpts**4.0-8.0*xpts**2.0+1.0)
@@ -134,7 +129,7 @@ class CubicSpline (WavelengthSolution):
     pass
 
 class LegendrePolynomial (Polynomial):
-    """ Wavelength solution in using a legrandre polynomial 
+    """ Wavelength solution in using a Legendre polynomial 
     
     
     """    
@@ -144,7 +139,7 @@ class LegendrePolynomial (Polynomial):
         n = len(pixels)
         xpts = (2.0*pixels - (n+1)/(n-1))
         return self.coefficients[0]*xpts+self.coefficients[1]
-        
+    
     def get_pix(self, wvs, frame="emitter"):
         n = len(wvs)
         return ((wvs-self.coefficients[1])/self.coefficients[0])/2.0+(n+1)/(n-1)

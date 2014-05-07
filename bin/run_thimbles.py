@@ -29,7 +29,7 @@ class MainApplication (QApplication):
         self.spl_pic = QPixmap(spl_path)
         self.splash = QSplashScreen(self.spl_pic, Qt.WindowStaysOnTopHint)
         self.splash.setMask(self.spl_pic.mask())
-        if not options.no_window:
+        if not options.no_splash:
             self.splash.show()
             self.processEvents()
             time.sleep(0.01)

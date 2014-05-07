@@ -1,37 +1,66 @@
 import unittest
 import numpy as np
 import matplotlib.pyplot as plt
-import thimbles as tmb
+from ..models import Model, ModelSpace
 import scipy.sparse as sp
 
-class SimpleFitTest(unittest.TestCase):
+class LineFitTest(unittest.TestCase):
 
     def setUp(self):
-        self.true_lparams = np.asarray([0.0, 0.6, 0.125])
-        self.lparams = np.asarray([0.0, 1.0, 0.125])
-        self.prof = tmb.line_profiles.Voigt(0.0, self.lparams)
-        self.npts = 100
-        self.x = np.linspace(-10, 10, self.npts)
-        
-        self.ev_func = lambda a, b, p: self.get_gmat(a)*b
-        self.op_func = lambda a, b, p: self.get_gmat(a)
+        npts = 100
+        x = np.linspace(-1, 1, npts)
+        slope = 1.5
+        intercept = -2.0
+        noise_level = 1.5
+        noise = np.random.normal(size=(npts,))*noise_level
+        self.y_var = noise_level**2
+        y = slope*x + intercept + noise
+        self.x = x
+        self.y = y
+        self.slope = slope
+        self.intercept = intercept
     
-    def get_gmat(self, alpha_vec):
-        sigma, gamma = alpha_vec
-        self.lparams[1:] = sigma, gamma
-        self.prof.set_parameters(self.lparams)
-        self.prof_vec = self.prof(self.x)
-        gmat = sp.bsr_matrix(np.hstack((np.ones((self.npts, 1)) , self.prof_vec.reshape((-1, 1)))))
-        return gmat
-    
-    def test_exact_fit(self):
-        start_params = np.array([0.05, 0.0])
-        y = self.get_gmat(start_params)
+    def test_line_fit(self):
+        slope_name = "slope"
+        intercept_name = "intercept"
+        x_name = "x"
+        y_name = "y"
         
-        DM = tmb.modeling.data_models.DataModel
-        dm = DM()
+        def get_x():
+            return self.x
         
-        gmod = tmb.modeling.LocallyLinearModel(self.lparams, np.ones(2), None, self.ev_func, self.op_func)
+        def get_y():
+            return self.y
+        
+        def get_y_var():
+            return self.y_var
+        
+        def line_function(**kwargs):
+            x = kwargs[x_name]
+            slope, intercept = kwargs[slope_name], kwargs[intercept_name]
+            return slope*x + intercept
+        
+        data_model = Model(outputs={y_name:get_y}, map_var={y_name:get_y_var})
+        
+        #make the model to be fit
+        line_model = Model(inputs={x_name:get_x, slope_name:Model()},
+                   outputs={y_name:line_function})
+        
+        #build a model space for them and put the base parameters in it
+        msp = ModelSpace()
+        msp.add_global_values({x_name:self.x, slope_name:1.0, intercept_name:0.0})
+        
+        #add the models to the space
+        msp.add_models([data_model, line_model])
+        
+        #build a concordance between the parameterized model and the data
+        msp.add_concordance(line_model, data_model) #should take arbitrary positional args
+        
+        #fill in the values in the space
+        msp.execute()
+        
+        msp.fit_iteration()
+        
 
 if __name__ == "__main__":
     unittest.main()

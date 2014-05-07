@@ -34,7 +34,7 @@ def centers_to_bins(coord_centers):
     bins[-1] = coord_centers[-1] + 0.5*(coord_centers[-1] - coord_centers[-2])
     return bins
 
-class CoordinateBinning1d:
+class CoordinateBinning1d (object):
     """a container for a set of coordinates
     """
     def __init__(self, coordinates):
@@ -42,22 +42,21 @@ class CoordinateBinning1d:
         """
         self.coordinates = coordinates
         self.bins = centers_to_bins(coordinates)
-        self.lb = self.bins[0]
-        self.ub = self.bins[-1]
-        self.last_bin = (self.bins[0], self.bins[1])
-        self.last_bin_idx = 0
-        self.start_dx = self.coordinates[1] - self.coordinates[0]
-        self.end_dx = self.coordinates[-1] - self.coordinates[-2]
+        self._cached_prev_bin = (self.bins[0], self.bins[1])
+        self._cached_prev_bin_idx = 0
+        self._start_dx = self.coordinates[1] - self.coordinates[0]
+        self._end_dx = self.coordinates[-1] - self.coordinates[-2]
     
     def indicies_to_coordinates(self, input_indicies):
+        # TODO: See if scipy/numpy has auto search
         out_coordinates = np.zeros(len(input_indicies))
         for i in range(len(input_indicies)):
             alpha = input_indicies[i]%1
             int_part = int(input_indicies[i])
             if input_indicies[i] < 0:
-                out_coordinates[i] = self.coordinates[0] + alpha*self.start_dx
+                out_coordinates[i] = self.coordinates[0] + alpha*self._start_dx
             elif input_indicies[i] > len(self.coordinates)-2:
-                out_coordinates[i] = self.coordinates[-1] + alpha*self.end_dx
+                out_coordinates[i] = self.coordinates[-1] + alpha*self._end_dx
             else:
                 out_coordinates[i] = self.coordinates[int_part]*(1.0-alpha)
                 out_coordinates[i] += self.coordinates[int_part+1]*alpha
@@ -67,22 +66,24 @@ class CoordinateBinning1d:
         """assign continuous indexes to the input_coordinates 
         which place them on to the indexing of these coordinates.
         """
+        # get the upper and lower bounds for the coordinates
+        lb,ub = self.bins[0],self.bins[-1]
         xv = np.asarray(input_coordinates)
         out_idx_vals = np.zeros(len(xv.flat), dtype = int)
         for x_idx in xrange(len(xv.flat)):
             cur_x = xv.flat[x_idx]
             #check if the last solution still works
-            if self.last_bin[0] <= cur_x <= self.last_bin[1]:
+            if self._cached_prev_bin[0] <= cur_x <= self._cached_prev_bin[1]:
                 #if so find the fraction through the pixel
-                alpha = (cur_x-self.last_bin[0])/(self.last_bin[1]-self.last_bin[0])
-                out_idx_vals[x_idx] = self.last_bin_idx + alpha
+                alpha = (cur_x-self._cached_prev_bin[0])/(self._cached_prev_bin[1]-self._cached_prev_bin[0])
+                out_idx_vals[x_idx] = self._cached_prev_bin_idx + alpha
                 continue
             #make sure that the x value is inside the bin range or extrapolate
-            if self.lb > cur_x:
-                out_idx_vals[x_idx] = (cur_x-self.coordinates[0])/self.start_dx
+            if lb > cur_x:
+                out_idx_vals[x_idx] = (cur_x-self.coordinates[0])/self._start_dx
                 continue
-            if self.ub < cur_x:
-                out_idx_vals[x_idx] = (cur_x-self.coordinates[1])/self.end_dx
+            if ub < cur_x:
+                out_idx_vals[x_idx] = (cur_x-self.coordinates[1])/self._end_dx
                 continue
             lbi, ubi = 0, len(self.bins)-1
             while True:
@@ -93,31 +94,33 @@ class CoordinateBinning1d:
                 else:
                     ubi = mididx
                 if self.bins[lbi] <= cur_x <= self.bins[lbi+1]:
-                    self.last_bin = self.bins[lbi], self.bins[lbi+1]
-                    self.last_bin_idx = lbi
+                    self._cached_prev_bin = self.bins[lbi], self.bins[lbi+1]
+                    self._cached_prev_bin_idx = lbi
                     break
-            alpha = (cur_x-self.last_bin[0])/(self.last_bin[1]-self.last_bin[0])
+            alpha = (cur_x-self._cached_prev_bin[0])/(self._cached_prev_bin[1]-self._cached_prev_bin[0])
             out_idx_vals[x_idx] = lbi + alpha
         return out_idx_vals
     
     def get_bin_index(self, xvec):
-        """uses interval splitting to quickly find the bin belonging to the input coordinates
+        """uses interval binary search to quickly find the bin belonging to the input coordinates
         If a coordinate outside of the bins is asked for a linear extrapolation of the 
-        bin index is returned. (so be warned indexes can be less than 0 and greaterh than n!)
+        bin index is returned. (so be warned indexes can be less than 0 and greater than len!)
         """
-        xv = np.array(xvec)
+        # get the upper and lower bounds for the coordinates
+        lb,ub = self.bins[0],self.bins[-1]
+        xv = np.asarray(xvec)
         out_idxs = np.zeros(len(xv.flat), dtype = int)
         for x_idx in xrange(len(xv.flat)):
             cur_x = xvec[x_idx]
             #check if the last solution still works
-            if self.last_bin[0] <= cur_x <= self.last_bin[1]:
-                out_idxs[x_idx] = self.last_bin_idx
+            if self._cached_prev_bin[0] <= cur_x <= self._cached_prev_bin[1]:
+                out_idxs[x_idx] = self._cached_prev_bin_idx
                 continue
             #make sure that the x value is inside the bin range
-            if self.lb > cur_x:
-                out_idxs[x_idx] = int((cur_x-self.lb)/self.start_dx -1)
-            if self.ub > cur_x:
-                out_idxs[x_idx] = int((cur_x-self.ub)/self.end_dx)
+            if lb > cur_x:
+                out_idxs[x_idx] = int((cur_x-lb)/self._start_dx -1)
+            if ub > cur_x:
+                out_idxs[x_idx] = int((cur_x-ub)/self._end_dx)
             lbi, ubi = 0, self.n_bounds-1
             while True:
                 mididx = (lbi+ubi)/2
@@ -127,8 +130,8 @@ class CoordinateBinning1d:
                 else:
                     ubi = mididx
                 if self.bins[lbi] <= cur_x <= self.bins[lbi+1]:
-                    self.last_bin = self.bins[lbi], self.bins[lbi+1]
-                    self.last_bin_idx = lbi
+                    self._cached_prev_bin = self.bins[lbi], self.bins[lbi+1]
+                    self._cached_prev_bin_idx = lbi
                     break
             out_idxs[x_idx] = lbi
         return out_idxs
@@ -150,7 +153,7 @@ class LinearBinning1d(CoordinateBinning1d):
     
     def get_bin_index(self, input_coordinates):
         #TODO make this handle negatives properly
-        return np.array(self.coordinates_to_indicies(input_coordinates), dtype = int)
+        return np.asarray(self.coordinates_to_indicies(input_coordinates), dtype = int)
 
 n_delts = 1024
 z_scores = np.linspace(-6, 6, n_delts)
@@ -285,7 +288,7 @@ class WavelengthSolution(CoordinateBinning1d):
     
     def __init__(self, obs_wavelengths, rv=None, emitter_frame=None, lsf=None, observer_frame=None):
         """a class that encapsulates the manner in which a spectrum is sampled
-        pixel_num_array: an array of the pixel indicies
+        pixel_num_array: an asarray of the pixel indicies
         wv_func; a function that takes pixel indicies and returns 
         wavelengths in the telescope frame
         rv: float
@@ -321,6 +324,17 @@ class WavelengthSolution(CoordinateBinning1d):
                     raise Exception("don't know what to do with this LSF!")
         else:
             self.lsf = BoxLSF(self)
+
+    def get_wvs(self, pixels=None, frame="emitter"):
+        if pixels == None:
+            obs_wvs = self.obs_wvs
+        else:
+            obs_wvs = self.indicies_to_coordinates(pixels)
+        return self.observer_to_frame(obs_wvs, frame=frame)
+    
+    def get_pix(self, wvs, frame="emitter"):
+        shift_wvs = self.frame_to_observer(wvs, frame="emitter")
+        return self.coordinates_to_indicies(shift_wvs)
     
     @property
     def wvs(self):
@@ -330,6 +344,7 @@ class WavelengthSolution(CoordinateBinning1d):
     @property
     def obs_wvs(self):
         return self.coordinates
+    
     
     def observer_to_frame(self, observer_wvs, frame="emitter"):
         if frame == "emitter":
@@ -352,17 +367,6 @@ class WavelengthSolution(CoordinateBinning1d):
     def frame_conversion(self, wvs, wv_frame, target_frame):
         rest_wvs = self.frame_to_observer(wvs, frame=wv_frame)
         return self.observer_to_frame(rest_wvs, frame=target_frame)
-    
-    def get_wvs(self, pixels=None, frame="emitter"):
-        if pixels == None:
-            obs_wvs = self.obs_wvs
-        else:
-            obs_wvs = self.indicies_to_coordinates(pixels)
-        return self.observer_to_frame(obs_wvs, frame=frame)
-    
-    def get_pix(self, wvs, frame="emitter"):
-        shift_wvs = self.frame_to_observer(wvs, frame="emitter")
-        return self.coordinates_to_indicies(shift_wvs)
     
     def set_rv(self, rv):
         self.emitter_frame.set_rv(rv)

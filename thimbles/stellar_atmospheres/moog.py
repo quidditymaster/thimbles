@@ -258,7 +258,7 @@ MODIFICATION HISTORY:
     
     # get the lines from the line list
     # if you receive a file then try using read_moog_linelist on it
-    if type(lines_in) in (str,np.string_,np.str_,np.str): 
+    if isinstance(lines_in, basestring): 
         linelist_filename = lines_in       
         linelist = read_moog_linelist(lines_in, formatted=lines_formatted, defaults=lines_defaults, convert_gf=False)
         
@@ -280,7 +280,7 @@ MODIFICATION HISTORY:
         
         wls = linelist[:,0]
         linelist_filename = 'unknown'
-
+    
     # get the wlbounds
     if wlbounds is not None: xmin,xmax = np.min(wlbounds),np.max(wlbounds)
     else: xmin, xmax = np.min(wls), np.max(wls)
@@ -288,11 +288,11 @@ MODIFICATION HISTORY:
     # crop the input linelist
     mask = (xmin < linelist[:,0])*(linelist[:,0] < xmax)
     linelist = linelist[mask]
-
+    
     # run the routine for the file
     t = _CoreMOOGewfind(linelist, model_in, moog_parfile='batch.par',timeout=2, verbose= verbose,logfile=logfile, linelist_filename=linelist_filename)
     t.go()
-
+    
     crashed = False
     try: join_threads(t.threads)
     except KeyboardInterrupt:
@@ -319,9 +319,7 @@ pass
 
 class _CoreMOOGewfind(object):
     nan_ew = -1
-    
     moog_linein = 'MOOGLINELIST.txt'
-
     moog07_exe = executables['moog07']
 
     def __init__(self,linelist,model_in='FINALMODEL',moog_parfile='batch.par',timeout=5,verbose=True,logfile=None,linelist_filename='unknown'):
@@ -333,18 +331,15 @@ class _CoreMOOGewfind(object):
             return fname
 
         self.linelist = np.asarray(linelist)
-
         self.moog_parfile = moog_parfile
         self.moog_model   = check_file(model_in)
-
+        
         f = open(self.moog_model)
-        l1 = f.readline().rstrip().strip().split()
-        l2 = f.readline().rstrip().strip().split()
+        l1 = f.readline().split()
+        l2 = f.readline().split()
         f.close()
         self.model_info = "'FINALMODEL' - "+" ".join(l1+l2)
-
-
-
+        
         if logfile is not None:
             self.logfile = open(logfile,'w')
             print >> self.logfile, "INPUT LINELIST =  "+linelist_filename
@@ -352,8 +347,7 @@ class _CoreMOOGewfind(object):
             print >> self.logfile, "MODEL INFO =  "+self.model_info
             print >> self.logfile, "- "*30                       
         else: self.logfile = None
-
-
+        
         self.timeout = float(timeout)
         self.verbose = bool(verbose)
 
@@ -504,7 +498,7 @@ class _CoreMOOGewfind(object):
             mooglist.add_line(*vals,ew=ew)
         mooglist.close()
         return np.asarray(data)
-    
+
 def join_threads(threads):
     """
     Join threads in interruptable fashion.
@@ -611,28 +605,28 @@ MODIFICATION HISTORY:
 
     """
     from .lte_atmospheres import run_create_atmo_model #@UnresolvedImport
-
+    
     check_moog07(True)    
     # get the input filename
     inputf, = get_filename("Please give input linelist file:",'r')
     linelist = np.loadtxt(inputf,usecols=[0,1,2,3])
-
+    
     run_create_atmo_model() # ==> FINALMODEL
-
+    
     ewb = get_bounds("Give EW bounds: ",True,default=None,
                      display_help='Seporate values by spaces. If one value given it will use it as a lower bound, two values become upper and lower, no values then the entire range will be used\n  EXAMPLE===> for EWs between 10 and 200 mA ;; Give EW bounds: 10 200')
-
-
+    
+    
     wlb = get_bounds("Give wavelength bounds: ",False,None,
                      display_help="Seporate values by spaces. Give two values lower_bound and upper_bound or no values to use the default range taken from the input linelist.\n EXAMPLE====> for wavelengths between 3600 7000 ;; Give wavelength bounds:  3600  7000")
-
-        
+    
+    
     # get output filename
     output_file, = get_filename("Please give output file name:",'w')
-
+    
     log_file, = get_filename("Please optional give a logfile, for no file press enter:",'w',default=False)
     if log_file == False: log_file = None
-
+    
     print " "
     print "- "*60
     print " "

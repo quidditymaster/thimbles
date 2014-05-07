@@ -129,7 +129,7 @@ def reduce_output_shape (arr):
 def cross_corr(arr1, arr2, offset_number, overlap_adj=False):
     """cross correlate two arrays of the same size.
     correlating over a range of pixel offsets from -offset_number to 
-    +offset_number and returning a 2*offset_number+1 length array. 
+    +offset_number and returning a 2*offset_number+1 length asarray. 
     To adjust for differences in the number of pixels overlapped if 
     overlap_adj==True we divide the result by the number of pixels
     included in the overlap of the two spectra.
@@ -160,13 +160,13 @@ def local_gaussian_fit(yvalues, peak_idx, fit_width=2, xvalues=None):
     quadratic function onto parameters for an associated gaussian.
     
     inputs:
-    values: the array of input values to which the fit will be made
+    values: the asarray of input values to which the fit will be made
     peak_idx: the rough pixel location of the maximum about which to fit.
     fit_width: the width of the gaussian fit
     xvalues: if None then the parameters of the gaussian will be determined
       in terms of indicies (e.g. the center occurs at index=20.82) if given
       xvalues is interpreted as the corresponding x values for the yvalues
-      array and the returned coefficients will be for that coordinate space
+      asarray and the returned coefficients will be for that coordinate space
       instead.
     
     returns:
@@ -191,7 +191,7 @@ def local_gaussian_fit(yvalues, peak_idx, fit_width=2, xvalues=None):
     offset = -poly_coeffs[1]/(2*poly_coeffs[2])
     center = peak_xval + offset
     sigma = 1./np.sqrt(4*np.abs(poly_coeffs[2])) 
-    center_p_vec = np.array([1.0, offset, offset**2])
+    center_p_vec = np.asarray([1.0, offset, offset**2])
     peak_y_value = np.dot(center_p_vec, poly_coeffs)
     return center, sigma, peak_y_value
 
@@ -216,14 +216,14 @@ class HypercubeGridInterpolator:
         self.grid_min = grid_min
         self.grid_max = grid_max
         self.n_dims_in = len(grid_min)
-        self.grid_deltas = (grid_max-grid_min)/np.array(grid_data.shape[:self.n_dims_in], dtype = float)
+        self.grid_deltas = (grid_max-grid_min)/np.asarray(grid_data.shape[:self.n_dims_in], dtype = float)
         self.grid_data = grid_data
         return
         
     def __call__(self, coord_vec):
         clipped_coords = np.clip(coord_vec, self.grid_min, self.grid_max)
         idx_val = (clipped_coords-self.grid_min)/self.grid_deltas
-        min_idx = np.array(idx_val, dtype = int)
+        min_idx = np.asarray(idx_val, dtype = int)
         alphas = idx_val-min_idx
         transform = np.zeros((self.n_dims_in, self.n_dims_in))
         c_vertex = np.zeros(self.n_dims_in, dtype = int)
@@ -243,9 +243,9 @@ class HypercubeGridInterpolator:
 
 
 def get_local_maxima(arr):
-    # http://stackoverflow.com/questions/3684484/peak-detection-in-a-2d-array/3689710#3689710
+    # http://stackoverflow.com/questions/3684484/peak-detection-in-a-2d-asarray/3689710#3689710
     """
-    Takes an array and detects the peaks using the local maximum filter.
+    Takes an asarray and detects the peaks using the local maximum filter.
     Returns a boolean mask of the peaks (i.e. 1 when
     the pixel's value is the neighborhood maximum, 0 otherwise)
     """
@@ -278,12 +278,12 @@ def get_local_maxima(arr):
 def wavelet_transform_fft(values, g_widths):
     """create a grid of gaussian line profiles and perform a wavelet transform
     over the grid. (a.k.a. simply convolve the data with all line profiles
-    in the grid in an efficient way and then return an array that contains
+    in the grid in an efficient way and then return an asarray that contains
     all of these convolutions.
     
     inputs:
-    values: the array of values to transform
-    g_widths: an array of gaussian widths (in pixels) to create profiles for 
+    values: the asarray of values to transform
+    g_widths: an asarray of gaussian widths (in pixels) to create profiles for 
     """
     n_pts ,= values.shape
     n_trans = 2**(int(np.log2(n_pts) + 1.5))
@@ -304,12 +304,12 @@ def wavelet_transform_fft(values, g_widths):
 def wavelet_transform(values, g_widths, mask):
     """create a grid of gaussian line profiles and perform a wavelet transform
     over the grid. (a.k.a. simply convolve the data with all line profiles
-    in the grid in an efficient way and then return an array that contains
+    in the grid in an efficient way and then return an asarray that contains
     all of these convolutions.
     
     inputs:
-    values: the array of values to transform
-    g_widths: an array of gaussian widths (in pixels) to create profiles for 
+    values: the asarray of values to transform
+    g_widths: an asarray of gaussian widths (in pixels) to create profiles for 
     """
     n_pts ,= values.shape
     n_g_widths = len(g_widths)
@@ -398,11 +398,11 @@ def minima_statistics(values, variance, last_delta_fraction=1.0, max_sm_radius=0
         n_cons.append(right_idx-left_idx)
         left_idxs.append(left_idx)
         right_idxs.append(right_idx)
-    l_z = np.array(l_z)
-    r_z = np.array(r_z)
-    n_cons = np.array(n_cons)
-    left_idxs = np.array(left_idxs)
-    right_idxs = np.array(right_idxs)
+    l_z = np.asarray(l_z)
+    r_z = np.asarray(r_z)
+    n_cons = np.asarray(n_cons)
+    left_idxs = np.asarray(left_idxs)
+    right_idxs = np.asarray(right_idxs)
     ms = MinimaStatistics()
     ms.left_idxs = left_idxs
     ms.min_idxs = min_idxs
@@ -456,7 +456,7 @@ def detect_features(values,
     left_idxs: the index of the left bounding maximum
     min_idxs: the index of the local minimum
     right_idxs: the index of the right bounding maximum
-    feature_mask: a boolean array the shape of values which is true if there is
+    feature_mask: a boolean asarray the shape of values which is true if there is
         no detected feature affecting the associated pixel.
     """
     #import matplotlib.pyplot as plt
@@ -509,7 +509,7 @@ def smoothed_mad_error(spectrum,
 def min_delta_bins(x, min_delta, target_n=1, forced_breaks=None):
     """return a set of x values which partition x into bins.
     each bin must be at least min_delta wide and must contain at least target_n
-    points in the x array (with an exception made when forced_breaks are used).
+    points in the x asarray (with an exception made when forced_breaks are used).
     The bins attempt to be the smallest that they can be while achieving both
     these constraints.
     Bins are simply built up from the left until the constraints are met 
@@ -577,7 +577,7 @@ def layered_median_mask(arr, n_layers=3, first_layer_width=31, last_layer_width=
     assert n_layers > 1
     assert first_layer_width >= 1
     assert last_layer_width >= 1
-    layer_widths = np.array(np.linspace(first_layer_width, last_layer_width, n_layers), dtype=int)
+    layer_widths = np.asarray(np.linspace(first_layer_width, last_layer_width, n_layers), dtype=int)
     mask = np.ones(marr.shape, dtype=bool)
     for layer_idx in range(n_layers):
         lw = layer_widths[layer_idx]
@@ -816,7 +816,7 @@ def approximate_normalization(spectrum,
                     grouping_column=0, 
                     min_delta=pscale,
                     alpha=alpha, beta=beta, epsilon=0.01)
-            break_wvs = mwv[np.array(opt_part[1:-1], dtype=int)]
+            break_wvs = mwv[np.asarray(opt_part[1:-1], dtype=int)]
             use_simple_partition = False
         except:
             #the smart partitioning failed use the simple one instead
@@ -857,9 +857,9 @@ def approximate_normalization(spectrum,
 def lad_fit(A, y):
     """finds the least absolute deviations fit for Ax = y
     inputs
-    A  numpy array
+    A  numpy asarray
     the matrix whose columns make up the basis vectors of the fit
-    y numpy array
+    y numpy asarray
     the target output vector.
     """
     if not with_cvxopt:
@@ -884,7 +884,7 @@ def lad_fit(A, y):
     bounds_vec = cvxopt.matrix(bounds_vec.reshape(-1, 1))
     #print objective_vec, const_mat, bounds_vec
     opt_res = cvxopt.solvers.lp(objective_vec, const_mat, bounds_vec)
-    return np.array(opt_res["x"]).reshape((-1,))[:ncols].copy(), opt_res
+    return np.asarray(opt_res["x"]).reshape((-1,))[:ncols].copy(), opt_res
 
 def vec_sort_lad(e, u):
     """determine the optimal scaling of source such that
@@ -895,10 +895,10 @@ def vec_sort_lad(e, u):
     unz = u[nz]
     signum = np.sign(unz)
     unz *= signum
-    enz = np.array(signum*e[nz], dtype=float)
+    enz = np.asarray(signum*e[nz], dtype=float)
     ratios = enz/unz
     srat, sunz = zip(*sorted(zip(ratios, unz)))
-    sunz = np.array(sunz)
+    sunz = np.asarray(sunz)
     usum = -np.sum(sunz)
     usum_idx = 0
     while usum < 0:
@@ -947,17 +947,17 @@ def pseudo_huber_irls(A, b, sigma, gamma, max_iter=100, conv_thresh=1e-4):
     
     inputs
     
-    A: numpy array or scipy.sparse matrix
+    A: numpy asarray or scipy.sparse matrix
     the fit matrix the results b will be fit as linear combinations of the 
     columns of A
     
-    b: numpy array
+    b: numpy asarray
     the data to be fit to
     
-    sigma: numpy array or number
+    sigma: numpy asarray or number
     the square root of the gaussian variance
     
-    gamma: numpy array or number or None
+    gamma: numpy asarray or number or None
     the linear cost scale. If you have some estimate of what scale of
     deviation is large enough to be a likely indicate an outlier use that.
     
@@ -1034,9 +1034,9 @@ def vac_to_air_apogee(vac_wvs, a=0.0, b1=5.792105e-2, b2=1.67917e-3, c1=238.0185
 
 def load_star_fits(fname):
     hdul = fits.open(fname)
-    wvs = np.array(hdul[1].data)
-    flux = np.array(hdul[2].data)
-    inv_var = np.array(hdul[3].data)
+    wvs = np.asarray(hdul[1].data)
+    flux = np.asarray(hdul[2].data)
+    inv_var = np.asarray(hdul[3].data)
     #TODO: add proper handling of resolution on readin
     spec = thimbles.Spectrum(wvs, flux, inv_var)
     return spec

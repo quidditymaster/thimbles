@@ -259,7 +259,7 @@ class AppForm(QMainWindow):
                 op_flux = operation_func(spec1, spec2)
                 out_spectra.append(tmb.Spectrum(spec1.wv, op_flux))
             row_name = "%s %s %s" (row1.name, op_symbol, row2.name)
-            new_row = tmbg.models.SpectraRow(out_spectra, new_name)
+            new_row = tmbg.models.SpectraRow(out_spectra, row_name)
             self.main_table_model.addRow(new_row, row_name)
         except Exception as e:
             self.wd = tmbg.dialogs.WarningDialog("error carrying out the operation", e)
@@ -355,6 +355,8 @@ class AppForm(QMainWindow):
             for feat_idx in range(len(ldat)):
                 cwv, cid, cep, cloggf = ldat[feat_idx]
                 samp_bounds = (cwv-2*wv_del, cwv+2*wv_del)
+                solar_logeps = tmb.stellar_atmospheres.solar_abundance[cid]["abundance"]
+                strength = solar_logeps + cloggf - cep*5040.0/self.options.start_teff
                 bspec = spectra[spec_idx].bounded_sample(samp_bounds)
                 if not bspec is None:
                     if len(bspec) > 3:
@@ -362,7 +364,8 @@ class AppForm(QMainWindow):
                         if self.options.pre_cull=="snr":
                             min_snr = np.min(bspec.flux*np.sqrt(bspec.get_inv_var()))
                             if min_snr > 10:
-                                accepted=True
+                                if strength > self.options.cull_threshold:
+                                    accepted=True
                         else:
                             accepted = True
                             print "no pre culling of linelist done"
@@ -379,39 +382,17 @@ class AppForm(QMainWindow):
                 
                 tp = tmb.features.AtomicTransition(cwv, cid, cloggf, cep)
                 wvdel = np.abs(bspec.wv[1]-bspec.wv[0])
-                start_p = np.array([0.0, wvdel, 0.0])
+                start_p = np.asarray([0.0, wvdel, 0.0])
                 lprof = tmb.line_profiles.Voigt(cwv, start_p)
                 nf = tmb.features.Feature(lprof, 0.00, 0.00, tp, data_sample=bspec)
                 culled_features.append(nf)
         return culled_features
     
     def fit_features(self, features):
-        self.quick_fit(features)
+        #import pdb; pdb.set_trace()
+        tmb.modeling.spectral_models.quick_quadratic_fit(features)
         for i in range(int(self.options.iteration)):
-            self.preconditioned_feature_fit(features)
-        return features
-    
-    def quick_fit(self, features):
-        for feature in features:
-            bspec = feature.data_sample
-            wvs = bspec.wv
-            cent_wv = feature.wv
-            flux = bspec.flux
-            minima = tmb.utils.misc.get_local_maxima(-flux)
-            if np.sum(minima) == 0:
-                feature.set_eq_width(0.0)
-                continue
-            minima_idxs = np.where(minima)[0]
-            minima_wvs = wvs[minima_idxs]
-            best_minimum_idx = np.argmin(np.abs(minima_wvs-cent_wv))
-            closest_idx = minima_idxs[best_minimum_idx]
-            fit_center, fit_sigma, fit_y = tmb.utils.misc.local_gaussian_fit(yvalues=flux, peak_idx=closest_idx, fit_width=2, xvalues=wvs)
-            norm_flux = bspec.norm[closest_idx]
-            depth = (norm_flux - fit_y)/norm_flux
-            offset = fit_center-cent_wv
-            new_params = [offset, np.abs(fit_sigma), 0.0]
-            feature.profile.set_parameters(new_params)
-            feature.set_depth(depth)
+            tmb.modeling.spectral_models.ensemble_feature_fit(features)
         return features
     
     def load_linelist(self):
@@ -460,6 +441,7 @@ class AppForm(QMainWindow):
         
         if self.options.fit == "individual":
             culled_features = self.pre_cull_lines(spectra, self.ldat)
+            tmb.modeling.quick_quadratic_fit(culled_features)
             fit_features = self.fit_features(culled_features)
         return fit_features
     

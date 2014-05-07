@@ -259,7 +259,7 @@ class AppForm(QMainWindow):
                 op_flux = operation_func(spec1, spec2)
                 out_spectra.append(tmb.Spectrum(spec1.wv, op_flux))
             row_name = "%s %s %s" (row1.name, op_symbol, row2.name)
-            new_row = tmbg.models.SpectraRow(out_spectra, new_name)
+            new_row = tmbg.models.SpectraRow(out_spectra, row_name)
             self.main_table_model.addRow(new_row, row_name)
         except Exception as e:
             self.wd = tmbg.dialogs.WarningDialog("error carrying out the operation", e)

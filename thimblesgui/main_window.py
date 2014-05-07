@@ -485,8 +485,9 @@ class AppForm(QMainWindow):
         gam_thresh = self.options.gamma_max
         mpt = 1.4*self.options.inlier_threshold
         
-        def resids(pvec, wvs, lprof, nflux, cent_wv):
+        def resids(pvec, wvs, lprof, nflux):
             pr = lprof.get_profile(wvs, pvec[2:])
+            cent_wv = lprof.center
             ew, relnorm, _off, g_sig, l_sig = pvec
             g_sig = np.abs(g_sig)
             l_sig = np.abs(l_sig)
@@ -501,7 +502,7 @@ class AppForm(QMainWindow):
                 sig_reg += (vel_diff - mpt*vel_mad)/vel_mad
             sig_diff = np.abs(g_sig/cent_wv-sig_med)
             if sig_diff > mpt*sig_mad:
-                sig_reg += (sig_diff-3.0*sig_mad)/sig_mad
+                sig_reg += (sig_diff-mpt*sig_mad)/(sig_mad + 0.1*wv_delta)
             if np.abs(l_sig) > gam_thresh:
                 sig_reg += np.abs((l_sig-gam_thresh))/np.max(0.1*wv_delta, gam_mad)
             gam_diff = np.abs(l_sig-gam_med)
@@ -512,10 +513,11 @@ class AppForm(QMainWindow):
         for feat_idx in range(len(features)):
             feat = features[feat_idx]
             cwv = feat.wv
+            delta_wv = np.abs(feat.data_sample.wv[-1]-feat.data_sample.wv[0])/len(feat.data_sample)
             fit_width = self.options.fit_width
             if isinstance(fit_width, basestring):
                 if "average" == fit_width:
-                    delta_wv=4.2*sig_med*cwv
+                    delta_wv=max(4.2*sig_med*cwv, 5*delta_wv)
             else:
                 delta_wv = float(self.options.fit_width)
             fit_bounds = (cwv-delta_wv, cwv+delta_wv)
@@ -529,7 +531,7 @@ class AppForm(QMainWindow):
             guessv = np.hstack((feat.eq_width, 1.0, start_p))
             nflux = bspec.flux/bspec.norm
             lprof=feat.profile
-            fit_res = scipy.optimize.leastsq(resids, guessv, args=(bspec.wv, lprof, nflux, cwv))
+            fit_res = scipy.optimize.leastsq(resids, guessv, args=(bspec.wv, lprof, nflux))
             fit = fit_res[0]
             fit[3:] = np.abs(fit[3:])
             lprof.set_parameters(fit[2:])

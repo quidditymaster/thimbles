@@ -848,6 +848,7 @@ def from_spectre (header):
     disp_type,coeffs = spectre_history[tt]
     coeffs = list(reversed(coeffs))  
     
+    import pdb; pdb.set_trace()
     # take values and return them
     if disp_type == 'no solution':
         return [NoSolution(pixels)]  

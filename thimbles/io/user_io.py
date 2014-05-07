@@ -151,7 +151,6 @@ def read_apstar (filepath, data_hdu=1, error_hdu=2, row=0):
     wv = np.power(10.0, np.arange(nwave)*cdelt1+crval1)
     return [Spectrum(wv, flux, var_2_inv_var(sigma**2))]
 
-
 def read_aspcap(filepath):
     hdulist = fits.open(filepath)
     metadata = MetaData()

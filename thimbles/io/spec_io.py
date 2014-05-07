@@ -333,8 +333,8 @@ def read_many_fits (filelist,relative_paths=False,are_orders=False):
     
     spectra = []
     for fname in list_of_files:
-        spectra += read(fname)
-        
+        spectra += read_spec(fname)
+    
     if are_orders:
         med_wvs = []
         for spec in spectra:

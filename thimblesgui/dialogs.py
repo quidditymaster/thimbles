@@ -212,7 +212,7 @@ class LoadDialog(QDialog):
             loaded_obj = self.load_func(fname)
             row_name = self.name_le.text()
         except Exception as e:
-            self.wd=WarningDialog("error reading file %s" % fname, error_message=str(e), parent=None):
+            self.wd=WarningDialog("error reading file %s" % fname, error_message=str(e), parent=None)
             self.wd.warn()
             return
         if self.type_dd.currentText() == "spectra":

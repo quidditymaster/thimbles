@@ -361,20 +361,24 @@ class AppForm(QMainWindow):
                 if not bspec is None:
                     if len(bspec) > 3:
                         accepted = False
-                        if self.options.pre_cull=="snr":
-                            min_snr = np.min(bspec.flux*np.sqrt(bspec.get_inv_var()))
-                            if min_snr > 10:
+                        precull_opt = self.options.pre_cull
+                        if precull_opt=="snr":
+                            med_snr = np.median(bspec.flux*np.sqrt(bspec.get_inv_var()))
+                            if med_snr > 3.0:
                                 if strength > self.options.cull_threshold:
                                     accepted=True
-                        else:
+                        elif precull_opt=="none":
                             accepted = True
                             print "no pre culling of linelist done"
+                        else:
+                            raise Exception("unknown line culling option %s" % precull_opt)
                         if accepted:
                             accepted_mask[feat_idx] = True
                             line_spec_idxs[feat_idx] = spec_idx
         culled_features = []
         for feat_idx in range(len(ldat)):
             if accepted_mask[feat_idx]:
+                #import pdb; pdb.set_trace()
                 sample_width = self.options.display_width
                 cwv, cid, cep, cloggf = ldat[feat_idx]
                 sample_bounds = (cwv-sample_width, cwv+sample_width)

@@ -103,28 +103,23 @@ class LogLinear (Linear):
             return np.repeat(np.nan,len(wvs))
         return (np.log10(wvs)-self.coefficients[1])/self.coefficients[0]
         
-class ChebyshevPolynomial (Polynomial):
+class ChebyshevPolynomial (WavelengthSolution):
     """ Apply chebyshev polynomial 
-    
     
     """
     def __init__ (self,pixels, coefficients, **kwargs):         
         if len(coefficients) != 5:            
-            raise ValueError("this particular chebyshev uses 5 coefficients")        
-        Polynomial.__init__(self,pixels,coefficients,**kwargs)        
-        
-    def get_wvs(self, pixels=None, frame='emitter'):
-        if pixels is None:
-            pixels = self.pixels
+            raise ValueError("this particular chebyshev uses 5 coefficients")
         #c20    p = (point - c(6))/c(7)
         #c      xpt = (2.*p-(c(9)+c(8)))/(c(9)-c(8))
         # !! is this right?
         n = len(pixels)
         xpts = (2.0*pixels - float(n+1))/float(n-1)        
         # xpt = (2.*point-real(npt+1))/real(npt-1)
-        coeff = list(reversed(self.coefficients))
-        return coeff[0] + xpts*coeff[1] + coeff[2]*(2.0*xpts**2.0-1.0) + coeff[3]*xpts*(4.0*xpts**2.0-3.0)+coeff[4]*(8.0*xpts**4.0-8.0*xpts**2.0+1.0)
-                
+        coeff = list(reversed(coefficients))
+        wvs =  coeff[0] + xpts*coeff[1] + coeff[2]*(2.0*xpts**2.0-1.0) + coeff[3]*xpts*(4.0*xpts**2.0-3.0)+coeff[4]*(8.0*xpts**4.0-8.0*xpts**2.0+1.0)
+        super(ChebyshevPolynomial, self).__init__(wvs,**kwargs)
+
 class CubicSpline (WavelengthSolution):
     pass
 

@@ -907,11 +907,12 @@ def vec_sort_lad(e, u):
     opt_ratio = srat[usum_idx-1]
     return opt_ratio
 
-def l1_factor(input_matrix, input_weights, rank=1, n_iter=3):
+def l1_factor(input_matrix, input_weights, rank=3, n_iter=3):
     rows_in, cols_in = input_matrix.shape
     w = np.random.random((rows_in, rank))-0.5
     h = np.linalg.lstsq(w, input_matrix)[0]
     for iter_idx in range(n_iter):
+        "beginning matrix factor iteration %d" % (iter_idx+1)
         for rank_idx in range(rank):
             mod = np.dot(w, h)
             resid = input_matrix-mod

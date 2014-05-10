@@ -13,6 +13,7 @@ import sys
 import re
 from astropy.io import fits
 from ..utils.misc import inv_var_2_var, var_2_inv_var
+from ..utils.misc import clean_inverse_variances
 from .spec_io import MetaData
 
 import thimbles as tmb
@@ -61,9 +62,11 @@ def read_elodie(filepath):
     flux[np.isnan(flux)] = 0.0
     flux /= rescaling_factor
     inv_var = var_2_inv_var(variance)
+    inv_var = clean_inverse_variances(inv_var)
     info = MetaData()
     info['filename'] = filepath
-    spec_list = [tmb.Spectrum(wvs, flux, inv_var)]
+    info["header"] = hdul[0].header
+    spec_list = [tmb.Spectrum(wvs, flux, inv_var, metadata=info)]
     return spec_list
 
 def read_mike(filepath):
@@ -150,7 +153,6 @@ def read_apstar (filepath, data_hdu=1, error_hdu=2, row=0):
     nwave  = hdr["NWAVE"]
     wv = np.power(10.0, np.arange(nwave)*cdelt1+crval1)
     return [Spectrum(wv, flux, var_2_inv_var(sigma**2))]
-
 
 def read_aspcap(filepath):
     hdulist = fits.open(filepath)

@@ -48,7 +48,7 @@ norm_help="type of normalization to apply to spectra options are ones and auto"
 parser.add_argument("--norm", default="auto", help=norm_help)
 
 ctmw_help="how heavily to weight the global continuum when determinging local continuum"
-parser.add_argument("--continuum-weight", default=5.0, type=float, help=ctmw_help)
+parser.add_argument("--continuum-weight", default=10.0, type=float, help=ctmw_help)
 
 fit_help="the type of spectral fit to run"
 parser.add_argument("--fit", default="individual", help=fit_help)

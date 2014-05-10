@@ -1,7 +1,7 @@
 import time
 import warnings
 import numpy as np
-from .pixel_wavelength_functions import (NoSolution, LogLinear, Polynomial, 
+from .pixel_wavelength_functions import (NoSolution, LogLinear, 
                                         Linear , ChebyshevPolynomial,
                                         CubicSpline, LegendrePolynomial) 
 
@@ -160,21 +160,20 @@ def from_crval (header):
     """ 
     # get necessary keywords
     try:
-        naxis1 = header['NAXIS1'] 
+        naxis1 = header['NAXIS1']
         ctype1 = header["CTYPE1"]
-        crval1 = header.get("CRVAL1",0)    
+        crval1 = header["CRVAL1"]    
+        cdelt1 = header["CDELT1"]
         crpix1 = header.get("CRPIX1",1)
-        cdelt1 = header.get("CDELT1",1)
     except KeyError as e: 
         raise IncompatibleWavelengthSolution(e.message)
-        
-    start_pix = crpix1 + 1 # this is because I start the pixel counting at 1 later 
+    
+    start_pix = crpix1
     pixels = np.arange(naxis1)+start_pix    
     c0 = crval1 
-    c1 = crval1-start_pix*cdelt1
+    c1 = cdelt1
     # implement correct wavelength solution
     if ctype1.upper() == 'LINEAR':
-        # TODO: other arguments?!
         return [Linear(pixels,c1,c0)]
     elif ctype1.upper() == "LOG-LINEAR":
         return [LogLinear(pixels,c1,c0)]
@@ -848,6 +847,7 @@ def from_spectre (header):
     disp_type,coeffs = spectre_history[tt]
     coeffs = list(reversed(coeffs))  
     
+    #import pdb; pdb.set_trace()
     # take values and return them
     if disp_type == 'no solution':
         return [NoSolution(pixels)]  

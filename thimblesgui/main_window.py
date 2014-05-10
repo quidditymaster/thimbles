@@ -358,23 +358,26 @@ class AppForm(QMainWindow):
                 solar_logeps = tmb.stellar_atmospheres.solar_abundance[cid]["abundance"]
                 strength = solar_logeps + cloggf - cep*5040.0/self.options.start_teff
                 bspec = spectra[spec_idx].bounded_sample(samp_bounds)
+                accepted = False
                 if not bspec is None:
                     if len(bspec) > 3:
-                        accepted = False
                         precull_opt = self.options.pre_cull
                         if precull_opt=="snr":
                             med_snr = np.median(bspec.flux*np.sqrt(bspec.get_inv_var()))
                             if med_snr > 3.0:
                                 if strength > self.options.cull_threshold:
                                     accepted=True
+                        elif precull_opt[:8] == "strength":
+                            if strength > float(precull_opt[8:]):
+                                accepted = True
                         elif precull_opt=="none":
                             accepted = True
                             print "no pre culling of linelist done"
                         else:
                             raise Exception("unknown line culling option %s" % precull_opt)
-                        if accepted:
-                            accepted_mask[feat_idx] = True
-                            line_spec_idxs[feat_idx] = spec_idx
+                    if accepted:
+                        accepted_mask[feat_idx] = True
+                        line_spec_idxs[feat_idx] = spec_idx
         culled_features = []
         for feat_idx in range(len(ldat)):
             if accepted_mask[feat_idx]:

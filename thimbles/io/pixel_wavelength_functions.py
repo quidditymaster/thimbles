@@ -1,4 +1,4 @@
-
+import warnings
 import numpy as np
 from ..spectrum import WavelengthSolution
     
@@ -12,7 +12,7 @@ class NoSolution (WavelengthSolution):
     """ No solution to wavelength solution """
     
     def __init__ (self,pixels,*args,**kwargs):
-        print "no wavelength solution found, using pixel number"
+        warnings.warn("No wavelength solution found, using pixel number")
         super(NoSolution, self).__init__(pixels,*args,**kwargs)
         
     def get_wvs (self,pixels=None,frame='emitter'):
@@ -110,17 +110,20 @@ class ChebyshevPolynomial (WavelengthSolution):
     """
     def __init__ (self,pixels, coefficients, **kwargs):         
         if len(coefficients) != 5:            
-            raise ValueError("this particular chebyshev uses 5 coefficients")
+            raise ValueError("This particular Chebyshev polynomial only works with 5 coefficients")
+        # THIS VERSION TAKE FROM SPECTRE
+        
         #c20    p = (point - c(6))/c(7)
         #c      xpt = (2.*p-(c(9)+c(8)))/(c(9)-c(8))
         # !! is this right?
         n = len(pixels)
         xpts = (2.0*pixels - float(n+1))/float(n-1)        
         # xpt = (2.*point-real(npt+1))/real(npt-1)
-        coeff = list(reversed(coefficients))
+        coeff = coefficients
         wvs =  coeff[0] + xpts*coeff[1] + coeff[2]*(2.0*xpts**2.0-1.0) + coeff[3]*xpts*(4.0*xpts**2.0-3.0)+coeff[4]*(8.0*xpts**4.0-8.0*xpts**2.0+1.0)
         super(ChebyshevPolynomial, self).__init__(wvs,**kwargs)
-
+        self.coefficients = coefficients
+        
 class CubicSpline (WavelengthSolution):
     pass
 
@@ -140,4 +143,4 @@ class LegendrePolynomial (Polynomial):
         n = len(wvs)
         return ((wvs-self.coefficients[1])/self.coefficients[0])/2.0+(n+1)/(n-1)
         
-        
+     

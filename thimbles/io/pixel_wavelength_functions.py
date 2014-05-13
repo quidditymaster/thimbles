@@ -55,7 +55,7 @@ class Polynomial (WavelengthSolution):
         obs_wvs = np.polyval(coefficients,pixels)        
         super(Polynomial, self).__init__(obs_wvs,**kwargs)
 
-class Linear (Polynomial):
+class Linear (WavelengthSolution):
     """ Linear wavelength solution of the form wvs=c1*pix+c0
     
     Parameters
@@ -69,9 +69,10 @@ class Linear (Polynomial):
     """
     
     def __init__ (self,pixels,c1,c0,**kwargs):
-        coefficients = np.array([c0,c1]).astype(float)                                      
-        Polynomial.__init__(self,pixels,coefficients,**kwargs)
-    
+        coefficients = np.array([c0,c1]).astype(float)
+        wvs = pixels*c1+c0
+        super(Linear, self).__init__(wvs, **kwargs)
+
 class LogLinear (WavelengthSolution):
     """ Linear wavelength solution of the form wvs=10**(c1*pix+c0)
     

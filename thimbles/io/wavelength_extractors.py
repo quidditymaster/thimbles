@@ -1,7 +1,7 @@
 import time
 import warnings
 import numpy as np
-from .pixel_wavelength_functions import (NoSolution, LogLinear, 
+from .pixel_wavelength_functions import (NoSolution, LogLinear, Polynomial, 
                                         Linear , ChebyshevPolynomial,
                                         CubicSpline, LegendrePolynomial) 
 

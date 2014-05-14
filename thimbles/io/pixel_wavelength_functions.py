@@ -1,7 +1,7 @@
 import warnings
 import numpy as np
 from ..spectrum import WavelengthSolution
-    
+from .. import verbosity
 
 __all__ = ['NoSolution','LogLinear','Polynomial','Linear','ChebyshevPolynomial',
            'CubicSpline','LegendrePolynomial']
@@ -12,7 +12,7 @@ class NoSolution (WavelengthSolution):
     """ No solution to wavelength solution """
     
     def __init__ (self,pixels,*args,**kwargs):
-        warnings.warn("No wavelength solution found, using pixel number")
+        verbosity("No wavelength solution found, using pixel number")
         super(NoSolution, self).__init__(pixels,*args,**kwargs)
         
     def get_wvs (self,pixels=None,frame='emitter'):
@@ -49,13 +49,15 @@ class Polynomial (WavelengthSolution):
     
     """
     
-    def __init__ (self, pixels, coefficients, **kwargs):         
-        self.coefficients = np.asarray(reversed(coefficients)) 
+    def __init__ (self, pixels, coefficients, **kwargs):  
+        self.coefficients = np.asarray(reversed(coefficients))
+        verbosity("polynomial solution with coefficients {}".format(self.coefficients))       
         self.pixels = pixels 
-        obs_wvs = np.polyval(coefficients,pixels)        
+        obs_wvs = np.polyval(coefficients,pixels)
+        #import pdb;pdb.set_trace()
         super(Polynomial, self).__init__(obs_wvs,**kwargs)
 
-class Linear (WavelengthSolution):
+class Linear (Polynomial):
     """ Linear wavelength solution of the form wvs=c1*pix+c0
     
     Parameters
@@ -67,11 +69,10 @@ class Linear (WavelengthSolution):
     
     
     """
-    
     def __init__ (self,pixels,c1,c0,**kwargs):
         coefficients = np.array([c0,c1]).astype(float)
-        wvs = pixels*c1+c0
-        super(Linear, self).__init__(wvs, **kwargs)
+        verbosity("linear wavelength solution with {}+{}*pix".format(c0,c1))
+        Polynomial.__init__(self, pixels, coefficients, **kwargs)
 
 class LogLinear (WavelengthSolution):
     """ Linear wavelength solution of the form wvs=10**(c1*pix+c0)
@@ -86,6 +87,7 @@ class LogLinear (WavelengthSolution):
     
     """
     def __init__ (self,pixels,c1,c0,**kwargs):
+        verbosity("loglinear wavelength solution with {}+{}*pix".format(c0,c1))
         self.coefficients = np.array([c0,c1]).astype(float)                                      
         obs_wvs = 10**(c0+pixels*c1)
         WavelengthSolution.__init__(self,obs_wvs,**kwargs)
@@ -95,6 +97,7 @@ class ChebyshevPolynomial (WavelengthSolution):
     
     """
     def __init__ (self,pixels, coefficients, **kwargs):         
+        verbosity("chebyshev with coefficients {}".format(coefficients))
         if len(coefficients) != 5:            
             raise ValueError("This particular Chebyshev polynomial only works with 5 coefficients")
         # THIS VERSION TAKE FROM SPECTRE
@@ -118,11 +121,15 @@ class LegendrePolynomial (WavelengthSolution):
     
     
     """  
-    def __init__ (self,pixels,c1,c0,**kwargs):        
+    def __init__ (self,pixels,c1,c0,**kwargs):     
+        verbosity("legendre polynomial with coefficients {}".format((c0,c1)))   
         self.coefficients = np.array([c0,c1]).astype(float)                                      
         n = len(pixels)
         xpts = (2.0*pixels - (n+1)/(n-1))
         obs_wvs = self.coefficients[0]*xpts+self.coefficients[1]
         WavelengthSolution.__init__(self,obs_wvs,**kwargs)
 
+<<<<<<< HEAD
      
+=======
+>>>>>>> 5c3f1131e5e41f47f5879d5aa64c0a2312212ae6

@@ -617,6 +617,9 @@ class FeatureFitWidget(QWidget):
         significance = np.sqrt(inv_var)*(feature_model-bspec.flux)
         self.resid_line ,= self.fit_axis(1).plot(bspec.wv, significance, c="b")
         self.fit_axis(1).set_ylim(-6, 6)
+        self.fit_axis(1).set_xlabel("Wavelength")
+        self.fit_axis(1).set_ylabel("Residual Significance")
+        self.fit_axis(0).set_ylabel("Flux")
         self.mpl_fit.draw()
     
     def update_plots(self):

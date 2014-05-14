@@ -4,7 +4,7 @@ import numpy as np
 from .pixel_wavelength_functions import (NoSolution, LogLinear, Polynomial, 
                                         Linear , ChebyshevPolynomial,
                                         CubicSpline, LegendrePolynomial) 
-
+from .. import verbosity
 
 # ########################################################################### #
 
@@ -848,7 +848,8 @@ def from_spectre (header):
     # get the history tag with greatest time
     tt = np.max(spectre_history.keys())
     disp_type,coeffs = spectre_history[tt]
-    coeffs = list(reversed(coeffs))  
+    #coeffs = list(reversed(coeffs))  
+    coeffs = list(coeffs)  
     
     #import pdb; pdb.set_trace()
     # take values and return them
@@ -916,6 +917,7 @@ def from_header (header,preference=None):
         try: 
             wv_solutions.append(func(header))
             compatible_solutions.append(func_name)
+            verbosity('compatible wavelength solution from {}'.format(func_name))
         except IncompatibleWavelengthSolution:
             pass
     # check how many solutions were found

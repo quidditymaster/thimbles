@@ -848,7 +848,8 @@ def from_spectre (header):
     # get the history tag with greatest time
     tt = np.max(spectre_history.keys())
     disp_type,coeffs = spectre_history[tt]
-    coeffs = list(reversed(coeffs))  
+    #coeffs = list(reversed(coeffs))  
+    coeffs = list(coeffs)  
     
     #import pdb; pdb.set_trace()
     # take values and return them

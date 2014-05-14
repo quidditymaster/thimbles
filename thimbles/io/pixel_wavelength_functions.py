@@ -50,10 +50,11 @@ class Polynomial (WavelengthSolution):
     """
     
     def __init__ (self, pixels, coefficients, **kwargs):  
-        verbosity("polynomial solution with coefficients {}".format(coefficients))       
-        self.coefficients = np.asarray(reversed(coefficients)) 
+        self.coefficients = np.asarray(reversed(coefficients))
+        verbosity("polynomial solution with coefficients {}".format(self.coefficients))       
         self.pixels = pixels 
-        obs_wvs = np.polyval(coefficients,pixels)        
+        obs_wvs = np.polyval(coefficients,pixels)
+        #import pdb;pdb.set_trace()
         super(Polynomial, self).__init__(obs_wvs,**kwargs)
 
 class Linear (Polynomial):
@@ -71,7 +72,7 @@ class Linear (Polynomial):
     
     def __init__ (self,pixels,c1,c0,**kwargs):
         verbosity("linear wavelength solution with {}+{}*pix".format(c0,c1))
-        coefficients = np.array([c0,c1]).astype(float)                                      
+        coefficients = np.array([c1,c0]).astype(float)  
         Polynomial.__init__(self,pixels,coefficients,**kwargs)
     
 class LogLinear (WavelengthSolution):

@@ -129,7 +129,4 @@ class LegendrePolynomial (WavelengthSolution):
         obs_wvs = self.coefficients[0]*xpts+self.coefficients[1]
         WavelengthSolution.__init__(self,obs_wvs,**kwargs)
 
-<<<<<<< HEAD
-     
-=======
->>>>>>> 5c3f1131e5e41f47f5879d5aa64c0a2312212ae6
+

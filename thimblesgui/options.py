@@ -79,7 +79,7 @@ nwhelp="suppress the GUI window"
 parser.add_argument("--no-window", "--nw", action="store_true", help=nwhelp)
 
 nsplashh="suppres the splash screen"
-parser.add_argument("--no-splash", "--nsplash", action="store_true", help=nsplashh)
+parser.add_argument("--no-splash", "--nsplash", "--ns", action="store_true", help=nsplashh)
 
 templ_help="specify template spectra to load from the thimbles/resources/templates directory"
 parser.add_argument("--templates", nargs="*", default=[], help=templ_help)

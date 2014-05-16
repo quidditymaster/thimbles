@@ -3,6 +3,35 @@ import scipy.ndimage as ndimage
 
 from .utils import misc
 
+def normalize(spectrum, 
+              mask="layered median", 
+              partition="adaptive",
+              mask_kwargs=None, 
+              partition_kwargs=None,
+              fit_kwargs=None
+          ):
+    flux = spectrum.flux
+    wvs = spectrum.wv
+    inv_var=spectrum.inv_var
+    
+    if mask_kwargs is None:
+        mask_kwargs = {}
+    if partition_kwargs is None:
+        partition_kwargs = {}
+    if fit_kwargs is None:
+        fit_kwargs = {}
+    
+    if mask == "layered median":
+        mask = layered_median_mask(flux, **mask_kwargs)
+    elif len(mask) == len(flux):
+        mask = np.asarray(mask, dtype=bool)
+    
+    if partition == "adaptive":
+        partition = misc.min_delta_bins(wvs, **partition_kwargs)
+    
+    smooth_ppol_fit(wvs, flux, y_inv=inv_var, mask=mask)
+    return
+
 class Normalization(object):
     """An object to represent a normalization and all of the relevant 
     attendant data. 

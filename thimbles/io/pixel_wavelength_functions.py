@@ -50,11 +50,11 @@ class Polynomial (WavelengthSolution):
     """
     
     def __init__ (self, pixels, coefficients, **kwargs):  
-        self.coefficients = np.asarray(reversed(coefficients))
+        self.coefficients = np.asarray(list(reversed(coefficients)))
         verbosity("polynomial solution with coefficients {}".format(self.coefficients))       
         self.pixels = pixels 
-        obs_wvs = np.polyval(coefficients,pixels)
-        #import pdb;pdb.set_trace()
+        obs_wvs = np.polyval(self.coefficients,pixels)        
+        # import pdb;pdb.set_trace()
         super(Polynomial, self).__init__(obs_wvs,**kwargs)
 
 class Linear (Polynomial):

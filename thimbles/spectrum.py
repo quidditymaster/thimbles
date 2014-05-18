@@ -341,10 +341,6 @@ class Spectrum(object):
         first_wv = wvs[0]
         return "<`thimbles.Spectrum` ({0:8.3f},{1:8.3f})>".format(first_wv, last_wv)
     
-    def normalize(self):
-        #TODO: put extra controls in here
-        norm_res = misc.approximate_normalization(self, overwrite=True)
-    
     @property
     def px(self):
         return self.wv_soln.get_pix()
@@ -379,9 +375,15 @@ class Spectrum(object):
         #TODO deal with zeros appropriately
         return inv_var_2_var(self.inv_var)
     
+    def normalize(self):
+        #TODO: put extra controls in here
+        norm_res = misc.approximate_normalization(self, overwrite=True)    
+        return norm_res
+        
     def normalized(self):
         nspec = Spectrum(self.wv_soln, self.flux/self.norm, self.get_inv_var()*self.norm**2)
         nspec.flags["normalized"] = True
+        return nspec
     
     def rebin_new(self, coords, kind=None, coord_type=None, normalized=None, fill_flux=None, fill_var=None, fill_norm=None, fill_lsf=None):
         """valuate the spectrum at a given set of coordinates

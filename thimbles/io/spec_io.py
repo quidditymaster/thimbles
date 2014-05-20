@@ -209,11 +209,11 @@ def read_bintablehdu (hdulist,which_hdu=1,wvcolname=None,fluxcolname=None,varcol
     for i,hdu in enumerate(hdulist[1:]):
         metadata['header{}'.format(i+1)] = hdu.header
     
-    guesses = dict(wvcol_guess = ['wavelength','wvs','wavelengths'],
+    guesses = dict(wvcol_guess = ['wavelength','wvs','wavelengths','wave','waves'],
                    fluxcol_guess = ['flux','ergs','intensity'],
-                   var_guess = ['variance','varience'],
-                   inv_var_guess = ['inv_var','inverse variance','inverse varience'],
-                   sigma_guess = ['sigma','error'],
+                   var_guess = ['variance','varience','var'],
+                   inv_var_guess = ['inv_var','inverse variance','inverse varience','ivar','invvar'],
+                   sigma_guess = ['sigma','error','noise'],
                    )   
     # include all uppercase and capitalized guesses too
     items = guesses.items()     

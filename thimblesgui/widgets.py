@@ -39,7 +39,7 @@ class NormalizationWidget(QWidget):
 
 class FloatSlider(QWidget):
     
-    def __init__(self, name, min_, max_, n_steps=127, orientation=Qt.Horizontal, parent=None):
+    def __init__(self, name, min_, max_, n_steps=127, orientation=Qt.Vertical, parent=None):
         super(FloatSlider, self).__init__(parent)
         label = QLabel(name, parent=self)
         if orientation == Qt.Horizontal:
@@ -372,12 +372,16 @@ class PrevNext(QWidget):
         else:
             self.play()
 
+class SliderCascade(QWidget):
+    
+    def __init__(self, names, mins, maxes, n_steps, orientation=Qt.Vertical, parent=None):
+        self.sliders = [FloatSlider(name, min_, max_, n_step, orientation, parent) for name, min_, max_, n_step in zip(names, mins, maxes, n_steps)]
+
 class FeatureFitWidget(QWidget):
     slidersChanged = Signal(int)
     
     def __init__(self, features, feature_idx, parent=None):
         super(FeatureFitWidget, self).__init__(parent)
-        
         self.display_width = options.display_width
         #self.spectra = spectra
         self.features = features
@@ -432,7 +436,7 @@ class FeatureFitWidget(QWidget):
     def save_measurements(self):
         fname, file_filter = QFileDialog.getSaveFileName(self, "save measurements")
         tmb.io.linelist_io.write_moog_from_features(fname, self.features)
-        feat_fname = ".".join(fname.split(".")[:-1]) + ".features.pkl"
+        feat_fname = ".".join(fname.split(".")[:]) + ".features.pkl"
         self.save_feature_fits(feat_fname)
     
     @property
@@ -520,11 +524,15 @@ class FeatureFitWidget(QWidget):
         sigcol = models.Column("sigma", {drole: lambda x: "% 10.3f" % x.profile.get_parameters()[1]})
         gamcol = models.Column("gamma", {drole: lambda x: "% 10.3f" % x.profile.get_parameters()[2]})
         ewcol = models.Column("Equivalent\nWidth", {drole: lambda x: "%10.2f" % (1000.0*x.eq_width)})
+        def set_note(x, note):
+            x.note = note
+            return True
+        notescol = models.Column("Notes", {drole:lambda x: x.note}, setter_dict={Qt.EditRole: set_note}, editable=True)
         #viewedcol = Column("Viewed", getter_dict={crole: dummy_func}, setter_dict={crole: flag_setter_factory("viewed")}, checkable=True)
         
         #ewcol = Column("depth"
         columns = [wvcol, spcol, epcol, loggfcol, offsetcol, 
-                   depthcol, sigcol, gamcol, ewcol]#, viewedcol]
+                   depthcol, sigcol, gamcol, ewcol, notescol]#, viewedcol]
         self.linelist_model = models.ConfigurableTableModel(self.features, columns)
         self.linelist_view = views.LineListView(parent=self)
         self.linelist_view.setModel(self.linelist_model)

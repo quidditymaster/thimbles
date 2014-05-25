@@ -94,8 +94,8 @@ def feature_residuals_factory(feature, predictors):
         pred_off = predictors["offset"].predict(feature)
         pred_sig = predictors["sigma"].predict(feature)
         pred_gam = predictors["gamma"].predict(feature)
-        #pred_rn  = predictors["rel_norm"].predict(feature)
-        pred_vec = np.asarray([pred_off-offset, pred_sig-sigma, pred_gam-gamma]) #pred_rn-rel_norm])
+        pred_rn  = predictors["rel_norm"].predict(feature)
+        pred_vec = np.asarray([pred_off-offset, pred_sig-sigma, pred_gam-gamma, pred_rn-rel_norm])
         return np.hstack((resids ,pred_vec))
     return resids
 

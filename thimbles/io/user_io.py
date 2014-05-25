@@ -152,7 +152,7 @@ def read_apstar (filepath, data_hdu=1, error_hdu=2, row=0):
     cdelt1 = hdr["CDELT1"]
     nwave  = hdr["NWAVE"]
     wv = np.power(10.0, np.arange(nwave)*cdelt1+crval1)
-    return [Spectrum(wv, flux, var_2_inv_var(sigma**2))]
+    return [tmb.Spectrum(wv, flux, var_2_inv_var(sigma**2))]
 
 def read_aspcap(filepath):
     hdulist = fits.open(filepath)
@@ -168,4 +168,4 @@ def read_aspcap(filepath):
     cdelt1 = hdulist[1].header["CDELT1"]
     nwave  = len(flux)
     wv = np.power(10.0, np.arange(nwave)*cdelt1+crval1)
-    return [Spectrum(wv, flux, invvar)]
+    return [tmb.Spectrum(wv, flux, invvar)]

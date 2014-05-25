@@ -429,7 +429,7 @@ class AppForm(QMainWindow):
         #apply the normalization
         if self.options.norm == "auto":
             for spec in spectra:
-                spec.approx_norm()
+                spec.normalize()
         
         #apply the radial velocity shift
         #import pdb; pdb.set_trace()

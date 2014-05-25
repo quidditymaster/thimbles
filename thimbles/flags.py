@@ -65,6 +65,7 @@ class Flags(object):
         self.flag_space = flag_space
         if flag_int is None:
             flag_int = self.flag_space.default_int
+        #TODO: allow flags also to be initialized with boolean dicts
         self._val = flag_int
     
     def __getitem__(self, flag_name):
@@ -105,12 +106,23 @@ class FeatureFlags(Flags):
         super(FeatureFlags, self).__init__(feature_flag_space, flag_int)
 
 spectrum_flag_space = FlagSpace()
-spectrum_flag_space.add_dimension("normed")
+spectrum_flag_space.add_dimension("normalized")
 spectrum_flag_space.add_dimension("fluxed")
-spectrum_flag_space.add_dimension("synthetic")
+spectrum_flag_space.add_dimension("observed", default=True)
+spectrum_flag_space.add_dimension("oversampled")
+spectrum_flag_space.add_dimension("telluric")
+spectrum_flag_space.add_dimension("sky")
+# rv_applied
+# continuum_divided
+# co-added
+# telluric_divided
+# smoothed
+# rebinned
+# re-sampled
 
 class SpectrumFlags(Flags):
     
     def __init__(self, flag_int=None):
         super(SpectrumFlags, self).__init__(spectrum_flag_space, flag_int)
+
 

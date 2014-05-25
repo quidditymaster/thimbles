@@ -587,29 +587,6 @@ def layered_median_mask(arr, n_layers=3, first_layer_width=31, last_layer_width=
         mask[mask] = masked_arr >= (filtered - rejection_sigma*1.4*local_mad)
     return mask
 
-def normalize(spectrum, 
-              mask="layered median", 
-              partition="adaptive",
-              mask_kwargs=None, 
-              partition_kwargs=None):
-    flux = spectrum.flux
-    wvs = spectrum.flux
-    
-    if mask_kwargs == None:
-        mask_kwargs = {}
-    if partition_kwargs == None:
-        partition_kwargs = {}
-    
-    if mask == "layered median":
-        mask = layered_median_mask(flux, **mask_kwargs)
-    elif len(mask) == len(flux):
-        mask = np.asarray(mask, dtype=bool)
-    
-    if partition == "adaptive":
-        partition = min_delta_bins(wvs, **partition_kwargs)
-    
-    return
-
 def smooth_ppol_fit(x, y, y_inv=None, order=3, mask=None, mult=None, partition="adaptive", partition_kwargs=None):
     if partition_kwargs == None:
         partition_kwargs = {}

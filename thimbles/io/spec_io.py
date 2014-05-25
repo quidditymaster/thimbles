@@ -7,21 +7,18 @@
 # Standard Library
 import re
 import os
-import time
 from copy import deepcopy
 from collections import Iterable
 import warnings
 
 # 3rd Party
-import scipy
-import astropy
 import astropy.io
 from astropy.io import fits
 import numpy as np
 
 # Internal
 from ..utils.misc import var_2_inv_var
-from ..spectrum import Spectrum, WavelengthSolution
+from ..spectrum import Spectrum
 from ..metadata import MetaData
 import wavelength_extractors
 
@@ -151,7 +148,7 @@ def read_fits_hdu (hdulist,which_hdu=0,band=0,preference=None):
     """
     hdu = hdulist[which_hdu]
     header = hdu.header
-    if header.has_key("APFORMAT"):
+    if 'APFORMAT' in header:
         warnings.warn(("Received keyword APFORMAT,"
                        " no machinary to deal with this."
                        " [thimbles.io.read_fits_hdu]"))
@@ -184,7 +181,7 @@ def read_fits_hdu (hdulist,which_hdu=0,band=0,preference=None):
     metadata['filepath'] = hdulist.filename
     metadata['hdu_used']=which_hdu
     metadata['band_used']=band
-    metadata['header0'] = deepcopy(hdu.header)
+    metadata['header'] = deepcopy(hdu.header)
         
     spectra = []
     for i in xrange(len(wvs)):
@@ -208,14 +205,15 @@ def read_bintablehdu (hdulist,which_hdu=1,wvcolname=None,fluxcolname=None,varcol
     """
     metadata = MetaData()
     metadata['filepath'] = hdulist.filename()
-    for i,hdu in enumerate(hdulist):
-        metadata['header{}'.format(i)] = hdu.header
+    metadata['header'] = hdulist[0].header
+    for i,hdu in enumerate(hdulist[1:]):
+        metadata['header{}'.format(i+1)] = hdu.header
     
-    guesses = dict(wvcol_guess = ['wavelength','wvs','wavelengths'],
+    guesses = dict(wvcol_guess = ['wavelength','wvs','wavelengths','wave','waves'],
                    fluxcol_guess = ['flux','ergs','intensity'],
-                   var_guess = ['variance','varience'],
-                   inv_var_guess = ['inv_var','inverse variance','inverse varience'],
-                   sigma_guess = ['sigma','error'],
+                   var_guess = ['variance','varience','var'],
+                   inv_var_guess = ['inv_var','inverse variance','inverse varience','ivar','invvar'],
+                   sigma_guess = ['sigma','error','noise'],
                    )   
     # include all uppercase and capitalized guesses too
     items = guesses.items()     

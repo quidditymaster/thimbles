@@ -15,7 +15,11 @@ from .utils import resampling
 from .utils import misc
 from .utils.misc import inv_var_2_var
 from .metadata import MetaData
-
+from .flags import SpectrumFlags
+from . import verbosity
+from .reference_frames import InertialFrame
+from .resolution import LineSpreadFunction, GaussianLSF, BoxLSF
+from .binning import CoordinateBinning1D
 
 # ########################################################################### #
 
@@ -25,306 +29,47 @@ __all__ = ["WavelengthSolution","Spectrum"]
 
 speed_of_light = 299792.458
 
-def centers_to_bins(coord_centers):
-    if len(coord_centers) == 0:
-        return np.zeros(0)
-    bins = np.zeros(len(coord_centers) + 1, dtype = float)
-    bins[1:-1] = 0.5*(coord_centers[1:] + coord_centers[:-1])
-    bins[0] = coord_centers[0] - (bins[1]-coord_centers[0])
-    bins[-1] = coord_centers[-1] + 0.5*(coord_centers[-1] - coord_centers[-2])
-    return bins
 
-class CoordinateBinning1d (object):
-    """a container for a set of coordinates
-    """
-    def __init__(self, coordinates):
-        """coordinates must be a monotonically decreasing sequence
-        """
-        self.coordinates = coordinates
-        self.bins = centers_to_bins(coordinates)
-        self._cached_prev_bin = (self.bins[0], self.bins[1])
-        self._cached_prev_bin_idx = 0
-        self._start_dx = self.coordinates[1] - self.coordinates[0]
-        self._end_dx = self.coordinates[-1] - self.coordinates[-2]
+class WavelengthSolution(CoordinateBinning1D):
     
-    def indicies_to_coordinates(self, input_indicies):
-        # TODO: See if scipy/numpy has auto search
-        out_coordinates = np.zeros(len(input_indicies))
-        for i in range(len(input_indicies)):
-            alpha = input_indicies[i]%1
-            int_part = int(input_indicies[i])
-            if input_indicies[i] < 0:
-                out_coordinates[i] = self.coordinates[0] + alpha*self._start_dx
-            elif input_indicies[i] > len(self.coordinates)-2:
-                out_coordinates[i] = self.coordinates[-1] + alpha*self._end_dx
-            else:
-                out_coordinates[i] = self.coordinates[int_part]*(1.0-alpha)
-                out_coordinates[i] += self.coordinates[int_part+1]*alpha
-        return out_coordinates
-    
-    def coordinates_to_indicies(self, input_coordinates):
-        """assign continuous indexes to the input_coordinates 
-        which place them on to the indexing of these coordinates.
-        """
-        # get the upper and lower bounds for the coordinates
-        lb,ub = self.bins[0],self.bins[-1]
-        xv = np.asarray(input_coordinates)
-        out_idx_vals = np.zeros(len(xv.flat), dtype = int)
-        for x_idx in xrange(len(xv.flat)):
-            cur_x = xv.flat[x_idx]
-            #check if the last solution still works
-            if self._cached_prev_bin[0] <= cur_x <= self._cached_prev_bin[1]:
-                #if so find the fraction through the pixel
-                alpha = (cur_x-self._cached_prev_bin[0])/(self._cached_prev_bin[1]-self._cached_prev_bin[0])
-                out_idx_vals[x_idx] = self._cached_prev_bin_idx + alpha
-                continue
-            #make sure that the x value is inside the bin range or extrapolate
-            if lb > cur_x:
-                out_idx_vals[x_idx] = (cur_x-self.coordinates[0])/self._start_dx
-                continue
-            if ub < cur_x:
-                out_idx_vals[x_idx] = (cur_x-self.coordinates[1])/self._end_dx
-                continue
-            lbi, ubi = 0, len(self.bins)-1
-            while True:
-                mididx = (lbi+ubi)/2
-                midbound = self.bins[mididx]
-                if midbound <= cur_x:
-                    lbi = mididx
-                else:
-                    ubi = mididx
-                if self.bins[lbi] <= cur_x <= self.bins[lbi+1]:
-                    self._cached_prev_bin = self.bins[lbi], self.bins[lbi+1]
-                    self._cached_prev_bin_idx = lbi
-                    break
-            alpha = (cur_x-self._cached_prev_bin[0])/(self._cached_prev_bin[1]-self._cached_prev_bin[0])
-            out_idx_vals[x_idx] = lbi + alpha
-        return out_idx_vals
-    
-    def get_bin_index(self, xvec):
-        """uses interval binary search to quickly find the bin belonging to the input coordinates
-        If a coordinate outside of the bins is asked for a linear extrapolation of the 
-        bin index is returned. (so be warned indexes can be less than 0 and greater than len!)
-        """
-        # get the upper and lower bounds for the coordinates
-        lb,ub = self.bins[0],self.bins[-1]
-        xv = np.asarray(xvec)
-        out_idxs = np.zeros(len(xv.flat), dtype = int)
-        for x_idx in xrange(len(xv.flat)):
-            cur_x = xvec[x_idx]
-            #check if the last solution still works
-            if self._cached_prev_bin[0] <= cur_x <= self._cached_prev_bin[1]:
-                out_idxs[x_idx] = self._cached_prev_bin_idx
-                continue
-            #make sure that the x value is inside the bin range
-            if lb > cur_x:
-                out_idxs[x_idx] = int((cur_x-lb)/self._start_dx -1)
-            if ub > cur_x:
-                out_idxs[x_idx] = int((cur_x-ub)/self._end_dx)
-            lbi, ubi = 0, self.n_bounds-1
-            while True:
-                mididx = (lbi+ubi)/2
-                midbound = self.bins[mididx]
-                if midbound <= cur_x:
-                    lbi = mididx
-                else:
-                    ubi = mididx
-                if self.bins[lbi] <= cur_x <= self.bins[lbi+1]:
-                    self._cached_prev_bin = self.bins[lbi], self.bins[lbi+1]
-                    self._cached_prev_bin_idx = lbi
-                    break
-            out_idxs[x_idx] = lbi
-        return out_idxs
-    
-class LinearBinning1d(CoordinateBinning1d):
-    
-    def __init__(self, x0, dx):
-        self.x0 = x0
-        self.dx = dx
-    
-    def coordinates_to_indicies(self, input_coordinates):
-        return (np.asarray(input_coordinates) - self.x0)/self.dx
-    
-    def indicies_to_coordinates(self, input_indicies):
-        return np.asarray(input_indicies)*self.dx + self.x0
-    
-    #def map_indicies(self, input_coordinates):
-    #    return (input_coordinates-self.x0)/self.dx
-    
-    def get_bin_index(self, input_coordinates):
-        #TODO make this handle negatives properly
-        return np.asarray(self.coordinates_to_indicies(input_coordinates), dtype = int)
-
-n_delts = 1024
-z_scores = np.linspace(-6, 6, n_delts)
-cdf_vals = scipy.stats.norm.cdf(z_scores)
-min_z = z_scores[0]
-max_z = z_scores[-1]
-z_delta = (z_scores[1]-z_scores[0])
-
-def approximate_gaussian_cdf(zscore):
-    if zscore > max_z-z_delta-1e-5:
-        return 1.0
-    elif zscore < min_z:
-        return 0
-    idx_val = (zscore-min_z)/z_delta
-    base_idx = int(idx_val)
-    alpha = idx_val-base_idx
-    return cdf_vals[base_idx]*(1-alpha) + cdf_vals[base_idx+1]*alpha
-
-pass
-# =========================================================================== #
-
-class LineSpreadFunction:
-    """a class for describing line spread functions.
-    Integrations are carried out over pixel space. 
-    """
-    
-    def integrate(self, index, lb, ub):
-        lower_val = self.get_integral(index, lb)
-        upper_val = self.get_integral(index, ub)
-        return upper_val-lower_val
-
-class GaussianLSF(LineSpreadFunction):
-    
-    def __init__(self,widths, max_sigma = 5.0, wv_soln=None):
-        self.wv_soln = wv_soln
-        self.widths = widths
-        self.max_sigma = max_sigma
-    
-    def get_integral(self, index, pix_coord):
-        zscore = (pix_coord-index)/self.widths[index]
-        return approximate_gaussian_cdf(zscore)
-    
-    def get_coordinate_density_range(self, index):
-        lb = index - self.max_sigma*self.widths[index]
-        ub = index + self.max_sigma*self.widths[index]
-        return lb, ub
-    
-    def get_rms_width(self, index):
-        return self.widths[index]
-
-class BoxLSF(LineSpreadFunction):
-    
-    def __init__(self, wv_soln=None):
-        self.wv_soln = wv_soln
-    
-    def get_integral(self, index, pix_coord):
-        if pix_coord > index+0.5:
-            return 1
-        elif pix_coord < index-0.5:
-            return 0
-        else:
-            return pix_coord - index + 0.5
-    
-    def get_coordinate_density_range(self, index):
-        return index-1, index+1
-    
-    def get_rms_width(self, index):
-        return 1.0/12.0
-
-class DiracLSF(LineSpreadFunction):
-    
-    def __init__(self, wv_soln=None):
-        self.wv_soln = None
-        self.epsilon = 1e-12
-    
-    def get_integral(self, index, pix_coord):
-        if pix_coord >= index:
-            return 1.0
-        else:
-            return 0.0
-    
-    def get_coordinate_density_range(self, index):
-        return self.centers[index]-self.epsilon, self.centers[index]+self.epsilon
-    
-    def get_rms_width(self, index):
-        return 0.0
-
-#TODO: add a simple lsf convolution function not perfect but something.
-
-pass
-# =========================================================================== #
-#TODO: we need to make the reference frames have true 3-space velocity vectors so that
-# we can use the ra dec info to project the velocity difference onto 
-class ReferenceFrame(object):
-    """a point of reference specified with the earth sun barycenter as 0
-    velocity. 
-    """
-    
-    def __init__(self, barycenter_rv=0, ra=None, dec=None):
-        #TODO: convert a velocity relative to the earth sun barycenter
-        #and a position on the sky to a 3-space radial velocity vector.
-        self._v = barycenter_rv
-    
-    def __sub__(self, other):
-        """returns the magnitude of the radial velocity difference """
-        return self._v - other._v
-    
-    def set_rv(self, v):
-        self._v = v
-    
-    def get_rv(self):
-        return self._v
-
-class EarthSunBarycenterFrame(ReferenceFrame):
-    
-    def __init__(self):
-        self._v = 0
-
-class EarthCenterFrame(ReferenceFrame):
-    
-    def __init__(self, mjd):
-        #TODO:
-        raise NotImplemented
-
-class EarthSurfaceFrame(ReferenceFrame):
-    
-    def __init__(self, latitude, longitude, mjd):
-        #TODO:
-        raise NotImplemented
-
-class WavelengthSolution(CoordinateBinning1d):
-    
-    def __init__(self, obs_wavelengths, rv=None, emitter_frame=None, lsf=None, observer_frame=None):
+    def __init__(self, obs_wavelengths, emitter_frame=None, observer_frame=None, lsf=None):
         """a class that encapsulates the manner in which a spectrum is sampled
-        pixel_num_array: an asarray of the pixel indicies
-        wv_func; a function that takes pixel indicies and returns 
-        wavelengths in the telescope frame
-        rv: float
-            if rv is specified and emitter_frame is None rv is assumed to 
-            be the radial velocity of the emitter.
-        emitter_frame: ReferenceFrame or None
-            if emitter_frame  == None we assume emitter_frame == EarthSunBarycenterFrame
-        lsf: the line spread function
-        observer_frame: ReferenceFrame or None
-        the frame in which the spectrum is observed if None defaults
-        to EarthSunBarycenterFrame
+        obs_wavelengths: np.ndarray
+        emitter_frame: InertialFrame or Float
+          the frame of motion of the emitting object relative to the Earth
+          sun Barycenter. A float value will be interpreted as the radial
+          velocity of the frame. velocity is in Km/S away is positive.
+        observer_frame: InertialFrame or Float
+          the frame of motion of the observer along the line of sight
+          relative to the earth sun barycenter. A float value will be 
+          interpreted as the radial velocity of the frame. velocity is in 
+          Km/S away is positive.
+        lsf: LineSpreadFunction or numpy.ndarray
+          the associated line spread function for each pixel.
+          a 1D ndarray will be interpreted as a gaussian lsf width in pixels.
         """
-        CoordinateBinning1d.__init__(self, obs_wavelengths)
-        if emitter_frame == None:
-            if rv == None:
-                emitter_frame = EarthSunBarycenterFrame()
-            else:
-                emitter_frame = ReferenceFrame(rv)
-        self.emitter_frame = emitter_frame
+        super(WavelengthSolution, self).__init__(obs_wavelengths)
         
-        if observer_frame==None:
-            observer_frame = EarthSunBarycenterFrame()
+        if observer_frame is None:
+            observer_frame = InertialFrame(0.0)
         self.observer_frame = observer_frame
         
+        if emitter_frame is None:
+                emitter_frame = InertialFrame(0.0)
+        self.emitter_frame = emitter_frame
+        
         #TODO: include a radial velocity uncertainty (make it a subclass!)
-        if lsf != None:
-            if isinstance(lsf, LineSpreadFunction):
-                self.lsf = lsf
-            else:
-                try:
-                    self.lsf = GaussianLSF(np.ones(len(lsf)))
-                except:
-                    raise Exception("don't know what to do with this LSF!")
-        else:
-            self.lsf = BoxLSF(self)
-
+        if lsf is None:
+            lsf = GaussianLSF(np.ones(len(obs_wavelengths)))
+        elif not isinstance(lsf, LineSpreadFunction):
+            try:
+                lsf = GaussianLSF(lsf)
+            except:
+                verbosity("bad LSF specification defaulting to box LSF")
+                lsf = BoxLSF(self)
+        self.lsf = lsf
+    
+    
     def get_wvs(self, pixels=None, frame="emitter"):
         if pixels == None:
             obs_wvs = self.obs_wvs
@@ -353,7 +98,7 @@ class WavelengthSolution(CoordinateBinning1d):
             delta_v = 0.0
         else:
             delta_v = frame - self.observer_frame
-        return observer_wvs*(1.0-delta_v/speed_of_light)
+        return observer_wvs*(1.0-delta_v.rv/speed_of_light)
     
     def frame_to_observer(self, frame_wvs, frame="emitter"):
         if frame == "emitter":
@@ -362,17 +107,17 @@ class WavelengthSolution(CoordinateBinning1d):
             delta_v = 0.0
         else:
             delta_v = frame - self.observer_frame
-        return frame_wvs*(1.0+delta_v/speed_of_light)
+        return frame_wvs*(1.0+delta_v.rv/speed_of_light)
     
     def frame_conversion(self, wvs, wv_frame, target_frame):
         rest_wvs = self.frame_to_observer(wvs, frame=wv_frame)
         return self.observer_to_frame(rest_wvs, frame=target_frame)
     
     def set_rv(self, rv):
-        self.emitter_frame.set_rv(rv)
+        self.emitter_frame.rv = rv
     
     def get_rv(self):
-        return self.emitter_frame.get_rv()
+        return self.emitter_frame.rv
     
     #TODO: convenient/efficent functions to transform a set of pixel sigmas
     #into a set of wavelength sigmas given the current wavelength solution
@@ -400,9 +145,17 @@ class WavelengthSolution(CoordinateBinning1d):
     #    return deriv*pix_sigmas
 
 class Spectrum(object):
+    """A representation of a collection of relative flux measurements
+    """
     
-    def __init__(self, wavelength_solution, flux, inv_var=None, 
-                 norm="ones", name="", metadata=None):
+    def __init__(self, 
+                 wavelength_solution, 
+                 flux, 
+                 inv_var=None,
+                 norm="ones", 
+                 metadata=None,
+                 flags=None
+             ):
         """makes a spectrum from a wavelength solution, flux and optional inv_var
         """
         if isinstance(wavelength_solution, WavelengthSolution):
@@ -424,21 +177,23 @@ class Spectrum(object):
             self.norm = np.ones(len(self.wv))
         else:
             self.norm = norm
-        self.name = name
         self._last_rebin_wv_soln_id = None
         self._last_rebin_transform = None
         
         if metadata is None:
-            self.metadata = MetaData()
+            metadata = MetaData()
+        elif not isinstance(metadata, MetaData):
+            metadata = MetaData(metadata)
+        self.metadata = metadata
+        
+        if flags is None:
+            flags = SpectrumFlags()
         else:
-            self.metadata = MetaData(metadata)
+            flags = SpectrumFlags(int(flags))
+        self.flags = flags
     
     def __len__(self):
         return len(self.flux)
-    
-    def approx_norm(self):
-        #TODO: put extra controls in here
-        norm_res = misc.approximate_normalization(self, overwrite=True)
     
     def __equal__ (self,other):
         if not isinstance(other,Spectrum):
@@ -457,10 +212,17 @@ class Spectrum(object):
         return "<`thimbles.Spectrum` ({0:8.3f},{1:8.3f})>".format(first_wv, last_wv)
     
     @property
+    def px(self):
+        return self.wv_soln.get_pix()
+    
+    @property
+    def rv(self):
+        return self.wv_soln.get_rv()
+    
+    @property
     def wv(self):
         """
-        This returns the default values from get_wvls
-        return self.get_wvs(pixels=None,frame='emitter')
+        This returns the default values from get_wvs
         """
         return self.get_wvs(pixels=None, frame='emitter')
     
@@ -483,8 +245,34 @@ class Spectrum(object):
         #TODO deal with zeros appropriately
         return inv_var_2_var(self.inv_var)
     
+    def normalize(self):
+        #TODO: put extra controls in here
+        norm_res = misc.approximate_normalization(self, overwrite=True)    
+        return norm_res
+        
     def normalized(self):
-        return Spectrum(self.wv_soln, self.flux/self.norm, self.get_inv_var()*self.norm**2)
+        nspec = Spectrum(self.wv_soln, self.flux/self.norm, self.get_inv_var()*self.norm**2)
+        nspec.flags["normalized"] = True
+        return nspec
+    
+    def rebin_new(self, coords, kind=None, coord_type=None, normalized=None, fill_flux=None, fill_var=None, fill_norm=None, fill_lsf=None):
+        """valuate the spectrum at a given set of coordinates
+        the method for determining the output spectrum values is dictated
+        by this spectrum's valuation policy by default.
+
+        coords: WavelengthSolution or numpy.ndarray
+          the coordinates centers of the bins in the output spectrum
+          if a np.ndarray is specified it will be assumed that the line
+          spread function is gaussian with a sigma width parameter equal to
+          the spacing between the pixels (Nyquist sampled).
+        kind: string
+          "interp", the flux values will be linearly interpolated
+          "rebin", a rebinning matrix is built which redistributes flux 
+            according to pixel overlap and line spread functions.
+            An attempt is made to build a differential line spread function
+            to sample 
+        """
+        self.coords = coords
     
     def rebin(self, new_wv_soln, frame="emitter"):
         #check if we have the transform stored

@@ -1,5 +1,6 @@
 #the parsing for runtime arguments.
 import argparse
+import thimbles as tmb
 
 desc = "a spectrum processing and analysis GUI"
 parser = argparse.ArgumentParser(description=desc)
@@ -78,7 +79,7 @@ nwhelp="suppress the GUI window"
 parser.add_argument("--no-window", "--nw", action="store_true", help=nwhelp)
 
 nsplashh="suppres the splash screen"
-parser.add_argument("--no-splash", "--nsplash", action="store_true", help=nsplashh)
+parser.add_argument("--no-splash", "--nsplash", "--ns", action="store_true", help=nsplashh)
 
 templ_help="specify template spectra to load from the thimbles/resources/templates directory"
 parser.add_argument("--templates", nargs="*", default=[], help=templ_help)
@@ -86,7 +87,15 @@ parser.add_argument("--templates", nargs="*", default=[], help=templ_help)
 st_help = "a valid python script or expression to execute in the user name space on startup"
 parser.add_argument("--startup", default="", help=st_help)
 
+verbose_help = "set verbosity of thimbles (default is False)"
+parser.add_argument("-v","--verbosity", action='store_true', dest='verbosity_level', help=verbose_help)
+
 options = parser.parse_args()
+
+if options.verbosity_level:
+    tmb.verbosity.set_level('verbose')
+else:
+    tmb.verbosity.set_level('silent')
 
 if options.no_window:
     options.no_splash = True

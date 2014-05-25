@@ -1,10 +1,10 @@
 import time
 import warnings
 import numpy as np
-from .pixel_wavelength_functions import (NoSolution, LogLinear, 
+from .pixel_wavelength_functions import (NoSolution, LogLinear, Polynomial, 
                                         Linear , ChebyshevPolynomial,
                                         CubicSpline, LegendrePolynomial) 
-
+from .. import verbosity
 
 # ########################################################################### #
 
@@ -509,13 +509,13 @@ def _wcs_dispersion_format (pixels,*args):
         msg = "WCS chebyshev specification is incorrect"
         if len(args) < 12:         
             raise IncompatibleWavelengthSolution(msg)        
-        order = args[12]
-        if len(args) < 15+order:
-            raise IncompatibleWavelengthSolution(msg)
+        order = int(args[12])
+        #if len(args) < 15+order:
+        #    raise IncompatibleWavelengthSolution(msg)
         xxmin = args[13]
         xxmax = args[14]
         coefficients = args[15:15+order]
-        raise NotImplementedError("Chebyshev polynomial wavelength solution from WCS")
+        return ChebyshevPolynomial(pixels,coefficients)
     elif func_type == 2:
         # legendre polyomial 
         raise NotImplementedError("Legendre polynomial wavelength solution from WCS")
@@ -550,11 +550,14 @@ def _multi_line_to_single (header,base="WAT2_"):
     """
     # a variable to concatenate into
     wat_string = ""    
+    
+    max_number = 1000 # maxes at WAT?_999
+    
     # if the header is a dictionary not a `astropy.io.fits.header.Header`    
     if isinstance(header,dict):
-        for i in xrange(1,101):
+        for i in xrange(1,max_number): 
             keyword = base+format(i,"03")
-            if header.has_key(keyword):
+            if keyword in header:
                 wat_string += header[keyword]
             else:
                 break 
@@ -565,7 +568,7 @@ def _multi_line_to_single (header,base="WAT2_"):
     # white space from the end of the strings which squished together some 
     # important information
     hdrstr = header.tostring()    
-    for i in xrange(1,101):
+    for i in xrange(1,max_number):
         keyword = base+format(i,"03")
         # check number of times this appears
         num = hdrstr.count(keyword)
@@ -573,9 +576,9 @@ def _multi_line_to_single (header,base="WAT2_"):
             break 
         elif num > 1:
             raise KeyError("Found more than one keyword in {}".format(keyword))        
-        i = hdrstr.find(keyword)
+        j = hdrstr.find(keyword)
         # hdrstr[i+11:i+79] ==  re.search("WAT2_003.*=.*\'(.*)\'",hdrstr[i:i+80]).groups()[0]        
-        wat_string += hdrstr[i+11:i+79]
+        wat_string += hdrstr[j+10:j+80].replace("\'","")
     if not len(wat_string):
         raise IncompatibleWavelengthSolution("Missing any keywords in form {0}???".format(base)) 
     return wat_string    
@@ -845,7 +848,8 @@ def from_spectre (header):
     # get the history tag with greatest time
     tt = np.max(spectre_history.keys())
     disp_type,coeffs = spectre_history[tt]
-    coeffs = list(reversed(coeffs))  
+    #coeffs = list(reversed(coeffs))  
+    coeffs = list(coeffs)  
     
     #import pdb; pdb.set_trace()
     # take values and return them
@@ -913,6 +917,7 @@ def from_header (header,preference=None):
         try: 
             wv_solutions.append(func(header))
             compatible_solutions.append(func_name)
+            verbosity('compatible wavelength solution from {}'.format(func_name))
         except IncompatibleWavelengthSolution:
             pass
     # check how many solutions were found

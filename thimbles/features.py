@@ -80,7 +80,8 @@ class Feature(object):
                  trans_parameters,
                  relative_continuum=1.0, 
                  data_sample=None,
-                 flags=None):
+                 flags=None,
+                 note=""):
         self.profile = profile
         self._eq_width = eq_width
         self.abundance = abundance
@@ -89,11 +90,12 @@ class Feature(object):
         if flags == None:
             flags = FeatureFlags()
         self.flags = flags
+        self.note=note
         self.relative_continuum=relative_continuum
     
     def __repr__ (self):
-        rep_str = """Feature : %s"""
-        return rep_str % repr(self.trans_parameters) 
+        rep_str = """Feature : %s notes: %s"""
+        return rep_str % (repr(self.trans_parameters), self.notes) 
     
     def get_offset(self):
         return self.profile.get_parameters()[0]

@@ -2,6 +2,7 @@ import numpy as np
 #from .stellar_atmospheres import periodic_table
 import thimbles as tmb
 from flags import FeatureFlags
+from line_profiles import Gaussian
 
 class AtomicTransition:
     """
@@ -86,7 +87,7 @@ class Feature(object):
         self._eq_width = eq_width
         self.abundance = abundance
         self.trans_parameters = trans_parameters
-        self.data_sample=data_sample
+        self.data_sample = data_sample
         if flags == None:
             flags = FeatureFlags()
         self.flags = flags
@@ -96,6 +97,13 @@ class Feature(object):
     def __repr__ (self):
         rep_str = """Feature : %s notes: %s"""
         return rep_str % (repr(self.trans_parameters), self.notes) 
+    
+    def chi_sq_vec(self, wvs=None):
+        if wvs == None:
+            wvs = self.data_sample.wv
+    
+    def trough_bounds(self, wvs, fraction=0.95):
+        pass
     
     def get_offset(self):
         return self.profile.get_parameters()[0]

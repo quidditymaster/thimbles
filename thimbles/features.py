@@ -134,6 +134,9 @@ class Feature(object):
         return self.trans_parameters.ep
     
     def get_model_flux(self, wvs):
+        return self.model_flux(wvs)
+    
+    def model_flux(self, wvs):
         return self.relative_continuum*(1.0-self.eq_width*self.profile(wvs))
     
     @property

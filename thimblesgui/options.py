@@ -2,8 +2,8 @@
 import argparse
 import thimbles as tmb
 
-desc = "a spectrum processing and analysis GUI"
-parser = argparse.ArgumentParser(description=desc)
+description = "a spectrum processing and analysis GUI"
+parser = argparse.ArgumentParser(description=description)
 
 file_help = "paths to spectra files or other files to read in"
 parser.add_argument("files", nargs="*", help=file_help)

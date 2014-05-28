@@ -441,9 +441,15 @@ class FeatureFitWidget(QWidget):
     
     def save_measurements(self):
         fname, file_filter = QFileDialog.getSaveFileName(self, "save measurements")
-        tmb.io.linelist_io.write_moog_from_features(fname, self.features)
-        feat_fname = ".".join(fname.split(".")[:]) + ".features.pkl"
-        self.save_feature_fits(feat_fname)
+        try:
+            tmb.io.linelist_io.write_moog_from_features(fname, self.features)
+        except Exception as e:
+            print e
+        try:
+            feat_fname = ".".join(fname.split(".")[:]) + ".features.pkl"
+            self.save_feature_fits(feat_fname)
+        except Exception as e:
+            print e
     
     @property
     def hint_click_on(self):

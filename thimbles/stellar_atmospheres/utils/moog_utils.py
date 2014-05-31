@@ -1246,7 +1246,7 @@ EXAMPLE:
         """
         print >> self.file, str(line)
     
-    def add_line (self,wl,spe,ep,loggf,vwdamp=None,d0=None,ew=None,spe_fmt='9.5f'):
+    def add_line (self,wl,spe,ep,loggf,vwdamp=None,d0=None,ew=None,spe_fmt='9.5f', comment=""):
         """
 PURPOSE:
     Add a line to the output file based on the input atomic parameters
@@ -1297,7 +1297,7 @@ EXAMPLE:
             else: 
                 fmt_string += " "*10
         
-        out_str = fmt_string.format(*data) + "\n"
+        out_str = fmt_string.format(*data) + " " + comment + "\n"
         self.file.write(out_str)
     
     def close (self):

@@ -195,5 +195,5 @@ def write_moog_from_features(filename, features):
         ep = feat.ep
         ew = 1000*feat.eq_width
         if feat.flags["use"]:
-            llout.add_line(wv, spe, ep, loggf, ew=ew)
+            llout.add_line(wv, spe, ep, loggf, ew=ew, comment=feat.note)
     llout.close()

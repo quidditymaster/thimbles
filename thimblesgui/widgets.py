@@ -373,9 +373,15 @@ class PrevNext(QWidget):
             self.play()
 
 class SliderCascade(QWidget):
+    slidersChanged = Signal(int)
     
     def __init__(self, names, mins, maxes, n_steps, orientation=Qt.Vertical, parent=None):
+        super(SliderCascade, self).__init__(parent)
         self.sliders = [FloatSlider(name, min_, max_, n_step, orientation, parent) for name, min_, max_, n_step in zip(names, mins, maxes, n_steps)]
+    
+    def _connect_sliders(self):
+        pass
+    
 
 class FeatureFitWidget(QWidget):
     slidersChanged = Signal(int)
@@ -435,9 +441,15 @@ class FeatureFitWidget(QWidget):
     
     def save_measurements(self):
         fname, file_filter = QFileDialog.getSaveFileName(self, "save measurements")
-        tmb.io.linelist_io.write_moog_from_features(fname, self.features)
-        feat_fname = ".".join(fname.split(".")[:]) + ".features.pkl"
-        self.save_feature_fits(feat_fname)
+        try:
+            tmb.io.linelist_io.write_moog_from_features(fname, self.features)
+        except Exception as e:
+            print e
+        try:
+            feat_fname = ".".join(fname.split(".")[:]) + ".features.pkl"
+            self.save_feature_fits(feat_fname)
+        except Exception as e:
+            print e
     
     @property
     def hint_click_on(self):
@@ -606,7 +618,7 @@ class FeatureFitWidget(QWidget):
         bspec = self.bounded_spec()
         self.data_line ,= self.fit_axis(0).plot(bspec.wv, bspec.flux, c="b")
         self.cont_line ,= self.fit_axis(0).plot(bspec.wv, bspec.norm, c="g")
-        feature_model = self.feature.get_model_flux(bspec.wv)*bspec.norm
+        feature_model = self.feature.model_flux(bspec.wv)*bspec.norm
         self.model_line,= self.fit_axis(0).plot(bspec.wv, feature_model)
         nac = bspec.norm[len(bspec.norm)//2]
         self.top_marker_line ,= self.fit_axis(0).plot([feat_wv, feat_wv], [0.7*nac, 1.1*nac], c="r", lw=1.5) 
@@ -636,7 +648,7 @@ class FeatureFitWidget(QWidget):
         self.data_line.set_data(bspec.wv, bspec.flux)
         bnorm = bspec.norm
         self.cont_line.set_data(bspec.wv, bnorm)
-        feature_model = self.feature.get_model_flux(bspec.wv)*bnorm
+        feature_model = self.feature.model_flux(bspec.wv)*bnorm
         self.model_line.set_data(bspec.wv, feature_model)
         nac = bspec.norm[len(bspec.norm)//2]
         self.top_marker_line.set_data([feat_wv, feat_wv], [0.7*nac, 1.1*nac])

@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 # internal
 from .utils import resampling
 from .utils import misc
-from .utils.misc import inv_var_2_var
+from .utils.misc import inv_var_2_var, var_2_inv_var
 from .metadata import MetaData
 from .flags import SpectrumFlags
 from . import verbosity
@@ -32,7 +32,7 @@ speed_of_light = 299792.458
 
 class WavelengthSolution(CoordinateBinning1D):
     
-    def __init__(self, obs_wavelengths, emitter_frame=None, observer_frame=None, lsf=None):
+    def __init__(self, obs_wavelengths, emitter_frame=None, observer_frame=None, lsf=None, **kwargs):
         """a class that encapsulates the manner in which a spectrum is sampled
         obs_wavelengths: np.ndarray
         emitter_frame: InertialFrame or Float
@@ -192,8 +192,25 @@ class Spectrum(object):
             flags = SpectrumFlags(int(flags))
         self.flags = flags
     
-    def __len__(self):
-        return len(self.flux)
+    def __add__(self, other):
+        if not isinstance(other, Spectrum):
+            try:
+                other = float(other)
+                return Spectrum(self.wv_soln, self.flux+other, self.inv_var)
+            except TypeError:
+                raise TypeError("operation not supported between Spectrum and type %s" % type(other))
+        rebinned_other = other.rebin(self.wv_soln)
+        return Spectrum(self.wv_soln, self.flux+rebinned_other.flux, var_2_inv_var(self.var + other.var))
+    
+    def __div__(self, other):
+        if not isinstance(other, Spectrum):
+            try:
+                other = float(other)
+                return Spectrum(self.wv_soln, self.flux/other, self.inv_var*other**2)
+            except TypeError:
+                raise TypeError("operation not supported between Spectrum and type %s" % type(other))
+        rebinned_other = other.rebin(self.wv_soln)
+        return Spectrum(self.wv_soln, self.flux-rebinned_other.flux, var_2_inv_var(self.var/other.flux**2 + (self.flux/other.flux**2)**2*other.var))
     
     def __equal__ (self,other):
         if not isinstance(other,Spectrum):
@@ -205,11 +222,34 @@ class Spectrum(object):
                   other.metadata==self.metadata]
         return np.all(checks)
     
+    def __len__(self):
+        return len(self.flux)
+    
+    def __mul__(self, other):
+        if not isinstance(other, Spectrum):
+            try:
+                other = float(other)
+                return Spectrum(self.wv_soln, self.flux*other, self.inv_var/other**2)
+            except TypeError:
+                raise TypeError("operation not supported between Spectrum and type %s" % type(other))
+        rebinned_other = other.rebin(self.wv_soln)
+        return Spectrum(self.wv_soln, self.flux*rebinned_other.flux, var_2_inv_var(self.var*other.flux + other.var*self.flux))
+    
     def __repr__(self):
         wvs = self.wv
         last_wv = wvs[-1]
         first_wv = wvs[0]
         return "<`thimbles.Spectrum` ({0:8.3f},{1:8.3f})>".format(first_wv, last_wv)
+    
+    def __sub__(self, other):
+        if not isinstance(other, Spectrum):
+            try:
+                other = float(other)
+                return Spectrum(self.wv_soln, self.flux-other, self.inv_var)
+            except TypeError:
+                raise TypeError("operation not supported between Spectrum and type %s" % type(other))
+        rebinned_other = other.rebin(self.wv_soln)
+        return Spectrum(self.wv_soln, self.flux-rebinned_other.flux, var_2_inv_var(self.var + other.var))
     
     @property
     def px(self):
@@ -272,7 +312,7 @@ class Spectrum(object):
             An attempt is made to build a differential line spread function
             to sample 
         """
-        self.coords = coords
+        pass
     
     def rebin(self, new_wv_soln, frame="emitter"):
         #check if we have the transform stored
@@ -356,3 +396,7 @@ class Spectrum(object):
             axes.set_ylabel('Flux')
         l, = axes.plot(plot_wvs, plot_flux, **mpl_kwargs)
         return axes,l
+    
+    @property
+    def var(self):
+        return inv_var_2_var(self.inv_var)

@@ -2,12 +2,39 @@ import numpy as np
 #from .stellar_atmospheres import periodic_table
 import thimbles as tmb
 from flags import FeatureFlags
+from line_profiles import Gaussian
 
-class AtomicTransition:
-    """
-    Holds parameters for a specific energy transition
+class Element(object):
     
-    wavelength,id_,loggf,ep,vwdamp=0,d0=0,info=None
+    def __init__(self, proton_number, symbol, name, reference_isotope):
+        self.proton_number = proton_number
+        self.symbol = symbol
+        self.name = name
+        self.reference_isotope = reference_isotope
+
+class Isotope(object):
+    
+    def __init__(self, element, mass_number, mass):
+        self.element = element
+        self.mass_number = mass_number
+        self.mass = mass
+
+class Species(object):
+    
+    def __init__(self, isotopes, ionization):
+        self.isotopes = isotopes
+        self.ionization = ionization
+
+class IonizationStage(object):
+    
+    def __init__(self, charge):
+        self.charge = charge
+
+class Transition(object):
+    """
+    an optically induced transition between energy levels
+    
+    wavelength,loggf,ep,vwdamp=0,d0=0
     Parameters
     ----------
     wavelength : float
@@ -36,23 +63,15 @@ class AtomicTransition:
     
     Examples
     --------
-    >>> transition = TransitionProperties(5555.5,26.0,4.0,-1.34)
-    >>>
-    >>>
-    
     """
     
-    def __init__ (self,wavelength,id_,loggf,ep,vwdamp=0,d0=0):
-        self.wv = wavelength
-        # if id_ is given as string (e.g. 'Fe I') then this will get the 
-        # appropriate id
-        #if isinstance(id_,basestring):
-        #    id_ = periodic_table[id_][0] 
-        self._id = id_
-        self.loggf = loggf
-        self.ep = ep
-        self.vwdamp = vwdamp
-        self.d0 = d0
+    def __init__ (self, wv, isotope, loggf, ep, vwdamp=0, d0=0):
+        self.wv=wv
+        self.iso=isotope
+        self.loggf=loggf
+        self.ep=ep
+        self.vwdamp=vwdamp
+        self.d0=d0
     
     @property
     def molecular_weight(self):
@@ -73,37 +92,21 @@ class AtomicTransition:
 
 class Feature(object):
     
-    def __init__(self, 
-                 profile, 
-                 eq_width, 
-                 abundance, 
-                 trans_parameters,
-                 relative_continuum=1.0, 
-                 data_sample=None,
+    def __init__(self,
+                 profile,  
+                 transition,
                  flags=None,
                  note=""):
         self.profile = profile
-        self._eq_width = eq_width
-        self.abundance = abundance
-        self.trans_parameters = trans_parameters
-        self.data_sample=data_sample
+        self.transition= transition
         if flags == None:
             flags = FeatureFlags()
         self.flags = flags
         self.note=note
-        self.relative_continuum=relative_continuum
     
     def __repr__ (self):
         rep_str = """Feature : %s notes: %s"""
         return rep_str % (repr(self.trans_parameters), self.notes) 
-    
-    def get_offset(self):
-        return self.profile.get_parameters()[0]
-    
-    def set_offset(self, new_off):
-        cur_p = self.profile.get_parameters()
-        cur_p[0] = new_off
-        self.profile.set_parameters(cur_p)
     
     @property
     def molecular_weight(self):
@@ -126,6 +129,9 @@ class Feature(object):
         return self.trans_parameters.ep
     
     def get_model_flux(self, wvs):
+        return self.model_flux(wvs)
+    
+    def model_flux(self, wvs):
         return self.relative_continuum*(1.0-self.eq_width*self.profile(wvs))
     
     @property
@@ -174,3 +180,34 @@ class Feature(object):
         x -= logvml
         y = self.logrw - logvml
         return x, y
+
+
+class FeatureGroup(object):
+    
+    def __init__(self, features, spectra, offsets=None, relative_continuum=1.0):
+        self.features = features
+        self.spectra = spectra
+        self.relative_continuum=relative_continuum 
+        #offset per spectrum group
+        if offsets is None:
+            offsets = [0.0 for i in range(spectra)]
+        self.offsets = offsets
+    
+    def get_offset(self, spec_idx=None):
+        if spec_idx is None:
+            return self.offsets
+        return self.offsets[spec_idx]
+    
+    def set_offset(self, new_off, spec_idx=None):
+        if spec_idx is None:
+            self.offsets = new_off
+        else:
+            self.offsets[spec_idx] = new_off
+    
+    def chi_sq_vec(self, wvs=None):
+        if wvs == None:
+            wvs = self.data_sample.wv
+    
+    def trough_bounds(self, wvs, fraction=0.95):
+        pass
+    

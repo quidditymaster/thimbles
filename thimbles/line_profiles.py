@@ -6,26 +6,26 @@ import thimbles as tmb
 
 sqrt2pi = np.sqrt(2*np.pi)
 
-def _gauss(wvs, center, g_width):
+def gauss(wvs, center, g_width):
     return 1.0/(sqrt2pi*g_width)*np.exp(-0.5*((wvs-center)/g_width)**2)
 
-def _voigt(wvs, center, g_width, l_width):
+def voigt(wvs, center, g_width, l_width):
     "returns a voigt profile with gaussian sigma g_width and lorentzian width l_width."
     g_w = np.abs(g_width)
     l_w = np.abs(l_width)
-    if l_w == 0:
-        return _gauss(wvs, center, g_width)
-    elif g_w == 0 and l_width != 0:
-        g_w = 0.0001*l_w
-    elif g_w == 0 and l_width == 0:
+    if g_w == 0 and l_width == 0:
         dirac_delta = np.zeros(len(wvs), dtype=float)
         dirac_delta[int(len(wvs)/2)] = 1.0
         return dirac_delta
+    elif l_w == 0:
+        return gauss(wvs, center, g_width)
+    elif g_w == 0 and l_width != 0:
+        g_w = 0.0001*l_w
     z = ((wvs-center)+l_w*1j)/(g_w*np.sqrt(2))
     cplxv = scipy.special.wofz(z)/(g_w*np.sqrt(2*np.pi))
     return (cplxv.real).copy()
 
-def _rotational(wvs, center, vsini, limb_darkening = 0):
+def rotational(wvs, center, vsini, limb_darkening = 0):
     "for wavelengths in angstroms and v*sin(i) in km/s"
     ml = np.abs(vsini/3e5*center)
     eps = limb_darkening
@@ -41,15 +41,15 @@ def _rotational(wvs, center, vsini, limb_darkening = 0):
         result[int(nwvs/2)] = 1.0
     return result
 
-def _voigt_rotational(wvs, center, g_width, l_width, vsini, limb_darkening): #this routine has edge problems with the convolution
+def voigt_rotational(wvs, center, g_width, l_width, vsini, limb_darkening): #this routine has edge problems with the convolution
     "generates a voigt profile convolved with a rotational broadening profile"
-    rprof = _rotational(wvs, center, vsini, limb_darkening)
+    rprof = rotational(wvs, center, vsini, limb_darkening)
     if len(wvs) % 2 == 1:
         array_central_wv = wvs[int(len(wvs)/2)]
     else:
         array_central_wv = 0.5*(wvs[int(len(wvs)/2)] + wvs[int(len(wvs)/2)-1])
     #if center is not the central wavelength
-    vprof = _voigt(wvs, array_central_wv, g_width, l_width)
+    vprof = voigt(wvs, array_central_wv, g_width, l_width)
     #plt.plot(vprof)
     return np.convolve(rprof, vprof, mode="same")/np.convolve(np.ones(wvs.shape), rprof, mode="same")
 
@@ -82,7 +82,7 @@ class Voigt(LineProfile):
         if param_vec == None:
             param_vec = self.param_vec
         offset, g_width, l_width = param_vec
-        return _voigt(wvs, self.center+offset, g_width, l_width)
+        return voigt(wvs, self.center+offset, g_width, l_width)
 
 class Gaussian(LineProfile):
     

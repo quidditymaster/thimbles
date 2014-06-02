@@ -18,7 +18,7 @@ def centers_to_bins(coord_centers):
 
 class CoordinateBinning1D (object):
     """a container that associates a set of coordinates to their indexes
-    and vice versa. Also fascilitates fast interpolation
+    and vice versa.
     """
     
     def __init__(self, coordinates):
@@ -47,14 +47,24 @@ class CoordinateBinning1D (object):
                 out_coordinates[i] += self.coordinates[int_part+1]*alpha
         return out_coordinates
     
-    def coordinates_to_indicies(self, input_coordinates):
+    def coordinates_to_indicies(self, coords, extrapolation="linear"):
         """assign continuous indexes to the input_coordinates 
         which place them on to the indexing of these coordinates.
+        
+        coords: ndarray
+          coordinates to convert to the index
+        extralpolation: string
+          'linear': linearly extrapolate the indexes to indexes < 0 and
+             greater than len(self.coordinates)-1
+          'nan': coordinates outside of the bin boundaries are set to np.nan
+          'nearest': a value of 0 is placed for coordinates less than 
+            the lower limit and a value of len(self.coordinates)-1 is placed 
+            for coordinates greater than the upper limit.
         """
         #TODO:dump this to cython
         # get the upper and lower bounds for the coordinates
         lb,ub = self.bins[0],self.bins[-1]
-        xv = np.asarray(input_coordinates)
+        xv = np.asarray(coords)
         out_idx_vals = np.zeros(len(xv.flat), dtype = int)
         for x_idx in xrange(len(xv.flat)):
             cur_x = xv.flat[x_idx]
@@ -66,7 +76,12 @@ class CoordinateBinning1D (object):
                 continue
             #make sure that the x value is inside the bin range or extrapolate
             if lb > cur_x:
-                out_idx_vals[x_idx] = (cur_x-self.coordinates[0])/self._start_dx
+                if extrapolation == "linear":
+                    out_idx_vals[x_idx] = (cur_x-self.coordinates[0])/self._start_dx
+                elif extrapolation == "nan":
+                    out_idx_vals[x_idx] = np.nan
+                elif extrapolation == "nearest":
+                    out_idx_vals[x_idx] = 0
                 continue
             if ub < cur_x:
                 out_idx_vals[x_idx] = (cur_x-self.coordinates[1])/self._end_dx
@@ -87,44 +102,23 @@ class CoordinateBinning1D (object):
             out_idx_vals[x_idx] = lbi + alpha
         return out_idx_vals
     
-    def get_bin_index(self, xvec):
-        """uses interval binary search to quickly find the bin belonging to the 
-        input coordinates. If a coordinate outside of the bins is asked for a 
-        linear extrapolation of the bin index is returned. (so be warned 
-        indexes can be less than 0 and greater than len!)
+    def get_bin_index(self, coords):
+        """ find the bin index to which 
         """
-        # get the upper and lower bounds for the coordinates
-        lb,ub = self.bins[0],self.bins[-1]
-        xv = np.asarray(xvec)
-        out_idxs = np.zeros(len(xv.flat), dtype = int)
-        for x_idx in xrange(len(xv.flat)):
-            cur_x = xvec[x_idx]
-            #check if the last solution still works
-            if self._cached_prev_bin[0] <= cur_x <= self._cached_prev_bin[1]:
-                out_idxs[x_idx] = self._cached_prev_bin_idx
-                continue
-            #make sure that the x value is inside the bin range
-            if lb > cur_x:
-                out_idxs[x_idx] = int((cur_x-lb)/self._start_dx -1)
-            if ub > cur_x:
-                out_idxs[x_idx] = int((cur_x-ub)/self._end_dx)
-            lbi, ubi = 0, self.n_bounds-1
-            while True:
-                mididx = (lbi+ubi)/2
-                midbound = self.bins[mididx]
-                if midbound <= cur_x:
-                    lbi = mididx
-                else:
-                    ubi = mididx
-                if self.bins[lbi] <= cur_x <= self.bins[lbi+1]:
-                    self._cached_prev_bin = self.bins[lbi], self.bins[lbi+1]
-                    self._cached_prev_bin_idx = lbi
-                    break
-            out_idxs[x_idx] = lbi
-        return out_idxs
+        out_c = np.around(self.coordinates_to_indicies(coords))
+        return np.array(out_c, dtype=int)
     
-    def interpolate(self, coords, vals, variance=None, fill_val=0.0, fill_var=None):
-        return None
+    def interpolant_matrix(self, coords):
+        index_vals = self.coordinates_to_indicies()
+        upper_index = np.ceil(index_vals)
+        lower_index = np.floor(index_vals)
+        alphas = index_vals - lower_index
+        interp_vals =  self.flux[upper_index]*alphas
+        interp_vals += self.flux[lower_index]*(1-alphas)
+        var = self.get_var()
+        sampled_var = var[upper_index]*alphas**2
+        sampled_var += var[lower_index]*(1-alphas)**2
+        return Spectrum(wvs, interp_vals, misc.var_2_inv_var(sampled_var))
 
 
 class LinearBinning1d(CoordinateBinning1D):

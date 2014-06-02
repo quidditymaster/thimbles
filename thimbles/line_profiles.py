@@ -6,8 +6,20 @@ import thimbles as tmb
 
 sqrt2pi = np.sqrt(2*np.pi)
 
+profile_functions = []
+
 def gauss(wvs, center, g_width):
-    return 1.0/(sqrt2pi*g_width)*np.exp(-0.5*((wvs-center)/g_width)**2)
+    return 1.0/np.abs(sqrt2pi*g_width)*np.exp(-0.5*((wvs-center)/g_width)**2)
+
+profile_functions.append(gauss)
+
+def half_gauss(wvs, center, l_width, r_width):
+    #pick the average of left and right norms
+    avg_norm = 2.0/np.abs(sqrt2pi*(l_width + r_width))
+    sig_vec = np.where(wvs< center, l_width, r_width)
+    return avg_norm*np.exp(-(wvs-center)**2/(2*sig_vec**2))
+
+profile_functions.append(half_gauss)
 
 def voigt(wvs, center, g_width, l_width):
     "returns a voigt profile with gaussian sigma g_width and lorentzian width l_width."
@@ -25,6 +37,8 @@ def voigt(wvs, center, g_width, l_width):
     cplxv = scipy.special.wofz(z)/(g_w*np.sqrt(2*np.pi))
     return (cplxv.real).copy()
 
+profile_functions.append(voigt)
+
 def rotational(wvs, center, vsini, limb_darkening = 0):
     "for wavelengths in angstroms and v*sin(i) in km/s"
     ml = np.abs(vsini/3e5*center)
@@ -41,6 +55,8 @@ def rotational(wvs, center, vsini, limb_darkening = 0):
         result[int(nwvs/2)] = 1.0
     return result
 
+profile_functions.append(rotational)
+
 def voigt_rotational(wvs, center, g_width, l_width, vsini, limb_darkening): #this routine has edge problems with the convolution
     "generates a voigt profile convolved with a rotational broadening profile"
     rprof = rotational(wvs, center, vsini, limb_darkening)
@@ -55,134 +71,38 @@ def voigt_rotational(wvs, center, g_width, l_width, vsini, limb_darkening): #thi
 
 class LineProfile:
     
-    def __call__(self, wvs, param_vec=None):
-        return self.get_profile(wvs, param_vec)
+    def __init__(self, center, parameters, profile_func):
+        self.center = center
+        self.parameters = np.asarray(parameters)
+        self.profile_func = profile_func
+
+    def __call__(self, wvs, parameters=None):
+        if parameters is None:
+            parameters = self.parameters
+        return self.profile_func(wvs, self.center, *parameters)
 
 class Voigt(LineProfile):
     
-    def __init__(self, center, param_vec):
-        """center: the central wavelength
-        line_parameters: a vector whose elements go
-        offset, g_width, l_width = parameters
+    def __init__(self, center, parameters):
         """
-        self.center = center
-        self.param_vec = np.asarray(param_vec)
-    
-    def set_center(self, center):
-        self.center = center
-    
-    def set_parameters(self, vec):
-        """offset, g_width, l_width = vec"""
-        self.param_vec = np.asarray(vec)
-    
-    def get_parameters(self):
-        return self.param_vec
-    
-    def get_profile(self, wvs, param_vec=None):
-        if param_vec == None:
-            param_vec = self.param_vec
-        offset, g_width, l_width = param_vec
-        return voigt(wvs, self.center+offset, g_width, l_width)
+        center: float
+          the central wavelength of the profile
+        param_vec: ndarray
+          gaussian_width = param_vec[0]
+          lorentz_width  = param_vec[1]
+        """
+        super(Voigt, self).__init__(center, parameters, voigt)
+
 
 class Gaussian(LineProfile):
     
-    def __init__(self, center, param_vec):
-        self.center = center
-        self.param_vec = np.asarray(param_vec)
-    
-    def set_center(self, center):
-        self.center = center
-    
-    def set_offset(self, offset):
-        self.param_vec[0] = offset
-    
-    def set_parameters(self, vec):
-        """offset, g_width = vec"""
-        self.param_vec = vec
-    
-    def get_parameters(self):
-        return self.param_vec
-    
-    def get_profile(self, wvs, param_vec=None):
-        if param_vec == None:
-            param_vec = self.param_vec
-        offset, g_width = param_vec
-        gnorm = 1.0/np.abs(g_width*sqrt2pi)
-        return gnorm*np.exp(-0.5*((wvs-(self.center+offset))/g_width)**2)
+    def __init__(self, center, parameters):
+        super(Gaussian, self).__init__(center, parameters, gauss)
 
 
 class HalfGaussian(LineProfile):
     
-    def __init__(self, center, param_vec):
-        self.center = center
-        #offset, left_g_width, right_g_width = param_vec
-        self.param_vec = np.asarray(param_vec)
-    
-    def set_parameters(self, vec):
-        """offset, g_width = vec"""
-        self.param_vec = vec
-    
-    def get_parameters(self):
-        return self.param_vec
-    
-    def set_center(self, center):
-        self.center = center
-    
-    def get_profile(self, wvs, param_vec=None):
-        if param_vec == None:
-            param_vec = self.param_vec
-        offset, left_g_width, right_g_width = param_vec 
-        l_integ = (left_g_width*sqrt2pi)
-        r_integ = (right_g_width*sqrt2pi)
-        #pick the average of left and right norms
-        avg_norm = 2.0/(l_integ + r_integ)
-        sig_vec = np.where(wvs<self.center, self.left_g_width, self.right_g_width)
-        return avg_norm*np.exp(-(wvs-self.center)**2/(2*sig_vec**2))
+    def __init__(self, center, parameters):
+        super(Gaussian, self).__init__(center, parameters, half_gauss)
 
 
-class SaturatedVoigt(LineProfile):
-    #TODO: full implementation
-    def __init__(self, center, param_vec):
-        """the result of a voigt profile in opacity l relative to some
-        continuous opacity k and evaluating the line profile as l/(l+k)
-        """
-        self.center = center
-        self.param_vec = np.asarray(param_vec)
-
-
-def profile_fit(x, y, y_inv_var, center, profile, offset_sigma=None, additive_background=True):
-    """ fits a profile 
-    
-    x: ndarray
-        the x points
-    y: ndarray
-        the y points
-    y_inv_var: ndarray
-        the inverse variances associated with the y values
-    center: float
-        the central x value of the profile
-    profile: string or LineProfile
-        if a LineProfile object is given it's parameters will be modified to 
-        the best fit parameters. If 'voigt' or 'gaussian' is specified then 
-        a new instance of that profile type will be created and its parameters
-        fit.
-    offset_sigma: float or None
-        offsets of the profile are subjected to a gaussian prior centered
-        around zero with width parameter offset_sigma. If None then 
-        offset_sigma will be set to roughly a half pixel 0.5*x([1]-x[0]) 
-    """
-    if offset_sigma == None:
-        offset_sigma = 0.5*(x[1]-x[0]) 
-    if profile == "gaussian":
-        sig_start = 2.5*(x[1]-x[0])
-        profile = Gaussian(center, [0.0, sig_start])
-    elif profile == "voigt":
-        sig_start = 2.5*(x[1]-x[0])
-        profile = Voigt(center, [0.0, sig_start, 0.0])
-    tmb.modeling
-
-#def voigt_fit(x, y, y_error, center):
-#    return profile_fit(x, y, y_error, center, profile="voigt")
-#
-#def gauss_fit(x, y, y_error, center):
-#    return profile_fit(x, y, y_error, center, profile="gaussian")

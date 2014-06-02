@@ -98,13 +98,23 @@ def var_2_inv_var (var):
     inv_var[zeros] = fill
     return inv_var
 
-def clean_variances(variance):
+def clean_variances(variance, zero_ok=False, fill=np.inf):
     """takes input variances which may include nan's 0's and negative values
-    and replaces those values with np.inf
+    and replaces those values with a fill value.
+    
+    variance: ndarray
+      the array of variances array
+    zero_ok: bool
+      if True zero entries will be allowed to persist in the output
+    fill: float
+      the value to replace bad variances with
     """
     bad_mask = np.isnan(variance)
-    bad_mask += variance <= 0
-    new_variance = np.where(bad_mask, np.inf, variance)
+    if zero_ok:
+        bad_mask += variance < 0
+    else:
+        bad_mask += variance <= 0
+    new_variance = np.where(bad_mask, fill, variance)
     return new_variance
 
 def clean_inverse_variances(inverse_variance):

@@ -1,8 +1,7 @@
 #
 #
 # ########################################################################### #
-# standard libaray
-import logging
+import time
 
 # 3rd Party
 import numpy as np
@@ -13,7 +12,7 @@ import matplotlib.pyplot as plt
 # internal
 from .utils import resampling
 from .utils import misc
-from .utils.misc import inv_var_2_var, var_2_inv_var
+from .utils.misc import inv_var_2_var, var_2_inv_var, clean_variances, clean_inverse_variances
 from .metadata import MetaData
 from .flags import SpectrumFlags
 from . import verbosity
@@ -32,7 +31,7 @@ speed_of_light = 299792.458
 
 class WavelengthSolution(CoordinateBinning1D):
     
-    def __init__(self, obs_wavelengths, emitter_frame=None, observer_frame=None, lsf=None, **kwargs):
+    def __init__(self, obs_wavelengths, emitter_frame=None, observer_frame=None):
         """a class that encapsulates the manner in which a spectrum is sampled
         obs_wavelengths: np.ndarray
         emitter_frame: InertialFrame or Float
@@ -44,52 +43,45 @@ class WavelengthSolution(CoordinateBinning1D):
           relative to the earth sun barycenter. A float value will be 
           interpreted as the radial velocity of the frame. velocity is in 
           Km/S away is positive.
-        lsf: LineSpreadFunction or numpy.ndarray
-          the associated line spread function for each pixel.
-          a 1D ndarray will be interpreted as a gaussian lsf width in pixels.
         """
         super(WavelengthSolution, self).__init__(obs_wavelengths)
         
         if observer_frame is None:
             observer_frame = InertialFrame(0.0)
+        elif not isinstance(observer_frame, InertialFrame):
+            observer_frame = InertialFrame(observer_frame)
         self.observer_frame = observer_frame
         
         if emitter_frame is None:
                 emitter_frame = InertialFrame(0.0)
+        elif not isinstance(emitter_frame, InertialFrame):
+            emitter_frame = InertialFrame(emitter_frame)
         self.emitter_frame = emitter_frame
         
-        #TODO: include a radial velocity uncertainty (make it a subclass!)
-        if lsf is None:
-            lsf = GaussianLSF(np.ones(len(obs_wavelengths)))
-        elif not isinstance(lsf, LineSpreadFunction):
-            try:
-                lsf = GaussianLSF(lsf)
-            except:
-                verbosity("bad LSF specification defaulting to box LSF")
-                lsf = BoxLSF(self)
-        self.lsf = lsf
+        ##TODO: include a radial velocity uncertainty (make it a subclass!)
+        #if lsf is None:
+        #    lsf = GaussianLSF(np.ones(len(obs_wavelengths)))
+        #elif not isinstance(lsf, LineSpreadFunction):
+        #    try:
+        #        lsf = GaussianLSF(lsf)
+        #    except:
+        #        verbosity("bad LSF specification defaulting to box LSF")
+        #        lsf = BoxLSF(self)
+        #self.lsf = lsf
     
     
-    def get_wvs(self, pixels=None, frame="emitter"):
+    @property
+    def wv(self, pixels=None, frame="emitter"):
         if pixels == None:
             obs_wvs = self.obs_wvs
         else:
             obs_wvs = self.indicies_to_coordinates(pixels)
         return self.observer_to_frame(obs_wvs, frame=frame)
     
-    def get_pix(self, wvs, frame="emitter"):
+    @property
+    def px(self, wvs, frame="emitter"):
         shift_wvs = self.frame_to_observer(wvs, frame="emitter")
         return self.coordinates_to_indicies(shift_wvs)
-    
-    @property
-    def wvs(self):
-        """The emitter frame wavelengths"""
-        return self.get_wvs()
-    
-    @property
-    def obs_wvs(self):
-        return self.coordinates
-    
     
     def observer_to_frame(self, observer_wvs, frame="emitter"):
         if frame == "emitter":
@@ -113,36 +105,77 @@ class WavelengthSolution(CoordinateBinning1D):
         rest_wvs = self.frame_to_observer(wvs, frame=wv_frame)
         return self.observer_to_frame(rest_wvs, frame=target_frame)
     
-    def set_rv(self, rv):
-        self.emitter_frame.rv = rv
+    @property
+    def dx_dlam(self):
+        """find the gradient in pixel space which corresponds to
+        a progression of wavelengths.
+        """
+        return 1.0/self.dlam_dx
     
-    def get_rv(self):
-        return self.emitter_frame.rv
+    @property
+    def dlam_dx(self):
+        """find the gradients in wavelength space corresponding to 
+        a progression of pixels.
+        """
+        return scipy.gradient(self.wv)    
+
+
+class SpectralQuantity(object):
     
-    #TODO: convenient/efficent functions to transform a set of pixel sigmas
-    #into a set of wavelength sigmas given the current wavelength solution
-    #and turn a set of wavelength sigmas into pixel sigmas.
-    #def dx_dlam(self, wvs, frame="emitter"):
-    #    """find the gradient in pixel space which corresponds to
-    #    a progression of wavelengths.
-    #    """
-    #    return scipy.gradient(self.get_pix(wvs, frame))
-    #
-    #def dlam_dx(self, pixels, frame="emitter"):
-    #    """find the gradients in wavelength space corresponding to 
-    #    a progression of pixels.
-    #    """
-    #    return scipy.gradient(self.get_wvs(pixels, frame))    
-    #
-    #def pix_to_wv_delta(self, wvs, wv_sigmas, frame="emitter"):
-    #    """given a set of wavelengths 
-    #    """
-    #    deriv = self.dx_dlam(wvs, frame)
-    #    return deriv*wv_sigmas
-    #
-    #def wv_to_pix_sigma(self, pix_nums, pix_sigmas, frame="emitter"):
-    #    deriv = self.dlam_dx(pix_nums, frame)
-    #    return deriv*pix_sigmas
+    def __init__(self, 
+                 wavelength_solution, 
+                 values, 
+                 variances=None,
+                 valuation_type="interpolate",
+                 fill_value=0.0,
+                 fill_var=np.inf):
+        """a wavelength dependent quantity 
+        
+        wavelength_solution: WavelengthSolution
+          the conversion from 
+        """
+        if not isinstance(wavelength_solution, WavelengthSolution):
+            wavelength_solution = WavelengthSolution
+        self._wvsol = wavelength_solution
+        self.values = np.asarray(values)
+        self._set_variance()
+        self.valuation_type = valuation_type
+        self.fill_value = fill_value
+        self.fill_var = fill_var
+        
+    
+    def _set_variance(self, variances):
+        if not variances is None:
+            variances = clean_variances(variances)
+            self._var = variances
+            self._inv_var = var_2_inv_var(variances)
+        else:
+            self._var = None
+            self._inv_var = None
+    
+    def __getitem__(self, index):
+        index = np.asarray(index)
+        if index.dtype == int:
+            
+    
+    @property
+    def inv_var(self):
+        if self._inv_var is None:
+            return None
+        return self._inv_var
+    
+    @inv_var.setter
+    def inv_var(self, value):
+        var = inv_var_2_var(value)
+        self._set_variance(var)
+    
+    @property
+    def var(self):
+        return self._var
+    
+    @var.setter
+    def var(self, value):
+        self._set_variance(value)
 
 class Spectrum(object):
     """A representation of a collection of relative flux measurements
@@ -295,7 +328,7 @@ class Spectrum(object):
         nspec.flags["normalized"] = True
         return nspec
     
-    def rebin_new(self, coords, kind=None, coord_type=None, normalized=None, fill_flux=None, fill_var=None, fill_norm=None, fill_lsf=None):
+    def rebin_new(self, coords, kind=None, coord_type=None, fill=None):
         """valuate the spectrum at a given set of coordinates
         the method for determining the output spectrum values is dictated
         by this spectrum's valuation policy by default.

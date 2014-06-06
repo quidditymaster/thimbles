@@ -9,5 +9,7 @@ import line_profiles
 import velocity
 import stellar_atmospheres
 import modeling
+import transitions
+import binning
 from .spectrum import Spectrum
 

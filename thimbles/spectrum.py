@@ -31,7 +31,7 @@ speed_of_light = 299792.458
 
 class WavelengthSolution(CoordinateBinning1D):
     
-    def __init__(self, obs_wavelengths, emitter_frame=None, observer_frame=None):
+    def __init__(self, obs_wavelengths, emitter_frame=None, observer_frame=None, lsf=None):
         """a class that encapsulates the manner in which a spectrum is sampled
         obs_wavelengths: np.ndarray
         emitter_frame: InertialFrame or Float
@@ -58,28 +58,25 @@ class WavelengthSolution(CoordinateBinning1D):
             emitter_frame = InertialFrame(emitter_frame)
         self.emitter_frame = emitter_frame
         
-        ##TODO: include a radial velocity uncertainty (make it a subclass!)
-        #if lsf is None:
-        #    lsf = GaussianLSF(np.ones(len(obs_wavelengths)))
-        #elif not isinstance(lsf, LineSpreadFunction):
-        #    try:
-        #        lsf = GaussianLSF(lsf)
-        #    except:
-        #        verbosity("bad LSF specification defaulting to box LSF")
-        #        lsf = BoxLSF(self)
-        #self.lsf = lsf
+        if lsf is None:
+            lsf = GaussianLSF(np.ones(len(obs_wavelengths)))
+        elif not isinstance(lsf, LineSpreadFunction):
+            try:
+                lsf = GaussianLSF(lsf)
+            except:
+                verbosity("bad LSF specification defaulting to box LSF")
+                lsf = BoxLSF(self)
+        self.lsf = lsf
     
     
-    @property
-    def wv(self, pixels=None, frame="emitter"):
+    def get_wvs(self, pixels=None, frame="emitter"):
         if pixels == None:
-            obs_wvs = self.obs_wvs
+            obs_wvs = self.coordinates
         else:
             obs_wvs = self.indicies_to_coordinates(pixels)
         return self.observer_to_frame(obs_wvs, frame=frame)
     
-    @property
-    def px(self, wvs, frame="emitter"):
+    def get_pix(self, wvs, frame="emitter"):
         shift_wvs = self.frame_to_observer(wvs, frame="emitter")
         return self.coordinates_to_indicies(shift_wvs)
     
@@ -152,11 +149,6 @@ class SpectralQuantity(object):
         else:
             self._var = None
             self._inv_var = None
-    
-    def __getitem__(self, index):
-        index = np.asarray(index)
-        if index.dtype == int:
-            
     
     @property
     def inv_var(self):

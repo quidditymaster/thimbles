@@ -18,12 +18,12 @@ def read_vald_linelist(fname):
         spl = line.rstrip().split(",")
         species_name, ion_number = spl[0].replace("'", "").split()
         proton_number = ptable[species_name]["z"]
-        species_id = proton_number + 0.1*(int(ion_number)-1)
+        #species_id = proton_number + 0.1*(int(ion_number)-1)
         wv, loggf, elow, jlo, eup, jup = map(float, spl[1:7])
-        ldat.append((wv, species_id, elow, loggf))
+        new_transition = tmb.transitions.Transition(wv=wv, species=species_name, ion=int(ion_number), ep=elow, loggf=loggf)
+        ldat.append(new_transition)
         #import pdb; pdb.set_trace()
-    return np.asarray(ldat)
-    
+    return ldat
 
 def read_moog_linelist (fname,formatted=True, output_pandas=False, defaults=None,convert_gf=False):
     """

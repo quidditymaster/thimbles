@@ -32,7 +32,7 @@ class SourceObject(Base, ThimblesTable):
 
 class Photometry(Base, ThimblesTable):
     filter_id = Column(Integer, ForeignKey("Filter._id"))
-    filter = relationship(Filter)
+    filter = relationship("Filter")
     source_id = Column(Integer, ForeignKey("SourceObject._id"))
     magnitude = Column(Float)
     error = Column(Float)
@@ -90,5 +90,3 @@ class Transition(Base, ThimblesTable):
 # 
 # #class Spectrum(Base, ThimblesTable, Spectrum):
 # #    pass
-    
-    

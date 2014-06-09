@@ -1,36 +1,50 @@
 import time
 import numpy as np
+from copy import copy
 
 class ModelingError(Exception):
     pass
 
+factory_defaults = {
+"history": ValueHistory,
+"scale":ParameterScale,
+"distribution":NormalDeltaDistribution,
+}
+
 def parameterize(depends_on=None, 
                  free=False, 
-                 step=None,
-                 epsilon=1e-8,):
+                 factories=None,
+                 factory_kwargs=None
+                 ):
     """a decorator to turn getter methods of Model class objects 
     into Parameter objects.
     """
-    
+    if factories is None:
+        factories = {}
+    for factory_key in factory_defaults:
+        factory = factories.get(factor_key)
+        if factory is None:
+            factory = factory_defaults[factory_key]
     def function_to_parameter(func):
-        param=Parameter(func,
-                        depends_on=depends_on,
-                        free=free,
-                        )
-                        step=step,
-                        epsilon=epsilon)
+        param=Parameter(
+            func,
+            depends_on=depends_on,
+            free=free,
+            factories=factories,
+            factory_kwargs=factory_kwargs,
+        )
         return param
     return function_to_parameter
 
 class DeltaDistribution(object):
     
     def __init__(self, parameter=None):
-        self.parameter=parameter
+        self.set_parameter(parameter)
     
     def set_parameter(self, parameter):
         self.parameter=parameter
     
-    def set_width(self, value):
+    def set_variance(self, value):
         raise NotImplementedError("abstract class; implement for subclasses")
     
     def realize(self):
@@ -45,18 +59,84 @@ class DeltaDistribution(object):
 
 class NormalDeltaDistribution(DeltaDistribution):
     
-    def __init__(self, sigma, parameter=None):
+    def __init__(self, variance=None, parameter=None):
         super(NormalDeltaDistribution, self).__init__(parameter)
-        self._inv_var = sigma**-2.0
+        self.set_variance(variance)
     
-    def set_width(self, sigma):
-        self._inv_var = sigma**-2.0
+    def set_variance(self, variance):
+        self._variance = variance
     
     def realize(self):
-        return np.random.normal(size=self._inv_var.shape)*self._inv_var**-2.0
+        return np.random.normal(size=self._variance.shape)*self._variance
     
     def weight(self, offset):
-        return self._inv_var
+        return self._variance**-2.0
+
+class ParameterScale(object):
+    
+    def __init__(self, small_step=None, large_step=None, epsilon=0.01):
+        """step sizes for a parameter,
+        small_step: float or ndarray
+          the scale of the smallest meaningful differences
+        large_step: float or ndarray
+          the scale over which changes in the parameter have
+          large effects, this is important when non-linear
+          effects are in play, even if the non-linearity
+          is not directly dependent on this parameter
+        epsilon: float or ndarray
+          the fraction of a small step to use to evaluate derivatives.
+        """
+        self.small_step = small_step
+        self.large_step = large_step
+        self.epsilon = epsilon
+
+class ValueHistory(object):
+    
+    def __init__(self, parameter, max_length=10):
+        self.set_parameter(parameter)
+        self._vals = []
+        self.max_length = max_length
+    
+    def __len__(self):
+        return len(self._vals)
+    
+    def set_parameter(self, parameter):
+        self.parameter = parameter
+    
+    def remember(self):
+        current_val = copy(self.parameter.value())
+        self._vals.append(current_val)
+        if len(self._vals) > self.max_length:
+            self._vals.pop(0)
+    
+    @property
+    def history(self):
+        return self._vals
+    
+    @property
+    def last(self):
+        if len(self) > 0:
+            return self._vals[-1]
+        else:
+            return None
+
+class ConvergencePolicy(object):
+
+    def __init__(self, abs_delta=1e-5):
+        #self.frac_delta = frac_delta
+        self.abs_delta = abs_delta
+    
+    def check_converged(self, parameter):
+        last_val = parameter.history.last
+        if val_stack is None:
+            return False
+        cur_val = parameter.value()
+        diff = last_val - cur_val
+        abs_diff = np.abs(diff)
+        if np.max(abs_diff) < self.abs_delta:
+            #if np.max(abs_diff/(np.abs(cur_val))
+            return True
+        return False
 
 class Model(object):
     
@@ -72,6 +152,10 @@ class Model(object):
                 self._parameters[attrib]=val
                 val.validate()
     
+    @property
+    def parameters(self):
+        return self._parameters
+    
     def calculate_derivatives(self):
         self.derivatives = {}
         for dy_param_id, dy_param in self._parameters.items():
@@ -81,13 +165,16 @@ class Model(object):
 
 class Parameter(object):
     
-    def __init__(self, getter, depends_on, free, step, epsilon):
+    def __init__(self, getter, depends_on, free, factories, factory_kwargs):
         self._getter=getter
         if depends_on is None:
             depends_on=[]
         self.depends_on=depends_on
-        self.step=step
-        self.epsilon=epsilon
+        #self.step=step
+        #self.epsilon=epsilon
+        history_factory = factories["history"]
+        hist_kwargs = factory_kwargs.get("history", {})
+        self.history=history_factory(self, **hist_kwargs)
         self.model=None
         
         self._free=free
@@ -127,6 +214,9 @@ class Parameter(object):
     def is_settable(self):
         return not self._setter is None
     
+    def remember(self):
+        self.history.remember()
+    
     def set_model(self, model):
         self.model = model
     
@@ -154,37 +244,62 @@ class Parameter(object):
 
 class Anchor:
     
-    def __init__(self):
-        self.info_in=[]
-        self.info_out=[]
+    def __init__(self, value=None, predicted_by=None, predicts=None):
+        if predicted_by is None:
+            predicted_by = []
+        self.predicted_by=predicted_by
+        if predicts is None:
+            predicts = []
+        self.predicts=predicts
+        self.value = value
     
-    def add_info_in(self, param):
-        self.info_in.append(predicate)
+    def update(self):
+        pass
     
-    def add_info_out(self, param):
-        self.info_out.append(param)
+    def predict(self):
+        pass
     
-    def value(self):
-        for param in self.info_in:
-            
+    def __lshift__(self, value):
+        if not isinstance(value, Parameter):
+            raise ModelingError("predictors must be Parameter instances")
+        self.predicted_by.append(value)
+    
+    def __rshift__(self, value):
+        if not isinstance(value, Parameter):
+            raise ModelingError("predictors must be Parameter instances")
+        self.predicts.append(value)
+
+def find_base(param):
+    if param.is_free:
+        if param.is_base:
+            return [param]
+        else:
+            base_ps = []
+            for sub_param_attr in param.depends_on:
+                sub_base = find_base(param.model.parameters[sub_param_attr])
+                base_ps.extend(sub_base)
+    else:
+        return []
 
 class Fitter(object):
     
-    def __init__(self):
-        self._anchors={}
+    def __init__(self, anchors):
+        self.anchors = anchors
     
-    def info_in(self, anchor_tag, parameter):
-        anchor = self._anchors.get(anchor_tag)
-        if anchor is None:
-            anchor=Anchor()
-            self._anchors[anchor_tag] = anchor
-        anchor.add_info_in(parameter)
+    def add_anchor(self, anchor):
+        self.anchors.append(anchors)
     
-    def info_out(self, anchor_tag, parameter):
-        anchor = self._anchors.get(anchor_tag)
-        if anchor is None:
-            anchor=Anchor()
-            self._anchors[anchor_tag] = anchor
-        anchor.add_info_out(parameter)
-    
+    def iterate(self):
+        for anchor in self.anchors:
+            anchor.update()
+        #TODO: build a derivative matrix for each predicted_parameter as a function of changes in each associated free base parameter and solve.
+        predict_basis = {}
+        for anchor in self.anchors:
+            for pred_param in anchor.predicts:
+                predict_basis[(anchor, pred_param)] = find_base(pred_param)
+        predict
+        
+    def converge(self, max_iter=100):
+        #check convergence on anchors? or check convergence on parameters? 
+        raise NotImplementedError()
     

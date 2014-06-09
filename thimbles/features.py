@@ -4,27 +4,6 @@ import thimbles as tmb
 from flags import FeatureFlags
 from line_profiles import Gaussian
 
-class Element(object):
-    
-    def __init__(self, proton_number, symbol, name, reference_isotope):
-        self.proton_number = proton_number
-        self.symbol = symbol
-        self.name = name
-        self.reference_isotope = reference_isotope
-
-class Isotope(object):
-    
-    def __init__(self, element, mass_number, mass):
-        self.element = element
-        self.mass_number = mass_number
-        self.mass = mass
-
-class Species(object):
-    
-    def __init__(self, isotopes, ionization):
-        self.isotopes = isotopes
-        self.ionization = ionization
-
 class Feature(object):
     
     def __init__(self,

@@ -1,10 +1,17 @@
 import os
 
+import numpy as np
+
+from sqlalchemy import ForeignKey
+from sqlalchemy import Column, Date, Integer, String, Float
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.ext.declarative import declared_attr
+from sqlalchemy.orm import relationship, backref
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from dbclasses import Base
-
+Base = declarative_base()
 current_dbs = {}
 
 def get_db(path):
@@ -14,6 +21,15 @@ def get_db(path):
         return new_db
     else:
         return(ThimblesDB(abspath))
+
+class ThimblesTable(object):
+    
+    @declared_attr
+    def __tablename__(cls):
+        return cls.__name__
+    
+    _id = Column(Integer, primary_key=True)
+
 
 class ThimblesDB(object):
     """ a class to encapsulate a thimbles style data format as a combination

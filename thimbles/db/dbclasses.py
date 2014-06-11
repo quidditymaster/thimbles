@@ -7,7 +7,6 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.ext.declarative import declared_attr
 from sqlalchemy.orm import relationship, backref
 
-#engine = create_engine('sqlite://', echo=True)
 Base = declarative_base()
 import thimbles as tmb
 
@@ -18,27 +17,6 @@ class ThimblesTable(object):
         return cls.__name__
     
     _id = Column(Integer, primary_key=True)
-
-class Note(object):
-    """an sqlalchemy mixin class to provide a notes column"""
-    note = Column(String)
-
-class SourceObject(Base, ThimblesTable):
-    """the observed astrophysical source"""
-    name = Column(String)
-    ra = Column(Float)
-    dec = Column(Float)
-    photometry = relationship("Photometry")
-
-class Photometry(Base, ThimblesTable):
-    filter_id = Column(Integer, ForeignKey("Filter._id"))
-    filter = relationship("Filter")
-    source_id = Column(Integer, ForeignKey("SourceObject._id"))
-    magnitude = Column(Float)
-    error = Column(Float)
-
-class Filter(Base, ThimblesTable):
-    name = Column(String)
 
 class Transition(Base, ThimblesTable):
     pass

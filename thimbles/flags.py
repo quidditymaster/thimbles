@@ -1,5 +1,13 @@
 import numpy as np
 
+from .db.dbclasses import Base, ThimblesTable
+
+from sqlalchemy import create_engine, ForeignKey
+from sqlalchemy import Column, Date, Integer, String, Float
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.ext.declarative import declared_attr
+from sqlalchemy.orm import relationship, backref
+
 class FlagSpace(object):
     """enables efficient translation of dictionaries of true and false values
     paired with specific sets of keys to and from individual integers, for efficient
@@ -12,21 +20,21 @@ class FlagSpace(object):
         self.flag_masks = {}
         self.default_dict = {}
     
-    def add_dimension(self, name, bit_number=None, default=False):
-        """add a flag corresponding to the integer 2**bit_number
+    def add_dimension(self, name, bit_index=None, default=False):
+        """add a flag corresponding to the integer 2**bit_index
         """
         if not self.flag_masks.get(name) is None:
             raise ValueError("the name %s is already in this flag space" % name)
         bit_nums = self.flag_bits.values()
-        if bit_number is None:
-            bit_number = 0
+        if bit_index is None:
+            bit_index = 0
             #assign the lowest currently unused bit number
-            while bit_number in bit_nums:
-                bit_number += 1
-        if bit_number in bit_nums:
-            raise ValueError("bit_number %d is already taken" % bit_number)
-        self.flag_bits[name] = bit_number
-        self.flag_masks[name] = 2**bit_number
+            while bit_index in bit_nums:
+                bit_index += 1
+        if bit_index in bit_nums:
+            raise ValueError("bit_index %d is already taken" % bit_index)
+        self.flag_bits[name] = bit_index
+        self.flag_masks[name] = 2**bit_index
         self.default_dict[name] = default
     
     def int_to_dict(self, flag_int):
@@ -66,10 +74,10 @@ class Flags(object):
         if flag_int is None:
             flag_int = self.flag_space.default_int
         #TODO: allow flags also to be initialized with boolean dicts
-        self._val = flag_int
+        self.flag_int = int(flag_int)
     
     def __getitem__(self, flag_name):
-        return bool(self.flag_space[flag_name] & self._val)
+        return bool(self.flag_space[flag_name] & self.flag_int)
     
     def __setitem__(self, flag_name, new_flag_val):
         cur_flag_val = self[flag_name]
@@ -80,27 +88,25 @@ class Flags(object):
             return
         #the current flag value and new value don't match, toggle
         if cur_flag_val and (not new_flag_val):
-            self._val -= self.flag_space.flag_masks[flag_name]
+            self.flag_int -= self.flag_space.flag_masks[flag_name]
         if (not cur_flag_val) and new_flag_val:
-            self._val += self.flag_space.flag_masks[flag_name]
+            self.flag_int += self.flag_space.flag_masks[flag_name]
     
     def asdict(self):
         return self.flag_space.int_to_dict(self._val)
     
-    def asint(self):
-        return self._val
-
     def __repr__(self):
         return repr(self.asdict())
 
+#NOTE: don't change the order of these calls it is implicitly setting the bit_indexes
 feature_flag_space = FlagSpace()
 feature_flag_space.add_dimension("use", default=True)
-feature_flag_space.add_dimension("in_range")
 feature_flag_space.add_dimension("bad_data")
 feature_flag_space.add_dimension("bad_fit")
 feature_flag_space.add_dimension("viewed")
 
-class FeatureFlags(Flags):
+class FeatureFlags(Flags, Base, ThimblesTable):
+    _val = Column(Integer)
     
     def __init__(self, flag_int=None):
         super(FeatureFlags, self).__init__(feature_flag_space, flag_int)
@@ -120,9 +126,7 @@ spectrum_flag_space.add_dimension("sky")
 # rebinned
 # re-sampled
 
-class SpectrumFlags(Flags):
+class SpectrumFlags(Flags, Base, ThimblesTable):
     
     def __init__(self, flag_int=None):
         super(SpectrumFlags, self).__init__(spectrum_flag_space, flag_int)
-
-

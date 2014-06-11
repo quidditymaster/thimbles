@@ -2,7 +2,6 @@ import numpy as np
 #from .stellar_atmospheres import periodic_table
 import thimbles as tmb
 from flags import FeatureFlags
-from line_profiles import Gaussian
 
 class Feature(object):
     

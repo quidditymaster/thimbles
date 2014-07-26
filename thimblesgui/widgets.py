@@ -39,7 +39,7 @@ class NormalizationWidget(QWidget):
 
 class FloatSlider(QWidget):
     
-    def __init__(self, name, min_, max_, n_steps=127, orientation=Qt.Vertical, parent=None):
+    def __init__(self, name, hard_min, hard_max, n_steps=127, orientation=Qt.Vertical, format_str="{:5.3f}", parent=None):
         super(FloatSlider, self).__init__(parent)
         label = QLabel(name, parent=self)
         if orientation == Qt.Horizontal:
@@ -48,46 +48,87 @@ class FloatSlider(QWidget):
             lay = QVBoxLayout()
         else:
             raise NotImplementedError
-        self.min = min_
-        self.max = max_
-        self.delta = float(max_-min_)
-        self.slider = QSlider(orientation, self)
+        self.hard_min = hard_min
+        self.hard_max = hard_max
+        self.c_min = hard_min
+        self.c_max = hard_max
         self.n_steps = n_steps
+        self.calculate_delta()
+        self.slider = QSlider(orientation, self)
+        self.format_str = format_str
+        self.value_indicator = QLabel()
+        self.refresh_indicator()
+        self.min_lineedit = QLineEdit()
+        min_valid = QDoubleValidator(self.hard_min, self.hard_max, 4, self.min_lineedit)
+        self.min_lineedit.setValidator(min_valid)
+        self.min_lineedit.setText("{:10.4f}".format(self.c_min))
+        self.max_lineedit = QLineEdit()
+        max_valid = QDoubleValidator(self.hard_min, self.hard_max, 4, self.max_lineedit)
+        self.max_lineedit.setValidator(max_valid)
+        self.max_lineedit.setText("{:10.4f}".format(self.c_max))
         self.slider.setRange(0, n_steps)
         lay.addWidget(label)
+        lay.addWidget(self.value_indicator)
+        lay.addWidget(self.max_lineedit)
         lay.addWidget(self.slider)
+        lay.addWidget(self.min_lineedit)
+        self.min_lineedit.setFixedWidth(50)
+        self.max_lineedit.setFixedWidth(50)
         self.setLayout(lay)
+        
+        #connect up the line edit events
+        self.min_lineedit.textChanged.connect(self.on_min_input)
+        self.max_lineedit.textChanged.connect(self.on_max_input)
+        self.slider.valueChanged.connect(self.refresh_indicator)
+    
+    def refresh_indicator(self):
+        self.value_indicator.setText(self.format_str.format(self.value()))
+    
+    @property
+    def valueChanged(self):
+        return self.slider.valueChanged
+    
+    def on_min_input(self):
+        self.set_min(self.min_lineedit.text())
+    
+    def on_max_input(self):
+        self.set_max(self.max_lineedit.text())
     
     def calculate_delta(self):
-        self.delta = float(self.max-self.min)
+        self.delta = float(self.c_max-self.c_min)
     
-    def set_min(self, min_):
-        self.min = float(min_)
+    def set_min(self, min):
+        cur_value = self.value() 
+        self.c_min = float(min)
         self.calculate_delta()
+        self.set_value(cur_value)
     
-    def set_max(self, max_):
-        self.max = float(max_)
+    def set_max(self, max):
+        cur_value = self.value()
+        self.c_max = float(max)
         self.calculate_delta()
+        self.set_value(cur_value)
     
     def value(self):
-        return self.min + self.slider.value()*(self.delta/self.n_steps)
+        return self.c_min + self.slider.value()*(self.delta/self.n_steps)
     
     def set_value(self, val):
         try:
-            if val > self.max:
+            if val > self.c_max:
                 print "value above slider max, truncating"
-                val = self.max
-            elif val < self.min:
+                val = self.c_max
+            elif val < self.c_min:
                 print "value below slider min, truncating"
-                val = self.min
+                val = self.c_min
             elif val == np.nan:
                 print "value is nan, using minimum"
-                val = self.min
-            vfrac = (val-self.min)/self.delta
+                val = self.c_min
+            vfrac = (val-self.c_min)/self.delta
             opt_idx = int(np.around(vfrac*self.n_steps))
             self.slider.setValue(opt_idx)
-        except:
-            print "could not set slider value"
+            self.refresh_indicator()
+        except Exception as e:
+            print "failed slider value setting resulted in error %s" % e
 
 class MatplotlibCanvas (FigureCanvas):
     """
@@ -116,7 +157,7 @@ class MatplotlibCanvas (FigureCanvas):
     
     Notes
     -----
-    __1)__ adapted from S. Tosi, ``Matplotlib for Python Developers''
+    __1)__ S. Tosi, ``Matplotlib for Python Developers''
         Ed. Packt Publishing
         http://www.packtpub.com/matplotlib-python-development/book
     
@@ -226,7 +267,7 @@ class MatplotlibWidget(QWidget):
         
     Notes
     -----
-    __1)__ adapted from S. Tosi, ``Matplotlib for Python Developers''
+    __1)__ S. Tosi, ``Matplotlib for Python Developers''
         Ed. Packt Publishing
         http://www.packtpub.com/matplotlib-python-development/book
         
@@ -304,7 +345,7 @@ class PrevNext(QWidget):
         self.play_toggle_btn = QPushButton("Play/Pause")
         self.play_toggle_btn.setCheckable(True)
         self.play_toggle_btn.setChecked(True)
-
+        
         #add to layout
         layout.addWidget(self.prev_btn, 0, 0, 1, 1)
         layout.addWidget(self.next_btn, 0, 1, 1, 1)
@@ -318,7 +359,7 @@ class PrevNext(QWidget):
         self.prev_btn.clicked.connect(self.on_prev_clicked)
         self.next_btn.clicked.connect(self.on_next_clicked)
         self.play_toggle_btn.clicked.connect(self.toggle_pause)
-
+    
     @property
     def paused(self):
         return self.play_toggle_btn.isChecked()
@@ -375,13 +416,18 @@ class PrevNext(QWidget):
 class SliderCascade(QWidget):
     slidersChanged = Signal(int)
     
-    def __init__(self, names, mins, maxes, n_steps, orientation=Qt.Vertical, parent=None):
+    def __init__(self, sliders, parent=None):
         super(SliderCascade, self).__init__(parent)
-        self.sliders = [FloatSlider(name, min_, max_, n_step, orientation, parent) for name, min_, max_, n_step in zip(names, mins, maxes, n_steps)]
+        layout = QHBoxLayout()
+        self.sliders = sliders
+        for slider in sliders:
+            layout.addWidget(slider)
+        self.setLayout(layout)
     
     def _connect_sliders(self):
-        pass
-    
+        for slider in self.sliders:
+            slider.valueChanged.connect(self.slidersChanged.emit)
+
 
 class FeatureFitWidget(QWidget):
     slidersChanged = Signal(int)

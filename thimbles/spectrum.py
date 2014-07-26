@@ -28,7 +28,6 @@ __all__ = ["WavelengthSolution","Spectrum"]
 
 speed_of_light = 299792.458
 
-
 class WavelengthSolution(CoordinateBinning1D):
     
     def __init__(self, obs_wavelengths, emitter_frame=None, observer_frame=None, lsf=None):
@@ -68,6 +67,11 @@ class WavelengthSolution(CoordinateBinning1D):
                 lsf = BoxLSF(self)
         self.lsf = lsf
     
+    def set_rv(self, rv):
+        self.emitter_frame = InertialFrame(rv)
+    
+    def get_rv(self):
+        return self.emitter_frame.rv
     
     def get_wvs(self, pixels=None, frame="emitter"):
         if pixels == None:
@@ -129,19 +133,29 @@ class SpectralQuantity(object):
         """a wavelength dependent quantity 
         
         wavelength_solution: WavelengthSolution
-          the conversion from 
+          the conversion from pixel to wavelength
+        values: numpy.ndarray
+          the value at each pixel
+        variances: numpy.ndarray
+          the associated uncertainty of the values
+        valuation_type: string
+          options 'interpolate', 'rebin'
+        fill_value: float
+          the value to return for wavelengths outside of the solution
+        fill_var: float
+          the variance for points outside of the wavelength solution.
         """
         if not isinstance(wavelength_solution, WavelengthSolution):
             wavelength_solution = WavelengthSolution
         self._wvsol = wavelength_solution
         self.values = np.asarray(values)
-        self._set_variance()
+        self.set_variance()
         self.valuation_type = valuation_type
         self.fill_value = fill_value
         self.fill_var = fill_var
         
     
-    def _set_variance(self, variances):
+    def set_variance(self, variances):
         if not variances is None:
             variances = clean_variances(variances)
             self._var = variances
@@ -151,15 +165,15 @@ class SpectralQuantity(object):
             self._inv_var = None
     
     @property
-    def inv_var(self):
+    def ivar(self):
         if self._inv_var is None:
             return None
         return self._inv_var
     
-    @inv_var.setter
-    def inv_var(self, value):
+    @ivar.setter
+    def ivar(self, value):
         var = inv_var_2_var(value)
-        self._set_variance(var)
+        self.set_variance(var)
     
     @property
     def var(self):
@@ -167,7 +181,7 @@ class SpectralQuantity(object):
     
     @var.setter
     def var(self, value):
-        self._set_variance(value)
+        self.set_variance(value)
 
 class Spectrum(object):
     """A representation of a collection of relative flux measurements
@@ -190,9 +204,9 @@ class Spectrum(object):
             self.wv_soln = WavelengthSolution(wavelength_solution)
         
         # TODO: check that the dimensions of the inputs match
-        self.flux = flux
+        self.flux = np.asarray(flux)
         if inv_var == None:
-            self.inv_var = (flux > 0.0)*np.ones(flux.shape, dtype=float)
+            self.inv_var = (self.flux > 0.0)*np.ones(self.flux.shape, dtype=float)
             inv_var = misc.smoothed_mad_error(self, 1.0, overwrite_error=True)
         self.inv_var = misc.clean_inverse_variances(inv_var)
         #the memory address of the last stored transform
@@ -314,7 +328,7 @@ class Spectrum(object):
         #TODO: put extra controls in here
         norm_res = misc.approximate_normalization(self, overwrite=True)    
         return norm_res
-        
+    
     def normalized(self):
         nspec = Spectrum(self.wv_soln, self.flux/self.norm, self.get_inv_var()*self.norm**2)
         nspec.flags["normalized"] = True

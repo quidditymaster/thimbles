@@ -1,7 +1,7 @@
 import scipy.special
 import numpy as np
 import scipy.optimize
-
+import scipy.ndimage
 import thimbles as tmb
 
 sqrt2pi = np.sqrt(2*np.pi)
@@ -21,6 +21,7 @@ def half_gauss(wvs, center, l_width, r_width):
 
 profile_functions["half_gaussian"] = half_gauss
 
+
 def voigt(wvs, center, g_width, l_width):
     "returns a voigt profile with gaussian sigma g_width and lorentzian width l_width."
     g_w = np.abs(g_width)
@@ -38,6 +39,14 @@ def voigt(wvs, center, g_width, l_width):
     return (cplxv.real).copy()
 
 profile_functions["voigt"] = voigt
+
+#TODO: implement a more accurate stark profile such as the holtsmark distribution
+def nnstark(wvs, center, stark_width):
+    """nearest neighbor approximation to a stark broadening profile"""
+    delta_wvs = (np.abs(wvs-center) + 1e-10)/np.abs(stark_width) #1e-10 to regularize the limit delta_lam->0  
+    return 3.0/(4.0*stark_width)*np.power(delta_wvs, -5.0/2.0)*np.exp(-np.power(delta_wvs, -3.0/2.0))
+
+profile_functions["stark"] = nnstark
 
 def rotational(wvs, center, vsini, limb_darkening = 0):
     "for wavelengths in angstroms and v*sin(i) in km/s"
@@ -57,19 +66,32 @@ def rotational(wvs, center, vsini, limb_darkening = 0):
 
 profile_functions["rotational"] = rotational
 
-def voigt_rotational(wvs, center, g_width, l_width, vsini, limb_darkening): #this routine has edge problems with the convolution
-    "generates a voigt profile convolved with a rotational broadening profile"
-    rprof = rotational(wvs, center, vsini, limb_darkening)
+#def voigt_rotational(wvs, center, g_width, l_width, vsini, limb_darkening): #this routine has edge problems with the convolution
+#    "generates a voigt profile convolved with a rotational broadening profile"
+#    rprof = rotational(wvs, center, vsini, limb_darkening)
+#    if len(wvs) % 2 == 1:
+#        array_central_wv = wvs[int(len(wvs)/2)]
+#    else:
+#        array_central_wv = 0.5*(wvs[int(len(wvs)/2)] + wvs[int(len(wvs)/2)-1])
+#    #if center is not the central wavelength
+#    vprof = voigt(wvs, array_central_wv, g_width, l_width)
+#    #plt.plot(vprof)
+#    return np.convolve(rprof, vprof, mode="same")/np.convolve(np.ones(wvs.shape), rprof, mode="same")
+#
+#profile_functions["voigt_rotational"] = voigt_rotational
+
+
+def hydrogen_profile(wvs, center, g_width, l_width, stark_width):
+    """a simple model for the line shape of a hydrogen feature a
+    a voigt profile convolved with a nearest-neighbor stark"""
     if len(wvs) % 2 == 1:
         array_central_wv = wvs[int(len(wvs)/2)]
     else:
         array_central_wv = 0.5*(wvs[int(len(wvs)/2)] + wvs[int(len(wvs)/2)-1])
-    #if center is not the central wavelength
-    vprof = voigt(wvs, array_central_wv, g_width, l_width)
-    #plt.plot(vprof)
-    return np.convolve(rprof, vprof, mode="same")/np.convolve(np.ones(wvs.shape), rprof, mode="same")
+    centered_stark = nnstark(wvs, array_central_wv, stark_width)
+    voigt_prof = voigt(wvs, center, g_width, l_width)
+    return scipy.ndimage.filters.convolve(centered_stark, voigt_prof)
 
-profile_functions["voigt_rotational"] = voigt_rotational
 
 class LineProfile:
     

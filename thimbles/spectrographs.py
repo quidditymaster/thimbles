@@ -1,4 +1,4 @@
-from .db.dbclasses import Base, ThimblesTable
+from thimbles.thimblesdb import Base, ThimblesTable
 
 from sqlalchemy import create_engine, ForeignKey
 from sqlalchemy import Column, Date, Integer, String, Float

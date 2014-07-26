@@ -3,6 +3,7 @@ import scipy
 import scipy.optimize
 
 import thimbles as tmb
+from thimbles.profiles import voigt
 
 from ..spectrum import Spectrum
 from . import factor_models
@@ -106,31 +107,37 @@ def fit_single_voigt(feature, fit_width=None, other_features=None, predictors=No
     
     lparams = feature.profile.get_parameters()
     offset, sigma, gamma = lparams
-    cent_wv = feature.wv
-    
-    resid_func = feature_residuals_factory(feature, predictors=predictors)
-    
     cwv = feature.wv
+    
     fit_bounds = (cwv-fit_width, cwv+fit_width)
     bspec = feature.data_sample.bounded_sample(fit_bounds)
-    start_p = feature.profile.get_parameters()
-    start_p[1:] = np.abs(start_p[1:])
-    guessv = np.hstack((feature.eq_width, 1.0, start_p))
-    fit_res = scipy.optimize.leastsq(resid_func, guessv)
+    sqrt_ivar = np.sqrt(bspec.inv_var)
+    sqrt_ivar = np.where(sqrt_ivar > 0, sqrt_ivar, 0.0)
+    
+    def resid_func(pvec):
+        ew, sigma, gamma = pvec
+        prof = voigt(bspec.wv, cwv, sigma, gamma)
+        model_flux = bspec.norm*(1.0-ew*prof)
+        return (bspec.flux-model_flux)*sqrt_ivar 
+    
+    #resid_func = feature_residuals_factory(feature, predictors=predictors)
+    start_p = np.zeros(3)
+    coff, csigma, cgamma = feature.profile.get_parameters()
+    start_p[0] = feature.eq_width
+    start_p[1] = csigma
+    start_p[2] = cgamma
+    fit_res = scipy.optimize.leastsq(resid_func, start_p)
     fit = fit_res[0]
-    fit[3:] = np.abs(fit[3:])
-    feature.profile.set_parameters(fit[2:])
-    feature.relative_continuum = fit[1]
+    #make sure the output fit widths are positive
+    fit[1:] = np.abs(fit[1:])
+    feature.profile.set_parameters(fit[1:])
     feature.set_eq_width(fit[0])
     return feature
 
-def ensemble_feature_fit(features, fit_width=None):
-    if fit_width is None:
-        fit_width = 0.3
-    #import pdb; pdb.set_trace()
-    fpreds = feature_predictors_from_ensemble(features, verbose=True)
+def ensemble_feature_fit(features, fit_width):
+    #fpreds = feature_predictors_from_ensemble(features, verbose=True)
     for feature in features:
-        fit_single_voigt(feature, fit_width, predictors=fpreds)
+        fit_single_voigt(feature, fit_width)
 
 def quick_quadratic_fit(features, npix_expand=2):
     """does a fast approximate feature fit by expanding a quadratic polynomial

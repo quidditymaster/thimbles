@@ -358,15 +358,14 @@ class AppForm(QMainWindow):
                 solar_logeps = tmb.stellar_atmospheres.solar_abundance[cid]["abundance"]
                 strength = solar_logeps + cloggf - cep*5040.0/self.options.start_teff
                 bspec = spectra[spec_idx].bounded_sample(samp_bounds)
-                accepted = False
+                accepted=False
                 if not bspec is None:
                     if len(bspec) > 3:
                         precull_opt = self.options.pre_cull
                         if precull_opt=="snr":
                             med_snr = np.median(bspec.flux*np.sqrt(bspec.get_inv_var()))
-                            if med_snr > 3.0:
-                                if strength > self.options.cull_threshold:
-                                    accepted=True
+                            if med_snr > 1.0:
+                                accepted=True
                         elif precull_opt[:8] == "strength":
                             if strength > float(precull_opt[8:]):
                                 accepted = True
@@ -390,7 +389,7 @@ class AppForm(QMainWindow):
                 tp = tmb.features.AtomicTransition(cwv, cid, cloggf, cep)
                 wvdel = np.abs(bspec.wv[1]-bspec.wv[0])
                 start_p = np.asarray([0.0, wvdel, 0.0])
-                lprof = tmb.line_profiles.Voigt(cwv, start_p)
+                lprof = tmb.profiles.LineProfile(cwv, start_p, profile_func="voigt")
                 nf = tmb.features.Feature(lprof, 0.00, 0.00, tp, data_sample=bspec)
                 culled_features.append(nf)
         return culled_features
@@ -399,7 +398,7 @@ class AppForm(QMainWindow):
         #import pdb; pdb.set_trace()
         tmb.modeling.spectral_models.quick_quadratic_fit(features)
         for i in range(int(self.options.iteration)):
-            tmb.modeling.spectral_models.ensemble_feature_fit(features)
+            tmb.modeling.spectral_models.ensemble_feature_fit(features, self.options.fit_width)
         return features
     
     def load_linelist(self):

@@ -4,26 +4,116 @@ import numpy as np
 import pandas as pd
 import thimbles as tmb
 
+from thimbles.stellar_atmospheres import solar_abundance as ptable
+
+def float_or_nan(val):
+    try:
+        return float(val)
+    except ValueError:
+        return np.nan
+
 def read_vald_linelist(fname):
     """read a vald long format linelist
+    
+    parameters
+    ------------
+    fname: string
+        file name of the target file
+    
+    returns
+    -------------
+    pandas.DataFrame of line data
     """
     lines = open(fname, "r").readlines()
-    ldat = []
-    input_re = re.compile("'[A-Z][a-z] [12]', ")
-    ptable = tmb.stellar_atmospheres.periodic_table
-    for line in lines:
-        m = input_re.match(line)
-        if m is None:
-            continue
-        spl = line.rstrip().split(",")
-        species_name, ion_number = spl[0].replace("'", "").split()
-        proton_number = ptable[species_name]["z"]
-        #species_id = proton_number + 0.1*(int(ion_number)-1)
-        wv, loggf, elow, jlo, eup, jup = map(float, spl[1:7])
-        new_transition = tmb.transitions.Transition(wv=wv, species=species_name, ion=int(ion_number), ep=elow, loggf=loggf)
-        ldat.append(new_transition)
-        #import pdb; pdb.set_trace()
+    ldat = {"wv":[], "species":[], "z":[], "ion":[], 
+            "ep":[], "loggf":[], "solar_ab":[],
+            "rad_damp":[], "stark_damp":[], "waals_damp":[]
+            }
+    ldat = pd.DataFrame(data=ldat)
     return ldat
+
+def read_linelist(fname, file_type="moog"):
+    lines = open(fname).readlines()
+    ldat = {"wv":[], "species":[], "Z":[], "ion":[], 
+            "ep":[], "loggf":[], "ew":[],
+            "rad_damp":[], "stark_damp":[], "waals_damp":[],
+            "moog_damp":[], "D0":[],
+            }
+    if file_type.lower() == "moog":
+        for line in lines:
+            try:
+                moog_cols = [line[i*10:(i+1)*10].strip() for i in range(7)]
+                wv = float(moog_cols[0])
+                species = float(moog_cols[1])
+                sp_split = moog_cols[1].split(".")
+                z = int(sp_split[0])
+                ion = int(sp_split[1][0])
+                #A=sp_split[1][1:]
+                ep = float(moog_cols[2])
+                loggf = float(moog_cols[3])
+                if moog_cols[4] != "":
+                    moog_damp = float(moog_cols[4])
+                else:
+                    moog_damp = np.nan
+                if moog_cols[5] != "":
+                    d0 = float(moog_cols[5])
+                else:
+                    d0 = np.nan
+                if moog_cols[6]:
+                    ew = float(moog_cols[6])
+                else:
+                    ew = 0
+                z = int(species)
+                ion = int(10*(species-z))
+                
+                rad_damp = np.nan
+                stark_damp = np.nan
+                waals_damp = np.nan
+            except ValueError as e:
+                print e
+                continue
+            ldat["wv"].append(wv)
+            ldat["species"].append(z+(ion-1)*0.1)
+            ldat["Z"].append(z)
+            #TODO: add a nucleon number column "A"
+            ldat["ion"].append(ion)
+            ldat["ep"].append(ep)
+            ldat["loggf"].append(loggf)
+            ldat["ew"]=ew
+            ldat["rad_damp"].append(rad_damp)
+            ldat["stark_damp"].append(stark_damp)
+            ldat["waals_damp"].append(waals_damp)
+            ldat["moog_damp"].append(moog_damp)
+            ldat["D0"] = d0
+    elif file_type == "vald":
+        input_re = re.compile("'[A-Z][a-z] [12]', ")
+        for line in lines:
+            m = input_re.match(line)
+            if m is None:
+                continue
+            spl = line.rstrip().split(",")
+            species_name, ion_number = spl[0].replace("'", "").split()
+            ion_number = int(ion_number)
+            proton_number = ptable[species_name]["z"]
+            #species_id = proton_number + 0.1*(int(ion_number)-1)
+            wv, loggf, elow, jlo, eup, jup = map(float, spl[1:7])
+            l_lande, u_lande, m_lande = map(float_or_nan, spl[8:11])
+            rad_damp, stark_damp, waals_damp = map(float_or_nan, spl[12:15])
+            ldat["wv"].append(wv)
+            ldat["species"].append(proton_number+(ion_number-1)*0.1)
+            ldat["Z"].append(proton_number)
+            #TODO: add a nucleon number column "A"
+            ldat["ion"].append(ion_number)
+            ldat["ep"].append(elow)
+            ldat["loggf"].append(loggf)
+            ldat["rad_damp"].append(rad_damp)
+            ldat["stark_damp"].append(stark_damp)
+            ldat["waals_damp"].append(waals_damp)
+            #and the parameters not present
+            ldat["moog_damp"].append(np.nan)
+            ldat["ew"].append(0.0)
+            ldat["D0"].append(np.nan)
+    return pd.DataFrame(data=ldat)
 
 def read_moog_linelist (fname,formatted=True, output_pandas=False, defaults=None,convert_gf=False):
     """
@@ -92,7 +182,7 @@ MODIFICATION HISTORY:
     
     vwdamp = np.nan
     d0 = 0.0
-    ew = np.nan
+    ew = 0.0
     # check default values for columns
     if defaults is None:
         defaults = {}

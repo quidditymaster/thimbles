@@ -11,6 +11,7 @@ from thimbles.profiles import voigt
 from thimbles.utils.misc import smooth_ppol_fit
 import thimbles.utils.piecewise_polynomial as ppol
 from thimbles import verbosity
+from thimbles import hydrogen
 from latbin import matching
 
 class SaturatedVoigtFeatureModel(object):
@@ -19,14 +20,17 @@ class SaturatedVoigtFeatureModel(object):
                  transitions, 
                  min_wv,
                  max_wv,
+                 snr_threshold=1.0,
                  teff=5000.0, 
                  vmicro=2.0, 
                  vmacro=1.0, 
                  gamma_ratio_5000=0.02,
                  initial_x_offset=4.0,
-                 delta_wv_max=100,
-                 delta_x_max=0.5,
+                 delta_wv=20,
+                 delta_x=0.5,
+                 dof_threshold=0.0,
                  domination_ratio=4.0,
+                 H_mask_radius=2.0,
                  model_resolution=2e5,):
         """provides a model of a normalized absorption spectrum
         
@@ -41,24 +45,27 @@ class SaturatedVoigtFeatureModel(object):
         gamma_ratio_5000: float
           the ratio of the lorentz width to the thermal width at 5000 angstroms.
         """
-        self.min_wv = min_wv
-        self.max_wv = max_wv
+        self.min_wv = float(min_wv)
+        self.max_wv = float(max_wv)
         self.teff = teff
         self._initial_x_off = initial_x_offset
+        self.snr_threshold = snr_threshold
         self.vmicro = vmicro
         self.vmacro = vmacro
-        self.domination_ratio
-        self.delta_x_max
-        self.delta_wv_max
+        self.dof_threshold = dof_threshold
+        self.domination_ratio=domination_ratio
+        self.H_mask_radius=H_mask_radius
+        self.delta_wv = delta_wv
+        self.delta_x = delta_x
         #TODO: make the gamma ratio change as a function of wv
         #TODO: allow for individual gamma ratio's by interpolating cogs
         self.gamma_ratio_5000 = gamma_ratio_5000
         self.model_resolution=model_resolution
         
-        self.n_pts = int(np.log(self.max_wv/self.min_wv)*self.model_resolution)
-        self.model_wv = np.exp(np.linspace(np.log(self.min_wv), np.log(self.max_wv), self.n_pts))
+        self.npts = int(np.log(self.max_wv/self.min_wv)*self.model_resolution)
+        self.model_wv = np.exp(np.linspace(np.log(self.min_wv), np.log(self.max_wv), self.npts))
         self.model_wv_gradient = scipy.gradient(self.model_wv)
-        self.delta_log_wv = np.log(self.max_wv/self.min_wv)/self.n_pts
+        self.delta_log = np.log(self.max_wv/self.min_wv)/self.npts
         
         self.fdat = transitions.copy()
         self.n_feat = len(self.fdat)
@@ -83,40 +90,48 @@ class SaturatedVoigtFeatureModel(object):
     def __getattr__(self, attr_name):
         return eval("self.fdat['{}']".format(attr_name))
         
-    def optimize_fit_parameters(self, spectra):
+    def optimize_fit_groups(self, spectra):
         transforms_to_model = []
         npts_model = len(self.model_wv)
-        min_delta_pix = np.empty(npts_model, dtype=float)
-        min_delta_pix.fill(1000.0) #bigger than any reasonable pixel size
+        min_delta_wv = np.empty(npts_model, dtype=float)
+        min_delta_wv.fill(100.0) #bigger than any reasonable pixel size
         snr2_available = np.zeros(npts_model)
         dof_available = np.zeros(npts_model)
-        
+                
         verbosity("building spectra to model space transforms")
         for spec in spectra:
             trans = tmb.utils.resampling.get_resampling_matrix(spec.wv, self.model_wv, preserve_normalization=False)
             transforms_to_model.append(trans)
-            
             cur_snr2 = trans*(spec.flux**2*spec.inv_var)
             cur_dof = trans*np.ones(spec.wv.shape)
-            cur_delta_pix = trans*scipy.gradient(spec.wv)
-            cur_delta_pix = np.where(cur_delta_pix > 0, cur_delta_pix, 1000.0)
-            min_delta_pix = np.where(cur_delta_pix < min_delta_pix, cur_delta_pix, min_delta_pix)
+            max_dof = np.max(cur_dof)
+            cur_dof /= max_dof #TODO replace this with a preserved norm
+            cur_delta_pix = trans*scipy.gradient(spec.wv)/max_dof 
+            cur_delta_pix = np.where(cur_delta_pix > 0, cur_delta_pix, 100.0)
+            min_delta_wv = np.where(cur_delta_pix < min_delta_wv, cur_delta_pix, min_delta_wv)
             snr2_available += cur_snr2
             dof_available = np.where(dof_available > cur_dof, dof_available, cur_dof)
         
+        #import pdb; pdb.set_trace()
         #get the log of the min pixel size as a fraction of wavelength
-        pixel_lrw = np.log10(min_delta_pix/self.model_wv)
+        pixel_lrw = np.log10(min_delta_wv/self.model_wv)
         
         #admit features up to 1/100 of a pixel width in predicted equivalent width
         max_strengths = np.power(10.0, pixel_lrw - 2.0) 
         
-        window_delta = 0.001
+        #zero is the background group
+        self.fdat["fit_group"] = np.zeros(len(self.fdat), dtype=int) 
+        window_delta = 0.0001
         verbosity("collecting max feature strengths per model pixel")
         for line_idx in range(len(self.fdat)):
             ldata = self.fdat.iloc[line_idx]
-            cent_wv = ldata.wv
-            min_idx = self.get_index(ldata.wv*(1.0-window_delta))
-            max_idx = self.get_index(ldata.wv*(1.0+window_delta))
+            cent_wv = ldata["wv"]
+            if cent_wv > self.max_wv:
+                continue
+            if cent_wv < self.min_wv:
+                continue
+            min_idx = self.get_index(cent_wv*(1.0-window_delta), clip=True)
+            max_idx = self.get_index(cent_wv*(1.0+window_delta), clip=True)
             sigma = ldata["doppler_width"]
             #TODO: replace the constant gamma with an appropriately varying one
             gamma = self.gamma_ratio_5000*sigma
@@ -124,52 +139,109 @@ class SaturatedVoigtFeatureModel(object):
             predicted_lrw = ldata["cog_lrw"]
             prof *= np.power(10.0, predicted_lrw)/np.max(prof)
             mst_snippet = max_strengths[min_idx:max_idx+1]
-            max_strengths[min_idx:max_idx] = np.where(mst_snippet > prof, mst_snippet, prof)
+            max_strengths[min_idx:max_idx+1] = np.where(mst_snippet > prof, mst_snippet, prof)
         
+        #print "beginning relegation"
         verbosity("relegating dominated features to a background model")
-        #set up the fit_type column
-        self.fdat["is_background"] = np.zeros()
-        for line_idx in range(len):
+        #mask features close to the centers of Hydrogen lines
+        hmask = hydrogen.get_H_mask(self.model_wv, self.H_mask_radius)
+        for line_idx in range(len(self.fdat)):
             ldata = self.fdat.iloc[line_idx]
-            cent_wv = ldata.wv
-            cent_idx = self.get_index(cent_wv)
+            cent_wv = ldata["wv"]
+            if cent_wv > self.max_wv:
+                continue
+            if cent_wv < self.min_wv:
+                continue
+            cent_idx = self.get_index(cent_wv, )
+            if not hmask[cent_idx]: 
+                continue #too close to a hydrogen feature
             predicted_lrw = ldata["cog_lrw"]
             if max_strengths[cent_idx] > self.domination_ratio*np.power(10.0, predicted_lrw):
-                self.fdat.iloc[line_idx, "is_background"] = 1
+                self.fdat["fit_group"].iloc[line_idx] = 1
         
+        #print "beginning grouping"
         verbosity("matching potential groups")
-        foreground_features = self.fdat[self.fdat.fit_type == 1]
+        foreground_features = self.fdat[self.fdat.fit_group >= 1]
         
         species_gb = foreground_features.groupby(["Z", "ion"])
-        for all_idxs in species_gb.groups:
-            species_df = foreground_features.ix[all_idxs]
-            last_grouping = None
+        all_fit_groups = []
+        species_groups = species_gb.groups
+        for species_pair in species_gb.groups:
+            species_ixs = species_groups[species_pair]
+            species_df = foreground_features.ix[species_ixs]
             wv_x_vals = species_df[["wv", "x"]].values.copy()
-            wv_x_vals[:, 0]/self.delta_wv_max
-            wv_x_vals[:, 1]/self.delta_x_max
+            wv_x_vals[:, 0]/self.delta_wv
+            wv_x_vals[:, 1]/self.delta_x
             m1, m2, dist = matching.match(wv_x_vals, wv_x_vals, tolerance=1.0) 
             match_idx = 0
             feature_idx = 0
             used_features = set()
+            #for each feature attempt to build a suitable group
             while feature_idx < len(species_df):
+                #import pdb; pdb.set_trace()
+                #ignore features already in a group
                 if feature_idx in used_features:
                     feature_idx += 1
                     continue
-                potential_matches = []
-                while (m1[match_idx] == feature_idx) and (match_idx < len(m1)):
-                    if m2[match_idx] != feature_idx:
-                        potential_matches.append(m2[match_idx])
-                    match_idx += 1 
-                
+                group_ixs = []
+                accum_snr2 = 0.0
+                accum_dof = 0.0
+                to_subtract = []
+                #put every allowed pair for this feature into a group with it and see if it is good enough
+                while (match_idx < len(m1)) and (m1[match_idx] == feature_idx):
+                    fdat_ix = species_ixs[m2[match_idx]]
+                    if fdat_ix in used_features:
+                        match_idx +=1
+                        continue
+                    group_ixs.append(fdat_ix)
+                    ldata = self.fdat.ix[fdat_ix]
+                    cent_wv = ldata["wv"]
+                    cent_idx = self.get_index(cent_wv)
+                    min_idx = self.get_index(cent_wv*(1.0-window_delta), clip=True)
+                    max_idx = self.get_index(cent_wv*(1.0+window_delta), clip=True)
+                    sigma = max(ldata["doppler_width"], min_delta_wv[cent_idx])
+                    #TODO: replace the constant gamma with an appropriately varying one
+                    gamma = self.gamma_ratio_5000*sigma
+                    cog_lrw = ldata["cog_lrw"]
+                    cog_ew = np.power(10.0, cog_lrw)*cent_wv
+                    prof = cog_ew*voigt(self.model_wv[min_idx:max_idx+1], cent_wv, sigma, gamma)
+                    prof = np.where(prof < 1, prof, 1.0) #make sure we don't run to negative flux
+                    snr2_prod = snr2_available[min_idx:max_idx+1]*prof
+                    captured_snr2 = np.sum(snr2_prod)
+                    accum_snr2 += captured_snr2
+                    nprof = prof/np.sum(prof)
+                    dof_prod = dof_available[min_idx:max_idx+1]*nprof
+                    accum_dof += np.sum(dof_prod)
+                    to_subtract.append((min_idx, max_idx, snr2_prod, dof_prod))
+                    match_idx += 1
+                #print "accum_dof {} accum_snr2 {}".format(accum_dof, accum_snr2)
+                if (accum_dof > self.dof_threshold) and (accum_snr2) > self.snr_threshold**2:
+                    #this is a good enough group add it to the set of groups
+                    all_fit_groups.append(group_ixs)
+                    #set their fit group column to match each other
+                    for feat_ix in group_ixs:
+                        self.fdat["fit_group"].ix[feat_ix] = len(all_fit_groups)
+                        used_features.add(feat_ix)
+                    #subtract from our total allotment of signal to noise and degrees of freedom
+                    for min_idx, max_idx, snr2_prod, dof_prod in to_subtract:
+                        resid_snr2 = snr2_available[min_idx:max_idx+1] - snr2_prod
+                        snr2_available[min_idx:max_idx+1] = np.where(resid_snr2 > 0, resid_snr2, 0.0)
+                        resid_dof = dof_available[min_idx:max_idx+1] - dof_prod*min(1.0, 3.0/len(to_subtract))
+                        dof_available[min_idx:max_idx+1] = np.where(resid_dof > 0, resid_dof, 0.0)
+                else:
+                    #no allowable groups for this feature relegate it to the background
+                    self.fdat.iloc[feature_idx]["fit_group"] = 0
+                feature_idx += 1
+        #import pdb; pdb.set_trace()
     
     def get_index(self, wv, clip=False):
         idx = np.log(np.asarray(wv)/self.min_wv)/self.delta_log
         if clip:
-            np.clip(idx, 0, self.npts-1, out=idx)
+            idx = np.clip(idx, 0, self.npts-1)
         return idx
     
     def generate_feature_matrix(self):
-        group_gb = self.fdat.groupby("group_id")
+        group_gb = self.fdat.groupby("fit_group")
         groups = group_gb.groups
         
         n_groups = len(groups)
@@ -237,7 +309,7 @@ class SaturatedVoigtFeatureModel(object):
     def calc_cog_lrws(self):
         lrws = self.cog(self.x_adj.values) #adjusted?
         self.fdat["cog_lrw_adj"] = lrws
-        self.fdat["cog_lrw_true"] = lrws + self.doppler_lrw.values
+        self.fdat["cog_lrw"] = lrws + self.doppler_lrw.values
     
     def calc_cog(self):
         """calculate an approximate curve of growth and store its representation

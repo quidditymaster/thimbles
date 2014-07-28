@@ -13,11 +13,11 @@ from utils.misc import local_gaussian_fit
 from spectrum import WavelengthSolution
 # ########################################################################### #
 
+from thimbles import resource_dir
+
 __all__ = ["template_rv_estimate"]
 
 # ########################################################################### #
-
-resource_dir = os.path.join(os.path.dirname(__file__), "resources")
 
 def try_load_template():
     rv_standard = None

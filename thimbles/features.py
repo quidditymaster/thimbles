@@ -251,11 +251,11 @@ class SaturatedVoigtFeatureModel(object):
         for group_idx in range(len(group_keys)):
             group_id = group_keys[group_idx]
             group_ldf = self.fdat.ix[groups[group_id]]
-            group_cog_lrw_adj = group_ldf.cog_lrw.values
-            max_lrw = np.max(group_cog_lrw_adj)
-            relative_ews = np.power(10, max_lrw-group_cog_lrw_adj)*group_ldf.wv.values
+            group_cog_lrw = group_ldf.cog_lrw.values
+            max_lrw = np.max(group_cog_lrw)
+            relative_ews = np.power(10, group_cog_lrw-max_lrw)*group_ldf.wv.values
             relative_ew_sum = np.sum(relative_ews)
-            print group_id
+            ew_fracs = relative_ews/relative_ew_sum
             for feat_idx in range(len(group_ldf)):
                 feat_wv = group_ldf.iloc[feat_idx]["wv"]
                 wv_idx = self.get_index(feat_wv)
@@ -263,17 +263,15 @@ class SaturatedVoigtFeatureModel(object):
                     continue
                 if wv_idx > self.npts-1:
                     continue
-                thermal_width = group_ldf.iloc[feat_idx]["therm_width"]
-                pix_width = thermal_width/self.wv_gradient[int(wv_idx)]
-                lb = max(0, int(wv_idx+pix_width*5))
-                ub = min(self.npts-1, int(wv_idx+pix_width*5)+1)
-                pix_dx = np.arange(lb, ub)-wv_idx
+                doppler_width = group_ldf.iloc[feat_idx]["doppler_width"]
                 
-                profile = voigt(pix_dx, 0.0, pix_width, 0.0)
-                profile /= np.sum(profile)
-                profile *= relative_ews[feat_idx]/relative_ew_sum
+                lb = int(np.around(self.get_index(feat_wv-5.0*doppler_width, clip=True)))
+                ub = int(np.around(self.get_index(feat_wv+5.0*doppler_width, clip=True)))
                 
-                self.feature_matrix[lb:ub, group_idx] += profile
+                profile = voigt(self.model_wv[lb:ub+1], feat_wv, doppler_width, 0.0)
+                profile *= ew_fracs[feat_idx]
+                
+                self.feature_matrix[lb:ub+1, group_idx] = profile.reshape((-1, 1)) + self.feature_matrix[lb:ub+1, group_idx]
         self.feature_matrix = self.feature_matrix.tocsr()
     
     @property

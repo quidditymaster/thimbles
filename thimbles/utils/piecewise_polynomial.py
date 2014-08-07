@@ -211,6 +211,9 @@ class Binning:
         xv = np.array(xvec)
         out_idxs = np.zeros(len(xv.flat), dtype = int)
         for x_idx in xrange(len(xv.flat)):
+            if np.isnan(xv[x_idx]):
+                out_idxs[x_idx] = -3
+                break
             #check if the last solution still works
             if self.last_bin[0] <= xv[x_idx] <= self.last_bin[1]:
                 out_idxs[x_idx] = self.last_bin_idx
@@ -385,15 +388,6 @@ class InvertiblePiecewiseQuadratic(PiecewisePolynomial):
         y_boundary_points[-1] = y_bounds[1]
         y_boundary_points[1:-1] = self.y_control_points
         self.y_binning = Binning(y_boundary_points)
-        #center_vals = self(self.centers)
-        #a, b = self.coefficients[:, 0], self.coefficients[:, 1]
-        #c_center = self.coefficients[:, 2] - center_vals
-        #pos_inv = (-b+np.sqrt(b**2-4.0*a*c_center))/(2.0*a)
-        #neg_inv = (-b-np.sqrt(b**2-4.0*a*c_center))/(2.0*a)
-        #pos_diff = np.abs(pos_inv-self.centers)
-        #neg_diff = np.abs(neg_inv-self.centers)
-        #self.branch_sign = np.where(pos_diff <= neg_diff, 1.0, -1.0)
-        
         #figure out whether we have a positive derivative
         #and therefore should use a + sign in the inverse formula
         #or a negative derivative and therefore use a minus sign
@@ -407,7 +401,7 @@ class InvertiblePiecewiseQuadratic(PiecewisePolynomial):
             pmask = poly_idxs == p_idx
             a, b, c = self.poly_list[p_idx].poly.coeffs
             x = (-b+self.branch_sign*np.sqrt(b**2-4.0*a*(c-yvals[pmask])))/(2.0*a)
-            output[pmask] = (x+self.centers[p_idx])*self.scales[p_idx]
+            output[pmask] = x*self.scales[p_idx]+self.centers[p_idx]
         return output
 
 class PiecewisePolynomialBasis(PolynomialBasis):

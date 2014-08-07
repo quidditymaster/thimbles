@@ -159,16 +159,15 @@ def cross_corr(arr1, arr2, offset_number, overlap_adj=False):
         cur_corr = np.sum(arr1[lb1:ub1]*arr2[lb2:ub2])
         if overlap_adj:
             n_overlap = min(ub1, ub2) - max(lb1, lb2)
-            assert n_overlap > 0
             cur_corr /= float(n_overlap)
         cor_out[offset_idx] = cur_corr
     return cor_out
 
+
 def local_gaussian_fit(yvalues, peak_idx=None, fit_width=2, xvalues=None):
-    """near the peak of a gaussian it is well described by a quadratic.
-    this function fits a quadratic function taking pixels from 
-    peak_idx - fit_width to peak_idx + fit_width, and then maps the resulting
-    quadratic function onto parameters for an associated gaussian.
+    """fit a quadratic function taking pixels from 
+    peak_idx - fit_width to peak_idx + fit_width, to the log of the yvalues
+    passed in. Giving back the parameters of a best fit gaussian.
     
     inputs:
     values: numpy.ndarray 
@@ -751,7 +750,7 @@ def approximate_normalization(spectrum,
                               ):
     """estimates a normalization curve for the input spectrum.
     spectrum: Spectrum
-        a spectrum object
+        a Spectrum object
     partition_scale: float
         a rough scale of the smallest allowable level of structure to be fit
         in pixels
@@ -1074,9 +1073,14 @@ def blam(wavelength, temperature):
     take into account the sampling derivative"""
     return blconst*wavelength**-5.0/(np.exp(hcoverk/(temperature*wavelength))-1.0)
 
+
+#wien_constant = 2.8977721(26)e-3 in units of M*K
+wien_constant = 2.897772126e7 #in units of Angstrom*Kelvin
 def blackbody_spectrum(sampling_wavelengths, temperature,  normalize = True):
     dlam_dx = scipy.gradient(sampling_wavelengths)
     bbspec = blam(sampling_wavelengths, temperature)/dlam_dx
     if normalize:
-        bbspec *= len(bbspec)/np.sum(bbspec)
+        peak_wv = wien_constant/temperature
+        peak_val = blam(peak_wv, temperature)
+        bbspec /= peak_val
     return bbspec

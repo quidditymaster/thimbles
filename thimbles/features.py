@@ -25,13 +25,13 @@ class SaturatedVoigtFeatureModel(object):
                  vmicro=2.0, 
                  vmacro=1.0, 
                  gamma_ratio_5000=0.02,
-                 initial_x_offset=4.0,
-                 delta_wv=20,
-                 delta_x=0.5,
-                 dof_threshold=0.0,
+                 initial_x_offset=8.0,
+                 delta_wv=50,
+                 delta_x=0.25,
                  domination_ratio=4.0,
+                 param_hierarchy=None,
                  H_mask_radius=2.0,
-                 model_resolution=2e5,):
+                 model_resolution=5e5,):
         """provides a model of a normalized absorption spectrum
         
         transitions: pandas.DataFrame
@@ -45,6 +45,14 @@ class SaturatedVoigtFeatureModel(object):
         gamma_ratio_5000: float
           the ratio of the lorentz width to the thermal width at 5000 angstroms.
         """
+        if param_hierarchy is None:
+            param_hierarchy = {}
+            #param_hierarchy["param_name"] = accumulated_group_degrees_of_freedom_threshold
+            param_hierarchy["ew"] = 0.5
+            param_hierarchy["vel_offset"] = 2.0
+            param_hierarchy["sigma_offset"] = 3.0
+            param_hierarchy["gamma_offset"] = 5.0
+        self.param_hierarchy = param_hierarchy
         self.min_wv = float(min_wv)
         self.max_wv = float(max_wv)
         self.teff = teff
@@ -52,7 +60,6 @@ class SaturatedVoigtFeatureModel(object):
         self.snr_threshold = snr_threshold
         self.vmicro = vmicro
         self.vmacro = vmacro
-        self.dof_threshold = dof_threshold
         self.domination_ratio=domination_ratio
         self.H_mask_radius=H_mask_radius
         self.delta_wv = delta_wv
@@ -74,7 +81,7 @@ class SaturatedVoigtFeatureModel(object):
     
     def _initialize_columns(self):
         cur_columns = self.fdat.columns 
-        targ_columns = ["ew", "wv_off", "sigma_off", "gamma_off"]
+        targ_columns = ["ew", "wv_offset", "sigma_offset", "gamma_offset"]
         for col in targ_columns:
             if not (col in cur_columns):
                 self.fdat[col] = np.zeros(self.n_feat)
@@ -89,7 +96,7 @@ class SaturatedVoigtFeatureModel(object):
     
     def __getattr__(self, attr_name):
         return eval("self.fdat['{}']".format(attr_name))
-        
+    
     def optimize_fit_groups(self, spectra):
         transforms_to_model = []
         npts_model = len(self.model_wv)
@@ -97,7 +104,7 @@ class SaturatedVoigtFeatureModel(object):
         min_delta_wv.fill(100.0) #bigger than any reasonable pixel size
         snr2_available = np.zeros(npts_model)
         dof_available = np.zeros(npts_model)
-                
+        
         verbosity("building spectra to model space transforms")
         for spec in spectra:
             trans = tmb.utils.resampling.get_resampling_matrix(spec.wv, self.model_wv, preserve_normalization=False)
@@ -141,7 +148,6 @@ class SaturatedVoigtFeatureModel(object):
             mst_snippet = max_strengths[min_idx:max_idx+1]
             max_strengths[min_idx:max_idx+1] = np.where(mst_snippet > prof, mst_snippet, prof)
         
-        #print "beginning relegation"
         verbosity("relegating dominated features to a background model")
         #mask features close to the centers of Hydrogen lines
         hmask = hydrogen.get_H_mask(self.model_wv, self.H_mask_radius)
@@ -156,7 +162,7 @@ class SaturatedVoigtFeatureModel(object):
             if not hmask[cent_idx]: 
                 continue #too close to a hydrogen feature
             predicted_lrw = ldata["cog_lrw"]
-            if max_strengths[cent_idx] > self.domination_ratio*np.power(10.0, predicted_lrw):
+            if max_strengths[cent_idx] < self.domination_ratio*np.power(10.0, predicted_lrw):
                 self.fdat["fit_group"].iloc[line_idx] = 1
         
         #print "beginning grouping"
@@ -170,15 +176,14 @@ class SaturatedVoigtFeatureModel(object):
             species_ixs = species_groups[species_pair]
             species_df = foreground_features.ix[species_ixs]
             wv_x_vals = species_df[["wv", "x"]].values.copy()
-            wv_x_vals[:, 0]/self.delta_wv
-            wv_x_vals[:, 1]/self.delta_x
+            wv_x_vals[:, 0] /= self.delta_wv
+            wv_x_vals[:, 1] /= self.delta_x
             m1, m2, dist = matching.match(wv_x_vals, wv_x_vals, tolerance=1.0) 
             match_idx = 0
             feature_idx = 0
             used_features = set()
             #for each feature attempt to build a suitable group
             while feature_idx < len(species_df):
-                #import pdb; pdb.set_trace()
                 #ignore features already in a group
                 if feature_idx in used_features:
                     feature_idx += 1
@@ -209,13 +214,14 @@ class SaturatedVoigtFeatureModel(object):
                     snr2_prod = snr2_available[min_idx:max_idx+1]*prof
                     captured_snr2 = np.sum(snr2_prod)
                     accum_snr2 += captured_snr2
-                    nprof = prof/np.sum(prof)
+                    nprof = prof/np.max(prof)
                     dof_prod = dof_available[min_idx:max_idx+1]*nprof
                     accum_dof += np.sum(dof_prod)
                     to_subtract.append((min_idx, max_idx, snr2_prod, dof_prod))
                     match_idx += 1
                 #print "accum_dof {} accum_snr2 {}".format(accum_dof, accum_snr2)
-                if (accum_dof > self.dof_threshold) and (accum_snr2) > self.snr_threshold**2:
+                if (accum_dof > 0.0) and (accum_snr2) > self.snr_threshold**2:
+                    print "accum n {}, accum dof {: 5.2f} accum snr {: 5.2f}".format(len(group_ixs), accum_dof, np.sqrt(accum_snr2))
                     #this is a good enough group add it to the set of groups
                     all_fit_groups.append(group_ixs)
                     #set their fit group column to match each other
@@ -248,6 +254,7 @@ class SaturatedVoigtFeatureModel(object):
         
         self.feature_matrix = scipy.sparse.lil_matrix((self.npts, n_groups), dtype=float)
         group_keys = groups.keys()
+        self.fdat["ew_frac"] = np.zeros(len(self.fdat))
         for group_idx in range(len(group_keys)):
             group_id = group_keys[group_idx]
             group_ldf = self.fdat.ix[groups[group_id]]
@@ -256,6 +263,7 @@ class SaturatedVoigtFeatureModel(object):
             relative_ews = np.power(10, group_cog_lrw-max_lrw)*group_ldf.wv.values
             relative_ew_sum = np.sum(relative_ews)
             ew_fracs = relative_ews/relative_ew_sum
+            self.fdat["ew_frac"].ix[groups[group_id]] = ew_fracs
             for feat_idx in range(len(group_ldf)):
                 feat_wv = group_ldf.iloc[feat_idx]["wv"]
                 wv_idx = self.get_index(feat_wv)
@@ -263,12 +271,12 @@ class SaturatedVoigtFeatureModel(object):
                     continue
                 if wv_idx > self.npts-1:
                     continue
-                doppler_width = group_ldf.iloc[feat_idx]["doppler_width"]
+                target_width = np.sqrt(group_ldf["doppler_width"].iloc[feat_idx]**2 + group_ldf["sigma_offset"].iloc[feat_idx]**2)
                 
-                lb = int(np.around(self.get_index(feat_wv-5.0*doppler_width, clip=True)))
-                ub = int(np.around(self.get_index(feat_wv+5.0*doppler_width, clip=True)))
+                lb = int(np.around(self.get_index(feat_wv-5.0*target_width, clip=True)))
+                ub = int(np.around(self.get_index(feat_wv+5.0*target_width, clip=True)))
                 
-                profile = voigt(self.model_wv[lb:ub+1], feat_wv, doppler_width, 0.0)
+                profile = voigt(self.model_wv[lb:ub+1], feat_wv, target_width, 0.0)
                 profile *= ew_fracs[feat_idx]
                 
                 self.feature_matrix[lb:ub+1, group_idx] = profile.reshape((-1, 1)) + self.feature_matrix[lb:ub+1, group_idx]
@@ -312,8 +320,11 @@ class SaturatedVoigtFeatureModel(object):
     def calc_cog(self):
         """calculate an approximate curve of growth and store its representation
         """
+        min_log_strength = -1.5
+        max_log_strength = 4.5
         n_strength = 100
-        strengths = np.power(10, np.linspace(-1.0, 5.0, n_strength))
+        log_strengths = np.linspace(min_log_strength, max_log_strength, n_strength)
+        strengths = np.power(10, log_strengths)
         npts = 1000
         dx = np.zeros(npts)
         extra_ends = [55, 65, 75, 100, 150, 300, 500, 1000]
@@ -330,19 +341,47 @@ class SaturatedVoigtFeatureModel(object):
             cur_rew = integrate.trapz(flux_deltas, x=dx)
             log_rews[strength_idx] = np.log10(cur_rew)
         
-        fit_quad = smooth_ppol_fit(np.log10(strengths), log_rews, y_inv=10.0*np.ones(n_strength), order=2)
-        self.cog = ppol.InvertiblePiecewiseQuadratic(fit_quad.coefficients, fit_quad.control_points)
+        cog_slope = scipy.gradient(log_rews)/scipy.gradient(log_strengths)
+        
+        n_extend = 2
+        low_strengths = min_log_strength - np.linspace(0.2, 0.1, n_extend)
+        high_strengths = max_log_strength + np.linspace(0.1, 0.2, n_extend)
+        extended_log_strengths = np.hstack((low_strengths, log_strengths, high_strengths))
+        extended_slopes = np.hstack((np.ones(n_extend), cog_slope, 0.5*np.ones(n_extend)))
+        
+        cpoints = np.linspace(min_log_strength, max_log_strength, 10)
+        #constrained_ppol = ppol.RCPPB(poly_order=1, control_points=cpoints)
+        #linear_basis = constrained_ppol.get_basis(extended_log_strengths)
+        linear_ppol = ppol.fit_piecewise_polynomial(extended_log_strengths, extended_slopes, order=1, control_points=cpoints)
+        
+        fit_quad = linear_ppol.integ()
+        #set the integration constant and redo the integration
+        zero_cross_idx = np.argmin(np.abs(log_rews))
+        zero_cross_lstr = log_strengths[zero_cross_idx]
+        new_offset = fit_quad([zero_cross_lstr])[0]
+        fit_quad = linear_ppol.integ(-new_offset)
+        
+        #fit_quad = smooth_ppol_fit(log_strengths, log_rews, y_inv=10.0*np.ones(n_strength), order=2)
+        self.cog = ppol.InvertiblePiecewiseQuadratic(fit_quad.coefficients, fit_quad.control_points, centers=fit_quad.centers, scales=fit_quad.scales)
     
     def fit_offsets(self):
-        species_gb = self.fdat.groupby(["Z", "ion"])
+        non_bk = self.fdat[self.fdat.fit_group > 0]
+        bk = self.fdat[self.fdat.fit_group < 0]
+        gb_cols = ["Z", "ion"]
+        species_gb = non_bk.groupby(gb_cols)
+        bk_gb = bk.groupby(gb_cols)
         groups = species_gb.groups
+        bk_groups = bk_gb.groups
         for species_key in groups.keys():
             species_df = self.fdat.ix[groups[species_key]]
             delta_rews = np.log10(species_df.ew/species_df.doppler_width)
             x_deltas = species_df.x.values - self.cog.inverse(delta_rews.values)
             offset = np.median(x_deltas)
             self.fdat["x_offset"][groups[species_key]] = offset
-        
+            bk_ixs = bk_groups.get(species_key)
+            if not bk_ixs is None:
+                self.fdat["x_offset"][bk_ixs] = offset
+    
     @property
     def doppler_lrw(self):
         return np.log10(self.doppler_width/self.wv)
@@ -367,9 +406,10 @@ class SaturatedVoigtFeatureModel(object):
         return self.lrw - self.doppler_lrw
         
     def cog_plot(self, ax=None):
+        foreground = self.fdat[self.fdat.fit_group > 0]
         if ax is None:
             fig, ax = plt.subplots()
-        ax.scatter(self.x_adj, self.lrw_adj)
+        ax.scatter(foreground.x-foreground.x_offset, np.log10(foreground.ew/foreground.wv))
         ax.set_xlabel("adjusted relative strength")
         ax.set_ylabel("log(EW/doppler_width)")
 

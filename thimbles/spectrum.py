@@ -19,6 +19,7 @@ from . import verbosity
 from .reference_frames import InertialFrame
 from .resolution import LineSpreadFunction, GaussianLSF, BoxLSF
 from .binning import CoordinateBinning1D
+from scipy.interpolate import interp1d
 
 # ########################################################################### #
 
@@ -26,11 +27,11 @@ __all__ = ["WavelengthSolution","Spectrum"]
 
 # ########################################################################### #
 
-speed_of_light = 299792.458
+speed_of_light = 299792.458 #speed of light in km/s
 
 class WavelengthSolution(CoordinateBinning1D):
     
-    def __init__(self, obs_wavelengths, emitter_frame=None, observer_frame=None, lsf=None):
+    def __init__(self, obs_wavelengths, rv=None, barycenter_vel=None, lsf=None):
         """a class that encapsulates the manner in which a spectrum is sampled
         obs_wavelengths: np.ndarray
         emitter_frame: InertialFrame or Float
@@ -45,33 +46,39 @@ class WavelengthSolution(CoordinateBinning1D):
         """
         super(WavelengthSolution, self).__init__(obs_wavelengths)
         
-        if observer_frame is None:
-            observer_frame = InertialFrame(0.0)
-        elif not isinstance(observer_frame, InertialFrame):
-            observer_frame = InertialFrame(observer_frame)
-        self.observer_frame = observer_frame
+        if rv is None:
+            rv = 0.0
+        self._rv = rv
         
-        if emitter_frame is None:
-                emitter_frame = InertialFrame(0.0)
-        elif not isinstance(emitter_frame, InertialFrame):
-            emitter_frame = InertialFrame(emitter_frame)
-        self.emitter_frame = emitter_frame
+        if barycenter_vel is None:
+            barycenter_vel = 0.0
+        self._barycenter_vel = barycenter_vel
         
         if lsf is None:
-            lsf = GaussianLSF(np.ones(len(obs_wavelengths)))
-        elif not isinstance(lsf, LineSpreadFunction):
-            try:
-                lsf = GaussianLSF(lsf)
-            except:
-                verbosity("bad LSF specification defaulting to box LSF")
-                lsf = BoxLSF(self)
+            lsf = np.ones(len(obs_wavelengths))
         self.lsf = lsf
     
+    @property
+    def rv(self):
+        return self._rv
+    
+    @rv.setter
+    def rv(self, value):
+        self._rv = value
+    
     def set_rv(self, rv):
-        self.emitter_frame = InertialFrame(rv)
+        self.rv = rv
     
     def get_rv(self):
-        return self.emitter_frame.rv
+        return self.rv
+    
+    @property
+    def barycenter_vel(self):
+        return self._barycenter_vel
+    
+    @barycenter_vel.setter
+    def barycenter_vel(self, value):
+        self._varycenter_vel = value
     
     def get_wvs(self, pixels=None, frame="emitter"):
         if pixels == None:
@@ -86,21 +93,21 @@ class WavelengthSolution(CoordinateBinning1D):
     
     def observer_to_frame(self, observer_wvs, frame="emitter"):
         if frame == "emitter":
-            delta_v = self.emitter_frame - self.observer_frame
+            delta_v = self.rv - self.barycenter_vel
         elif frame == "observer":
             delta_v = 0.0
         else:
-            delta_v = frame - self.observer_frame
-        return observer_wvs*(1.0-delta_v.rv/speed_of_light)
+            delta_v = frame - self.rv
+        return observer_wvs*(1.0-delta_v/speed_of_light)
     
     def frame_to_observer(self, frame_wvs, frame="emitter"):
         if frame == "emitter":
-            delta_v = self.emitter_frame - self.observer_frame
+            delta_v = self.rv - self.barycenter_vel
         elif frame == "observer":
             delta_v = 0.0
         else:
-            delta_v = frame - self.observer_frame
-        return frame_wvs*(1.0+delta_v.rv/speed_of_light)
+            delta_v = frame - self.barycenter_vel
+        return frame_wvs*(1.0+delta_v/speed_of_light)
     
     def frame_conversion(self, wvs, wv_frame, target_frame):
         rest_wvs = self.frame_to_observer(wvs, frame=wv_frame)
@@ -187,21 +194,24 @@ class Spectrum(object):
     """A representation of a collection of relative flux measurements
     """
     
-    def __init__(self, 
-                 wavelength_solution, 
+    def __init__(self,
+                 wavelengths, 
                  flux, 
                  inv_var=None,
+                 rv=None,
+                 barycenter_vel=None,
+                 lsf=None,
                  norm="ones", 
                  metadata=None,
                  flags=None
              ):
         """makes a spectrum from a wavelength solution, flux and optional inv_var
         """
-        if isinstance(wavelength_solution, WavelengthSolution):
-            self.wv_soln = wavelength_solution
+        if isinstance(wavelengths, WavelengthSolution):
+            self.wv_soln = wavelengths
         else:
             #TODO proper error handling for odd inputs
-            self.wv_soln = WavelengthSolution(wavelength_solution)
+            self.wv_soln = WavelengthSolution(wavelengths, rv=rv, barycenter_vel=barycenter_vel, lsf=lsf)
         
         # TODO: check that the dimensions of the inputs match
         self.flux = np.asarray(flux)
@@ -324,9 +334,9 @@ class Spectrum(object):
         #TODO deal with zeros appropriately
         return inv_var_2_var(self.inv_var)
     
-    def normalize(self):
+    def normalize(self, **kwargs):
         #TODO: put extra controls in here
-        norm_res = misc.approximate_normalization(self, overwrite=True)    
+        norm_res = misc.approximate_normalization(self, overwrite=True, **kwargs)    
         return norm_res
     
     def normalized(self):
@@ -353,6 +363,14 @@ class Spectrum(object):
         """
         pass
     
+    def lsf_sampling_matrix(self, model_wvs):
+        wv_widths = scipy.gradient(self.wv)*self.wv_soln.lsf
+        #TODO: use faster interpolation
+        interper = interp1d(self.wv, wv_widths, bounds_error=False, fill_value=1.0)
+        gdense = resampling.GaussianDensity(model_wvs, interper(model_wvs))
+        transform = resampling.get_resampling_matrix(model_wvs, self.wv, preserve_normalization=True, pixel_density=gdense)    
+        return transform
+        
     def rebin(self, new_wv_soln, frame="emitter"):
         #check if we have the transform stored
         if self._last_rebin_wv_soln_id == id(new_wv_soln):
@@ -412,17 +430,16 @@ class Spectrum(object):
         wvs, flux, inv_var
         """
         l_idx, u_idx = self.bounding_indexes(bounds, frame)
-        out_wvs = self.get_wvs(np.arange(l_idx, u_idx+1), frame=frame)
-        if copy:
-            out_flux = self.flux[l_idx:u_idx+1].copy()
-            out_invvar = self.inv_var[l_idx:u_idx+1].copy()
-            out_norm = self.norm[l_idx:u_idx+1].copy()
-        else:
-            out_flux = self.flux[l_idx:u_idx+1]
-            out_invvar = self.inv_var[l_idx:u_idx+1]
-            out_norm = self.norm[l_idx:u_idx+1]
-        if len(out_flux) < 2:
+        if u_idx-l_idx < 1:
             return None
+        out_wvs = self.get_wvs(np.arange(l_idx, u_idx+1), frame=frame)
+        out_flux = self.flux[l_idx:u_idx+1]
+        out_invvar = self.inv_var[l_idx:u_idx+1]
+        out_norm = self.norm[l_idx:u_idx+1]
+        if copy:
+            out_flux = out_flux.copy()
+            out_invvar = out_invvar.copy()
+            out_norm = out_norm.copy()
         return Spectrum(out_wvs, out_flux, out_invvar, norm=out_norm)
     
     def plot(self, axes=None, frame="emitter", **mpl_kwargs):
@@ -439,3 +456,7 @@ class Spectrum(object):
     @property
     def var(self):
         return inv_var_2_var(self.inv_var)
+    
+    @property
+    def ivar(self):
+        return self.inv_var

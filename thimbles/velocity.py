@@ -49,14 +49,12 @@ def template_rv_estimate(spectra, template=rv_standard, delta_max=500, pix_poly_
     
     """
     log_delta = np.log10(template.wv[-1]/template.wv[0])/len(template)
-    #spec_wv_max = np.max([np.max(s.wv) for s in spectra])
-    #wv_delta_max = (delta_max/speed_of_light)*spec_wv_max
     ccors = []
     for spec in spectra:
         wv_bnds = spec.wv[0], spec.wv[-1]
         wv_min = min(wv_bnds)
         wv_max = max(wv_bnds)
-        spec_bounds = (wv_min, wv_max) 
+        spec_bounds = (wv_min, wv_max)
         bounded_template = template.bounded_sample(spec_bounds)
         normed = spec.normalized()
         rebinned = normed.rebin(bounded_template.wv)
@@ -69,8 +67,7 @@ def template_rv_estimate(spectra, template=rv_standard, delta_max=500, pix_poly_
     normed_ccors = ccors/ccor_maxes.reshape((-1, 1))
     ccor_med = np.median(normed_ccors, axis=0)
     max_idx = np.argmax(ccor_med)
-    frac_delta = np.power(10.0, (np.arange(len(ccor_med)) - (len(ccor_med)-1.0)/2.0)*log_delta)
+    frac_delta = np.power(10.0, (np.arange(len(ccor_med)) - len(ccor_med)/2.0)*log_delta)
     ccor_vels = (frac_delta-1.0)*speed_of_light
-    #import pdb; pdb.set_trace()
     rv, ccor_sig, ccor_peak = local_gaussian_fit(ccor_med, max_idx, pix_poly_width, xvalues=ccor_vels)
     return rv

@@ -35,7 +35,7 @@ class NoSolution (WavelengthSolution):
     
     # TODO: __call__.__doc__ = get_wvs.__doc__
     
-    def get_pix (self,wvs,frame='emiiter'):
+    def get_index (self,wvs,frame='emiiter'):
         """ Take wavelengths and return pixels """
         return wvs
 

@@ -1,4 +1,5 @@
 import numpy as np
+import thimbles as tmb
 from piecewise_polynomial import powers_from_max_order
 from piecewise_polynomial import MultiVariatePolynomial
 
@@ -44,26 +45,34 @@ def optimal_partition(data, cost_fn, minimize=True):
     return partition
 
 def partitioned_polynomial_model(xvec, yvec, y_inv_var, poly_order,
-                                    grouping_column = 0, min_delta = 0,
-                                    alpha=2.0, beta=2.0, epsilon=0.01):
+                                grouping_column = 0, min_delta = 0,
+                                alpha=2.0, beta=2.0, beta_epsilon=0.01, 
+                                gamma=2.5, y_mult=None):
     """
     fits optimal multivariate piecewise polynomials to the data with 
     dynamically chosen break points between the polynomials.
     The optimal partition is chosen so that the sum of the cost functions
     over the blocks in the partition is a minimum.
     
-    cost = chi_square + alpha*k + beta*k*(k+1)/max(epsilon, npts_region - k -1)
+    cost = pseudo_huber_cost(residuals) + alpha*k + beta*k*(k+1)/max(beta_epsilon, npts_region - k -1)
     
         npts_region is the number of points with non-zero yerrors included
         in the current partition block. 
         k is the number of terms used in the fit e.g. for a one dimensional
         piecewise quadratic k = poly_order + 1 = 3.
+        the pseudo huber residual cost is a chi squared sum for small deltas
+        and turns over to linear cost for large delta with the turnover
+        controled by the input gamma parameter.
     
     parameters
-    xvec: the independent variables (n_data, n_variables)
-    yvec: the dependent variable (n_data,)
-    y_inv_var: the inverse variance associated with the y vector (n_data,)
-    poly_order: a tuple of the maximum order of the associated column
+    xvec: numpy.ndarray (n_data, n_variables)
+        the independent variables
+    yvec: numpy.ndarray (n_data,)
+        the dependent variables
+    y_inv_var: npumpy.ndarray (n_data,) 
+        one over the variance associated to yvec
+    poly_order: int or tuple 
+        a tuple of the maximum order of the associated column
         of any term which contains a non-zero power of that variable. 
         for example if poly_order == (2, 1) call the first 
         variable(first column) x and the second variable(second column)
@@ -71,19 +80,29 @@ def partitioned_polynomial_model(xvec, yvec, y_inv_var, poly_order,
         and if poly_order == (2, 2) we would allow 1, x, x**2, y, y**2, x*y
         x**2*y and y**2*x**2 etc, would not be allowed because their total
         order exceeds 2.
-    grouping_column: the index of the column to be used to divide the data
-        rows into blocks.
-    min_delta: The minimum difference in the values of the grouping column
+    grouping_column: int 
+        the index of the column to be used to divide the data
+        rows into blocks. Defaults to first column
+    min_delta: float 
+        The minimum difference in the values of the grouping column
         over which to allow a break. Row indicies are accumulated into 
         the elementary blocks from which the larger partitions are built
         until the difference in the grouping column from start to end 
         exceeds min_delta.
-    alpha: is the cost per extra term 2 corresponds to the AIC 
+    alpha: float
+        The cost per extra term 2 corresponds to the AIC 
         log(npts_total) corresponds to using the BIC
-    beta: is a cost to correct for small sample sizes, making picking samples
+    beta: float
+        Cost multiplier to correct for small sample sizes, making picking samples
         which are not well constrained expensive.
-    epsilon: beta*k*(k+1)/epsilon is the cost associated to all
+    beta_epsilon: float
+        beta*k*(k+1)/beta_epsilon is the cost associated to all
         not well constrained models (meaning npts_block <= (k + 1))
+    gamma: float
+        controls the turn over to linear part of pseudo-huber cost function
+    y_mult: None or ndarray
+        optional constant vector to multiply the polynomial by before comparing
+        to the target y data.
     
     returns:
     partition: list of integers
@@ -95,6 +114,9 @@ def partitioned_polynomial_model(xvec, yvec, y_inv_var, poly_order,
     assert len(xvec) == len(yvec)
     npts = len(xvec)
     assert len(y_inv_var) == npts
+    
+    if y_mult is None:
+        y_mult = np.ones(npts)
     
     #keep a reshaped xvec so it is 2 dim
     if xvec.ndim == 2:
@@ -123,15 +145,18 @@ def partitioned_polynomial_model(xvec, yvec, y_inv_var, poly_order,
     powers = powers_from_max_order(poly_order)
     n_terms = len(powers)
     
-    #make an array of the monomial terms
+    #make an array of the monomial terms times the output modulation
     mvp = MultiVariatePolynomial(np.zeros(n_terms), powers, x_cent, x_scale)
-    pofx = mvp.get_pofx(xvec_2d)
+    pofx = mvp.get_pofx(xvec_2d)*y_mult.reshape((-1, 1))
     
     #carry out the optimal partitioning algorithm.
     n_blocks = len(grouping_idxs)-1
     opt_val = np.zeros(n_blocks+1)
     break_idxs = np.zeros(n_blocks+1, dtype = int)
     opt_fit_params = np.zeros((n_blocks+1, n_terms))
+    sigma_vec = 1.0/np.sqrt(y_inv_var)
+    sigma_vec = np.where(y_inv_var == 0, 1e10, sigma_vec)
+    gamma_vec = gamma*sigma_vec
     for i in range(1, n_blocks+1):
         cmin = float("inf")
         cidx = None
@@ -139,13 +164,17 @@ def partitioned_polynomial_model(xvec, yvec, y_inv_var, poly_order,
         for j in range(i):
             lb = grouping_idxs[j]
             ub = grouping_idxs[i]
-            opt_params = np.linalg.lstsq(pofx[lb:ub], yvec[lb:ub])[0]
+            chop_sig=sigma_vec[lb:ub]
+            chop_gam=gamma_vec[lb:ub]
+            opt_params = tmb.utils.misc.pseudo_huber_irls(pofx[lb:ub], yvec[lb:ub], chop_sig, chop_gam)
             opt_fit_y = np.dot(pofx[lb:ub], opt_params)
-            chi_sq = np.sum((opt_fit_y-yvec[lb:ub])**2*y_inv_var[lb:ub])
+            resids = opt_fit_y-yvec[lb:ub]
+            #chi_sq = np.sum((opt_fit_y-yvec[lb:ub])**2*y_inv_var[lb:ub])
+            ph_cost = tmb.utils.misc.pseudo_huber_cost(resids, chop_sig, chop_gam)
             n_local = ub-lb
             param_cost = alpha*n_terms
-            param_cost += beta*n_terms*(n_terms+1)/max(epsilon, n_local-n_terms-1)
-            tot_cost = chi_sq + param_cost + opt_val[j]
+            param_cost += beta*n_terms*(n_terms+1)/max(beta_epsilon, n_local-n_terms-1)
+            tot_cost = ph_cost + param_cost + opt_val[j]
             if tot_cost < cmin:
                 cmin = tot_cost
                 cidx = j
@@ -243,7 +272,7 @@ if __name__ == "__main__":
     part, part_polys = partitioned_polynomial_model(x_in_masked, rpoints_masked, 
                                     in_inv_var_masked, poly_order=(2,2),
                                     grouping_column = 0, min_delta = 5,
-                                    alpha=2.0, beta=2.0, epsilon=0.01)
+                                    alpha=2.0, beta=2.0, beta_epsilon=0.01)
     
     #part = optimal_partition(rpoints, cost_fn)
     #avgs = partition_average(rpoints, part)

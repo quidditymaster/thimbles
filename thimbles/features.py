@@ -20,16 +20,17 @@ class SaturatedVoigtFeatureModel(object):
                  transitions, 
                  min_wv,
                  max_wv,
-                 snr_threshold=1.0,
+                 snr_threshold=5.0,
+                 snr_target=100.0,
+                 dof_thresholds=None,
                  teff=5000.0, 
                  vmicro=2.0, 
-                 vmacro=1.0, 
-                 gamma_ratio_5000=0.02,
-                 initial_x_offset=8.0,
-                 delta_wv=50,
-                 delta_x=0.25,
-                 domination_ratio=4.0,
-                 param_hierarchy=None,
+                 vmacro=1.0,
+                 mean_gamma_ratio=0.05,
+                 initial_x_offset=6.0,
+                 max_delta_wv=100,
+                 max_delta_x=0.25,
+                 domination_ratio=5.0,
                  H_mask_radius=2.0,
                  model_resolution=5e5,):
         """provides a model of a normalized absorption spectrum
@@ -42,57 +43,74 @@ class SaturatedVoigtFeatureModel(object):
           microturbulent velocity in kilometers per second
         vmacro: float
           macroturbulent velocity in kilometers per second
-        gamma_ratio_5000: float
+        mean_gamma_ratio: float
           the ratio of the lorentz width to the thermal width at 5000 angstroms.
         """
-        if param_hierarchy is None:
-            param_hierarchy = {}
-            #param_hierarchy["param_name"] = accumulated_group_degrees_of_freedom_threshold
-            param_hierarchy["ew"] = 0.5
-            param_hierarchy["vel_offset"] = 2.0
-            param_hierarchy["sigma_offset"] = 3.0
-            param_hierarchy["gamma_offset"] = 5.0
-        self.param_hierarchy = param_hierarchy
+        self.fdat = transitions.copy()
+        self.n_feat = len(self.fdat)
+        self._check_initialize_column("ew", fill_value=0.0)
+        self._check_initialize_column("wv_offset", fill_value=0.0)
+        self._check_initialize_column("sigma_offset", fill_value=0.0)
+        self._check_initialize_column("gamma_offset", fill_value=0.0)
+        self._check_initialize_column("x_offset", fill_value=initial_x_offset)
+        self._check_initialize_column("fit_group", 0.0)
+        self._check_initialize_column("group_dof", 0.0)
+        self._check_initialize_column("group_exemplar", 1)
+        
         self.min_wv = float(min_wv)
         self.max_wv = float(max_wv)
         self.teff = teff
-        self._initial_x_off = initial_x_offset
         self.snr_threshold = snr_threshold
+        self.snr_target = snr_target
         self.vmicro = vmicro
         self.vmacro = vmacro
         self.domination_ratio=domination_ratio
         self.H_mask_radius=H_mask_radius
-        self.delta_wv = delta_wv
-        self.delta_x = delta_x
+        self.max_delta_wv = max_delta_wv
+        self.max_delta_x = max_delta_x
         #TODO: make the gamma ratio change as a function of wv
         #TODO: allow for individual gamma ratio's by interpolating cogs
-        self.gamma_ratio_5000 = gamma_ratio_5000
+        self.mean_gamma_ratio = mean_gamma_ratio
         self.model_resolution=model_resolution
+        
+        self.calc_all()
+        
+        self.dof_thresholds = {"ew":1.5, "vel_offset":5.0, "sigma_offset":5.0, "gamma_offset":10.0}
+        if isinstance(dof_thresholds, dict):
+            self.dof_thresholds.update(dof_thresholds)
+        elif not dof_thresholds is None:
+            error_msg = """
+dof_thresholds of type {} type not understood. expected dictionary 
+with keys in the set 'ew', 'vel_offset', 'sigma_offset', 'gamma_offset'
+and float values.""".format(type(dof_thresholds))
+            raise ValueError(error_msg)
         
         self.npts = int(np.log(self.max_wv/self.min_wv)*self.model_resolution)
         self.model_wv = np.exp(np.linspace(np.log(self.min_wv), np.log(self.max_wv), self.npts))
         self.model_wv_gradient = scipy.gradient(self.model_wv)
         self.delta_log = np.log(self.max_wv/self.min_wv)/self.npts
-        
-        self.fdat = transitions.copy()
-        self.n_feat = len(self.fdat)
-        self._initialize_columns()
         #a is defined as gamma*wv**2/(4*pi*c*doppler_width)
     
-    def _initialize_columns(self):
-        cur_columns = self.fdat.columns 
-        targ_columns = ["ew", "wv_offset", "sigma_offset", "gamma_offset"]
-        for col in targ_columns:
-            if not (col in cur_columns):
-                self.fdat[col] = np.zeros(self.n_feat)
-        
-        self.fdat["gamma_ratio"] = np.ones(self.n_feat)*self.gamma_ratio_5000
-        self.fdat["x_offset"] = np.ones(self.n_feat)*self._initial_x_off
+    def _check_initialize_column(self, col_name, fill_value):
+        """check if a column is defined and if it is not add it"""
+        if not (col_name in self.fdat.columns):
+            new_col = np.empty(self.n_feat, dtype=float)
+            new_col.fill(fill_value)
+            self.fdat[col_name] = new_col
+    
+    def calc_all(self):
         self.calc_cog()
         self.calc_solar_ab()
         self.calc_doppler_widths()
         self.calc_x()
         self.calc_cog_lrws()
+    
+    def assign_group_ews(self, group_ews):
+        pass
+    
+    def set_pvec(self, ew_vec):
+        #TODO: allow for other types of fitting
+        self.fdat["ew"]
     
     def __getattr__(self, attr_name):
         return eval("self.fdat['{}']".format(attr_name))
@@ -119,7 +137,6 @@ class SaturatedVoigtFeatureModel(object):
             snr2_available += cur_snr2
             dof_available = np.where(dof_available > cur_dof, dof_available, cur_dof)
         
-        #import pdb; pdb.set_trace()
         #get the log of the min pixel size as a fraction of wavelength
         pixel_lrw = np.log10(min_delta_wv/self.model_wv)
         
@@ -141,7 +158,7 @@ class SaturatedVoigtFeatureModel(object):
             max_idx = self.get_index(cent_wv*(1.0+window_delta), clip=True)
             sigma = ldata["doppler_width"]
             #TODO: replace the constant gamma with an appropriately varying one
-            gamma = self.gamma_ratio_5000*sigma
+            gamma = self.mean_gamma_ratio*sigma
             prof = voigt(self.model_wv[min_idx:max_idx+1], cent_wv, sigma, gamma)
             predicted_lrw = ldata["cog_lrw"]
             prof *= np.power(10.0, predicted_lrw)/np.max(prof)
@@ -176,27 +193,27 @@ class SaturatedVoigtFeatureModel(object):
             species_ixs = species_groups[species_pair]
             species_df = foreground_features.ix[species_ixs]
             wv_x_vals = species_df[["wv", "x"]].values.copy()
-            wv_x_vals[:, 0] /= self.delta_wv
-            wv_x_vals[:, 1] /= self.delta_x
+            wv_x_vals[:, 0] /= self.max_delta_wv
+            wv_x_vals[:, 1] /= self.max_delta_x
             m1, m2, dist = matching.match(wv_x_vals, wv_x_vals, tolerance=1.0) 
-            match_idx = 0
-            feature_idx = 0
+            potential_groups = [[]]
+            last_matching_idx = m1[0]
+            for match_idx in range(len(m1)):
+                if last_matching_idx != m1[match_idx]:
+                    potential_groups.append([])
+                    last_matching_idx = m1[match_idx]
+                potential_groups[-1].append(m2[match_idx])
+            
             used_features = set()
             #for each feature attempt to build a suitable group
-            while feature_idx < len(species_df):
-                #ignore features already in a group
-                if feature_idx in used_features:
-                    feature_idx += 1
-                    continue
+            for potential_group in potential_groups:
+                potential_ixs = [species_ixs[pgi] for pgi in potential_group]                
                 group_ixs = []
                 accum_snr2 = 0.0
                 accum_dof = 0.0
                 to_subtract = []
-                #put every allowed pair for this feature into a group with it and see if it is good enough
-                while (match_idx < len(m1)) and (m1[match_idx] == feature_idx):
-                    fdat_ix = species_ixs[m2[match_idx]]
+                for fdat_ix in potential_ixs:
                     if fdat_ix in used_features:
-                        match_idx +=1
                         continue
                     group_ixs.append(fdat_ix)
                     ldata = self.fdat.ix[fdat_ix]
@@ -206,7 +223,7 @@ class SaturatedVoigtFeatureModel(object):
                     max_idx = self.get_index(cent_wv*(1.0+window_delta), clip=True)
                     sigma = max(ldata["doppler_width"], min_delta_wv[cent_idx])
                     #TODO: replace the constant gamma with an appropriately varying one
-                    gamma = self.gamma_ratio_5000*sigma
+                    gamma = self.mean_gamma_ratio*sigma
                     cog_lrw = ldata["cog_lrw"]
                     cog_ew = np.power(10.0, cog_lrw)*cent_wv
                     prof = cog_ew*voigt(self.model_wv[min_idx:max_idx+1], cent_wv, sigma, gamma)
@@ -217,28 +234,39 @@ class SaturatedVoigtFeatureModel(object):
                     nprof = prof/np.max(prof)
                     dof_prod = dof_available[min_idx:max_idx+1]*nprof
                     accum_dof += np.sum(dof_prod)
-                    to_subtract.append((min_idx, max_idx, snr2_prod, dof_prod))
-                    match_idx += 1
-                #print "accum_dof {} accum_snr2 {}".format(accum_dof, accum_snr2)
-                if (accum_dof > 0.0) and (accum_snr2) > self.snr_threshold**2:
-                    print "accum n {}, accum dof {: 5.2f} accum snr {: 5.2f}".format(len(group_ixs), accum_dof, np.sqrt(accum_snr2))
-                    #this is a good enough group add it to the set of groups
-                    all_fit_groups.append(group_ixs)
-                    #set their fit group column to match each other
-                    for feat_ix in group_ixs:
-                        self.fdat["fit_group"].ix[feat_ix] = len(all_fit_groups)
-                        used_features.add(feat_ix)
-                    #subtract from our total allotment of signal to noise and degrees of freedom
-                    for min_idx, max_idx, snr2_prod, dof_prod in to_subtract:
-                        resid_snr2 = snr2_available[min_idx:max_idx+1] - snr2_prod
-                        snr2_available[min_idx:max_idx+1] = np.where(resid_snr2 > 0, resid_snr2, 0.0)
-                        resid_dof = dof_available[min_idx:max_idx+1] - dof_prod*min(1.0, 3.0/len(to_subtract))
-                        dof_available[min_idx:max_idx+1] = np.where(resid_dof > 0, resid_dof, 0.0)
-                else:
-                    #no allowable groups for this feature relegate it to the background
-                    self.fdat.iloc[feature_idx]["fit_group"] = 0
-                feature_idx += 1
-        #import pdb; pdb.set_trace()
+                    to_subtract.append((min_idx, max_idx, dof_prod, snr2_prod))
+                    add_group = False
+                    meets_snr_threshold = accum_snr2 > self.snr_threshold**2
+                    meets_snr_target = accum_snr2 > self.snr_target**2
+                    non_degen = accum_dof > 1.0
+                    is_last_match = fdat_ix == potential_ixs[-1]
+                    if meets_snr_target and non_degen:
+                        add_group = True
+                    elif meets_snr_threshold and non_degen and is_last_match:
+                        add_group = True
+                    if add_group:
+                        print "accum n {}, accum dof {: 5.2f} accum snr {: 5.2f}".format(len(group_ixs), accum_dof, np.sqrt(accum_snr2))
+                        #this is a good enough group add it to the set of groups
+                        all_fit_groups.append(group_ixs)
+                        #pick a group exemplar at random
+                        exemplar_ix = group_ixs[np.random.randint(0, len(group_ixs))]
+                        #set their fit group column to match each other
+                        for feat_ix in group_ixs:
+                            if feat_ix == exemplar_ix:
+                                self.fdat["group_exemplar"].ix[feat_ix] = 1
+                            else:
+                                self.fdat["group_exemplar"].ix[feat_ix] = 0
+                            self.fdat["fit_group"].ix[feat_ix] = len(all_fit_groups)+1
+                            used_features.add(feat_ix)
+                        #subtract from our total allotment of signal to noise and degrees of freedom
+                        for min_idx, max_idx, dof_prod, snr2_prod in to_subtract:
+                            resid_snr2 = snr2_available[min_idx:max_idx+1]-snr2_prod
+                            snr2_available[min_idx:max_idx+1] = np.where(resid_snr2 > 0, resid_snr2, 0.0)
+                            resid_dof = dof_available[min_idx:max_idx+1] - dof_prod*min(1.0, 3.0/len(to_subtract))
+                            dof_available[min_idx:max_idx+1] = np.where(resid_dof > 0, resid_dof, 0.0)
+                    if is_last_match:
+                        if not add_group:
+                            self.fdat["fit_group"].ix[potential_ixs[0]] = 0
     
     def get_index(self, wv, clip=False):
         idx = np.log(np.asarray(wv)/self.min_wv)/self.delta_log
@@ -288,11 +316,7 @@ class SaturatedVoigtFeatureModel(object):
     
     def calc_solar_ab(self):
         self.fdat["solar_ab"] = ptable[self.species.values]["abundance"]
-    
-    @property
-    def solar_ab(self):
-        return self.fdat["solar_ab"]
-    
+        
     def calc_therm_widths(self):
         #TODO: use real atomic weight
         weight =2.0*self.fdat["Z"]
@@ -313,7 +337,7 @@ class SaturatedVoigtFeatureModel(object):
         self.fdat["x"] = self.solar_ab + self.loggf - self.ep*self.theta - self.doppler_lrw
     
     def calc_cog_lrws(self):
-        lrws = self.cog(self.x_adj.values) #adjusted?
+        lrws = self.cog(self.x_adj.values)
         self.fdat["cog_lrw_adj"] = lrws
         self.fdat["cog_lrw"] = lrws + self.doppler_lrw.values
     
@@ -334,7 +358,7 @@ class SaturatedVoigtFeatureModel(object):
             dx[end_idx] = -extra_ends[-(end_idx+1)]
             dx[-(end_idx+1)] = extra_ends[-(end_idx+1)]
         
-        opac_profile = voigt(dx, 0.0, 1.0, self.gamma_ratio_5000)        
+        opac_profile = voigt(dx, 0.0, 1.0, self.mean_gamma_ratio)        
         log_rews = np.zeros(n_strength)
         for strength_idx in range(n_strength):
             flux_deltas = 1.0-np.exp(-strengths[strength_idx]*opac_profile)
@@ -365,22 +389,33 @@ class SaturatedVoigtFeatureModel(object):
         self.cog = ppol.InvertiblePiecewiseQuadratic(fit_quad.coefficients, fit_quad.control_points, centers=fit_quad.centers, scales=fit_quad.scales)
     
     def fit_offsets(self):
-        non_bk = self.fdat[self.fdat.fit_group > 0]
-        bk = self.fdat[self.fdat.fit_group < 0]
+        exemplar_mask = self.fdat.group_exemplar > 0
+        non_bk = self.fdat[(self.fdat.fit_group > 1)*exemplar_mask]
+        bk = self.fdat[self.fdat.fit_group <= 1]
         gb_cols = ["Z", "ion"]
         species_gb = non_bk.groupby(gb_cols)
         bk_gb = bk.groupby(gb_cols)
         groups = species_gb.groups
         bk_groups = bk_gb.groups
-        for species_key in groups.keys():
+        #order the species keys so we do the species with the most exemplars first
+        num_exemplars = [(len(groups[k]), k) for k in groups.keys()]
+        num_exemplars = sorted(num_exemplars)
+        fallback_offset = 0.0
+        for group_idx in range(len(num_exemplars)):
+            species_key = num_exemplars[group_idx][1]
             species_df = self.fdat.ix[groups[species_key]]
             delta_rews = np.log10(species_df.ew/species_df.doppler_width)
             x_deltas = species_df.x.values - self.cog.inverse(delta_rews.values)
             offset = np.median(x_deltas)
+            if np.isnan(offset):
+                offset = fallback_offset
             self.fdat["x_offset"][groups[species_key]] = offset
             bk_ixs = bk_groups.get(species_key)
             if not bk_ixs is None:
                 self.fdat["x_offset"][bk_ixs] = offset
+            if group_idx == 0:
+                if not np.isnan(offset):
+                    fallback_offset = offset
     
     @property
     def doppler_lrw(self):
@@ -405,11 +440,11 @@ class SaturatedVoigtFeatureModel(object):
     def lrw_adj(self):
         return self.lrw - self.doppler_lrw
         
-    def cog_plot(self, ax=None):
-        foreground = self.fdat[self.fdat.fit_group > 0]
+    def cog_plot(self, ax=None, **kwargs):
+        foreground = self.fdat[(self.fdat.fit_group > 1)*(self.fdat.group_exemplar > 0)]
         if ax is None:
             fig, ax = plt.subplots()
-        ax.scatter(foreground.x-foreground.x_offset, np.log10(foreground.ew/foreground.wv))
+        ax.scatter(foreground.x-foreground.x_offset, np.log10(foreground.ew/foreground.wv), **kwargs)
         ax.set_xlabel("adjusted relative strength")
         ax.set_ylabel("log(EW/doppler_width)")
 

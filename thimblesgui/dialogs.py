@@ -338,7 +338,7 @@ class NormalizationDialog(QDialog):
         self.algorithm_label = QLabel("algorithm")
         self.algorithm_dd = QComboBox()
         algo1 = ["adaptive echelle", 
-                 "partition_scale=300, poly_order=3, mask_kwargs={'n_layers':3, 'first_layer_width':101, 'last_layer_width':11, 'rejection_sigma':2.0}, smart_partition=False, alpha=4.0, beta=4.0, overwrite=True",
+                 "partition_scale=500, poly_order=3, mask_kwargs={'n_layers':3, 'first_layer_width':201, 'last_layer_width':11, 'rejection_sigma':2.0}, H_mask_radius=2.0, overwrite=True",
                  user_namespace.eval_("tmb.utils.misc.approximate_normalization")]
         self.algos = [algo1]
         algo_names = [al[0] for al in self.algos]

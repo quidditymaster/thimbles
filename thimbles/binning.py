@@ -109,7 +109,8 @@ class CoordinateBinning1D (object):
         return np.array(out_c, dtype=int)
     
     def interpolant_matrix(self, coords):
-        index_vals = self.coordinates_to_indicies()
+        raise NotImplementedError("I'm getting to it...")
+        index_vals = self.coordinates_to_indicies(coords, extrapolation="nan")
         upper_index = np.ceil(index_vals)
         lower_index = np.floor(index_vals)
         alphas = index_vals - lower_index

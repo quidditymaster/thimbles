@@ -818,7 +818,7 @@ def approximate_normalization(spectrum,
                     poly_order=(poly_order,),
                     grouping_column=0, 
                     min_delta=pscale,
-                    alpha=alpha, beta=beta, epsilon=0.01)
+                    alpha=alpha, beta=beta, beta_epsilon=0.01)
             break_wvs = mwv[np.asarray(opt_part[1:-1], dtype=int)]
             use_simple_partition = False
         except:
@@ -931,6 +931,13 @@ def l1_factor(input_matrix, input_weights, rank=3, n_iter=3):
                 h[rank_idx, col_idx] = opt_h
     return w, h
 
+def pseudo_huber_cost(resid_vec, sigma, gamma):
+    sig4 = sigma**4
+    gam4 = gamma**4 
+    rat4 = sig4/gam4
+    weights = 1.0/(gamma*np.sqrt(rat4 + resid_vec**2))
+    return np.sum(resid_vec**2*weights)
+
 def pseudo_huber_irls(A, b, sigma, gamma, max_iter=100, conv_thresh=1e-4):
     """
     fits for an optimal x such that
@@ -987,7 +994,7 @@ def pseudo_huber_irls(A, b, sigma, gamma, max_iter=100, conv_thresh=1e-4):
             deltas = mod-b
             weights = 1.0/(gamma*np.sqrt(rat4 + deltas**2))
             ata_inv = A.transpose()*(weights*A)
-            fit = scipy.sparse.linalg.lsqr(ata_inv, A.transpose()*(weights*b))
+            fit = scipy.sparse.linalg.lsqr(ata_inv, A.transpose()*(weights*b))[0]
             if np.mean(np.abs(last_deltas-deltas)) < conv_thresh:
                 break
             last_deltas = deltas

@@ -242,64 +242,112 @@ class Parameter(object):
         return self.dist.weight(offset)
 
 
-class Anchor:
+class IdentityPlaceHolder(object):
     
-    def __init__(self, value=None, predicted_by=None, predicts=None):
-        if predicted_by is None:
-            predicted_by = []
-        self.predicted_by=predicted_by
-        if predicts is None:
-            predicts = []
-        self.predicts=predicts
-        self.value = value
-    
-    def update(self):
-        pass
-    
-    def predict(self):
-        pass
-    
-    def __lshift__(self, value):
-        if not isinstance(value, Parameter):
-            raise ModelingError("predictors must be Parameter instances")
-        self.predicted_by.append(value)
-    
-    def __rshift__(self, value):
-        if not isinstance(value, Parameter):
-            raise ModelingError("predictors must be Parameter instances")
-        self.predicts.append(value)
+    def __mul__(self, other):
+        return other
 
-def find_base(param):
-    if param.is_free:
-        if param.is_base:
-            return [param]
-        else:
-            base_ps = []
-            for sub_param_attr in param.depends_on:
-                sub_base = find_base(param.model.parameters[sub_param_attr])
-                base_ps.extend(sub_base)
-    else:
-        return []
-
-class Fitter(object):
+class ModelChain(object):
     
-    def __init__(self, anchors):
-        self.anchors = anchors
-    
-    def add_anchor(self, anchor):
-        self.anchors.append(anchors)
-    
-    def iterate(self):
-        for anchor in self.anchors:
-            anchor.update()
-        #TODO: build a derivative matrix for each predicted_parameter as a function of changes in each associated free base parameter and solve.
-        predict_basis = {}
-        for anchor in self.anchors:
-            for pred_param in anchor.predicts:
-                predict_basis[(anchor, pred_param)] = find_base(pred_param)
-        predict
+    def __init__(self, models, target_data, target_inv_covar, first_input=None, kw_inputs=None, delay_execution=False):
+        self.models = models
+        self.n_models = len(models)
+        self.target_data = target_data
+        if len(target_inv_var.shape) == 1:
+            npts = len(target_inv_var)
+            target_inv_var = scipy.sparse.dia_matrix((target_inv_var, 0), shape=(npts, npts))
+        self.target_inv_covar = target_inv_var
+        if kw_inputs is None:
+            kw_inputs = [{} for i in range(self.n_models)]
+        self.kw_inputs = kw_inputs
+        self.first_input = first_input
         
-    def converge(self, max_iter=100):
-        #check convergence on anchors? or check convergence on parameters? 
-        raise NotImplementedError()
+        self._result_chain = [None for i in range(self.n_models)]
+        if not delay_execution:
+            self()
     
+    def after_matrix(self, i):
+        if i == self.n_models-1:
+            return IdentityPlaceHolder()
+        inp, kw = self.get_model_inputs(i+1)
+        lop = self.models[i+1].as_linear_op(inp, **kw)
+        for model_idx in range(i+2, self.n_models):
+            inp, kw = self.get_model_inputs(model_idx)
+            further_lop = self.models[model_idx].as_linear_op(inp, **kw)
+            lop = further_lop*lop
+        return lop
+    
+    def model_index(self, model):
+        for i in range(self.n_models):
+            if model == self.models[i]
+        return i
+    
+    def get_model_inputs(self, i):
+        if i == 0:
+            input_val = self.first_input
+        else:
+            input_val = self._result_chain[i-1]
+        kwargs = self.kw_inputs[i]
+        return input_val, kwargs
+    
+    def fit_matrix(self, model):
+        md_idx = self.model_index(model)
+        after_matrix = chain.after_matrix(md_idx)
+        inp, kw = get_model_inputs(md_idx)
+        delta_matrix = model.parameter_expansion(inp, **kw)
+        return after_matrix*delta_matrix
+    
+    def __call__(self):
+        for model_idx in range(self.n_models):
+            if model_idx == 0:
+                input_value = self.first_input
+            else:
+                input_value = self._result_chain[model_idx-1]
+            kwargs= self.kw_inputs[model_idx]
+            output_value = self.models[model_idx](input_value, **kwargs)
+            self._result_chain[model_idx] = output_value
+        return self._result_chain[-1]
+
+class Modeler(object):
+    
+    def __init__(self):
+        self.chains = []
+        self.model_to_chains = {}
+    
+    def add_chain(self, chain):
+        self.chains.append(chain)
+        for model in chain.models:
+            chain_res = self.model_to_chains.get(model)
+            if chain_res is None:
+                chain_res = []
+            self.model_to_chains[model] = chain_res
+            chain_res.append(chain)
+    
+    def stitched_fit_matrices(self, chains):
+        fit_mats = []
+        for chain in chains:
+            fit_mats.append([chain.fit_matrix(model)])
+        return scipy.sparse.bmat(fit_mats)
+    
+    def stitched_target_vectors(self, chains):
+        targ_vecs = []
+        for chain in chains:
+            targ_vecs.append(chain.target_data)
+        return np.hstack(targ_vecs)
+    
+    def stitched_inv_covar_matrices(self, chains):
+        inv_covars = []
+        for chain in chains:
+            inv_covars.append(chain.target_inv_covar)
+        return scipy.sparse.block_diag(inv_covars)
+    
+    def iterate(self, model):
+        relevant_chains = self.model_to_chains(model)
+        fit_mat = self.stitched_fit_matrices(relevant_chains)
+        error_inv_covar = self.stitched_inv_covar_matrices(relevant_chains)
+        target_vec = self.stitched_target_vectors(self, relevant_chains)
+        trans_mat = fit_mat.transpose()
+        ata_inv = trans_mat*(error_inv_covar*fit_mat)
+        rhs = trans_mat*(error_inv_covar*target_vec)
+        fit_result = scipy.sparse.lsqr(ata_inv, rhs)
+        model.set_pvec(fit_result0])

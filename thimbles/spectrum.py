@@ -89,7 +89,10 @@ class WavelengthSolution(CoordinateBinning1D):
     
     def get_index(self, wvs, frame="emitter", clip=False):
         shift_wvs = self.frame_to_observer(wvs, frame="emitter")
-        return self.coordinates_to_indicies(shift_wvs, extrapolation="nearest")
+        if clip:
+            return self.coordinates_to_indicies(shift_wvs, extrapolation="nearest")
+        else:
+            return self.coordinates_to_indicies(shift_wvs, extrapolation="linear")
     
     def observer_to_frame(self, observer_wvs, frame="emitter"):
         if frame == "emitter":

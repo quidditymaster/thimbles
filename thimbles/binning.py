@@ -82,9 +82,18 @@ class CoordinateBinning1D (object):
                     out_idx_vals[x_idx] = np.nan
                 elif extrapolation == "nearest":
                     out_idx_vals[x_idx] = 0
+                else:
+                    raise ValueError("extrapolation value not understood")
                 continue
             if ub < cur_x:
-                out_idx_vals[x_idx] = (cur_x-self.coordinates[1])/self._end_dx
+                if extrapolation == "linear":
+                    out_idx_vals[x_idx] = (cur_x-self.coordinates[-1])/self._end_dx
+                elif extrapolation == "nearest":
+                    out_idx_vals[x_idx] = len(self.bins)-2
+                elif extrapolation == "nan":
+                    out_idx_vals[x_idx] = np.nan
+                else:
+                    raise ValueError("extrapolation value not understood")
                 continue
             lbi, ubi = 0, len(self.bins)-1
             while True:

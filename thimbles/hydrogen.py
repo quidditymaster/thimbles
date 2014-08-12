@@ -28,8 +28,8 @@ class HydrogenForegroundModel(Spectrum):
     
     def __init__(self, wvs, strength, sigma, gamma, e0_width):
         super(HydrogenForegroundModel, self).__init__(wvs, np.ones(len(wvs)))
-        self.e0_width = e0_width
-        self.strength = strength
+        self._e0_width = e0_width
+        self._strength = strength
         self._sigma = sigma
         self._gamma = gamma
         self.npts_model = len(self.wv)
@@ -71,14 +71,21 @@ class HydrogenForegroundModel(Spectrum):
         self._strength = value
         self.calc_transmission()
     
+    @property
+    def e0_width(self):
+        return self._e0_width
+    
+    @property
+    def gamma(self):
+        return self._gamma
+    
     def parameter_expansion(self, input):
         str_delta = self.strength*0.01
-        self.strength = self.strength-str_delta
-        up_trans = self.flux.copy()
-        self.strength = self.strength+2*str_delta
-        below_trans = self.flux.copy()
-        self.strength = self.strength - str_delta
-        
+        plus_trans = np.exp(-(self.strength+str_delta)*self._h_opac)
+        minus_trans = np.exp(-(self.strength-str_delta)*self._h_opac)
+        strength_deriv_vec = (plus_trans-minus_trans)/(2.0*str_delta)
+        expansion_mat = scipy.sparse.csc_matrix(strength_deriv_vec.reshape((-1, 1)))
+        return expansion_mat
     
     def calc_transmission(self):
         self.flux = np.exp(-self.strength*self._h_opac_profile)

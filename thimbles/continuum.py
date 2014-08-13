@@ -30,7 +30,7 @@ class BlackBodyContinuumModel(Spectrum):
         self._teff = value
         self.calc_bk_bod()
     
-    def as_linear_op(self):
+    def as_linear_op(self, input, **kwargs):
         return self._lin_op
     
     def __call__(self, input):

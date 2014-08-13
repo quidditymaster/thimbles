@@ -105,12 +105,20 @@ and float values.""".format(type(dof_thresholds))
         self.calc_x()
         self.calc_cog_lrws()
     
-    def assign_group_ews(self, group_ews):
-        pass
+    def __call__(self, input, **kwargs):
+        return 1.0-self.bk_vec-self.feature_matrix*self._pvec
     
-    def set_pvec(self, ew_vec):
-        #TODO: allow for other types of fitting
-        self.fdat["ew"]
+    def assign_group_ews(self, group_ews):
+        fgb = self.ew_group_dict
+        for group_idx, group_num in enumerate(self.ew_group_dict):
+            self.fdat["ew"].ix[fgb[group_num]] = self.fdat["ew_frac"].ix[fgb[group_num]]*group_ews[group_idx]
+    
+    def get_pvec(self):
+        return self._pvec
+    
+    def set_pvec(self, pvec):
+        self._pvec = pvec
+        self.assign_group_ews(pvec)
     
     def __getattr__(self, attr_name):
         return eval("self.fdat['{}']".format(attr_name))
@@ -274,9 +282,32 @@ and float values.""".format(type(dof_thresholds))
             idx = np.clip(idx, 0, self.npts-1)
         return idx
     
+    def generate_bk_vec(self):
+        bk = self.fdat[self.fdat.fit_group <= 1]
+        self.bk_vec = np.zeros(self.npts)
+        for line_ix in bk.index:
+            ldat = bk.ix[line_ix]
+            ew = np.power(10.0, ldat["cog_lrw"])*ldat["wv"]
+            sigma = np.sqrt(ldat["doppler_width"]**2 +ldat["sigma_offset"]**2)
+            gamma = self.mean_gamma_ratio*sigma
+            
+            feat_wv = ldat["wv"]
+            wv_idx = self.get_index(feat_wv)
+            if wv_idx < 0:
+                continue
+            if wv_idx > self.npts-1:
+                continue
+            
+            lb = int(np.around(self.get_index(feat_wv-5.0*sigma, clip=True)))
+            ub = int(np.around(self.get_index(feat_wv+5.0*sigma, clip=True)))
+            profile = ew*voigt(self.model_wv[lb:ub+1], feat_wv, sigma, gamma)
+            self.bk_vec[lb:ub+1]=profile
+    
     def generate_feature_matrix(self):
-        group_gb = self.fdat.groupby("fit_group")
+        non_bk = self.fdat[self.fdat.fit_group > 1]
+        group_gb = non_bk.groupby("fit_group")
         groups = group_gb.groups
+        self.ew_group_dict = groups
         
         n_groups = len(groups)
         
@@ -309,6 +340,9 @@ and float values.""".format(type(dof_thresholds))
                 
                 self.feature_matrix[lb:ub+1, group_idx] = profile.reshape((-1, 1)) + self.feature_matrix[lb:ub+1, group_idx]
         self.feature_matrix = self.feature_matrix.tocsr()
+    
+    def parameter_expansion(self, input, **kwargs):
+        return -1*self.feature_matrix
     
     @property
     def theta(self):

@@ -92,21 +92,19 @@ class DiracLSF(LineSpreadFunction):
     def get_rms_width(self, index):
         return 0.0
 
-
 class LineSpreadFunctionModel(object):
     
     def __init__(self, model_wvs, target_wvs, target_sigmas):
-        self.model_wvs = model_wvs
+        self.wv = model_wvs
         self.target_wvs = target_wvs
         self.target_sigmas = target_sigmas
-        wv_widths = scipy.gradient(self.wv)*self.wv_soln.lsf
         #TODO: use faster interpolation
-        interper = interp1d(target_wvs, target_sigmas, bounds_error=False, fill_value=1.0)
+        interper = interp1d(target_wvs, target_sigmas*scipy.gradient(target_wvs), bounds_error=False, fill_value=1.0)
         gdense = tmb.utils.resampling.GaussianDensity(model_wvs, interper(model_wvs))
-        transform = tmb.utils.resampling.get_resampling_matrix(model_wvs, self.wv, preserve_normalization=True, pixel_density=gdense)    
+        transform = tmb.utils.resampling.get_resampling_matrix(self.wv, self.target_wvs, preserve_normalization=True, pixel_density=gdense)    
         self._lin_op = transform
     
-    def as_linear_op(self):
+    def as_linear_op(self, input, **kwargs):
         return self._lin_op
     
     def __call__(self, input):

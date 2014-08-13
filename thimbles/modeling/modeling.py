@@ -1,15 +1,18 @@
 import time
 import numpy as np
+import scipy
+import scipy.sparse
+import scipy.sparse.linalg
 from copy import copy
 
 class ModelingError(Exception):
     pass
 
-factory_defaults = {
-"history": ValueHistory,
-"scale":ParameterScale,
-"distribution":NormalDeltaDistribution,
-}
+#factory_defaults = {
+#"history": ValueHistory,
+#"scale":ParameterScale,
+#"distribution":NormalDeltaDistribution,
+#}
 
 def parameterize(depends_on=None, 
                  free=False, 
@@ -253,10 +256,10 @@ class ModelChain(object):
         self.models = models
         self.n_models = len(models)
         self.target_data = target_data
-        if len(target_inv_var.shape) == 1:
-            npts = len(target_inv_var)
-            target_inv_var = scipy.sparse.dia_matrix((target_inv_var, 0), shape=(npts, npts))
-        self.target_inv_covar = target_inv_var
+        if len(target_inv_covar.shape) == 1:
+            npts = len(target_inv_covar)
+            target_inv_covar = scipy.sparse.dia_matrix((target_inv_covar, 0), shape=(npts, npts))
+        self.target_inv_covar = target_inv_covar
         if kw_inputs is None:
             kw_inputs = [{} for i in range(self.n_models)]
         self.kw_inputs = kw_inputs
@@ -279,8 +282,9 @@ class ModelChain(object):
     
     def model_index(self, model):
         for i in range(self.n_models):
-            if model == self.models[i]
-        return i
+            if model == self.models[i]:
+                return i
+        raise Exception("model not found!")
     
     def get_model_inputs(self, i):
         if i == 0:
@@ -292,8 +296,8 @@ class ModelChain(object):
     
     def fit_matrix(self, model):
         md_idx = self.model_index(model)
-        after_matrix = chain.after_matrix(md_idx)
-        inp, kw = get_model_inputs(md_idx)
+        after_matrix = self.after_matrix(md_idx)
+        inp, kw = self.get_model_inputs(md_idx)
         delta_matrix = model.parameter_expansion(inp, **kw)
         return after_matrix*delta_matrix
     
@@ -323,17 +327,20 @@ class Modeler(object):
             self.model_to_chains[model] = chain_res
             chain_res.append(chain)
     
-    def stitched_fit_matrices(self, chains):
+    def stitched_fit_matrices(self, chains, model):
         fit_mats = []
         for chain in chains:
             fit_mats.append([chain.fit_matrix(model)])
         return scipy.sparse.bmat(fit_mats)
     
-    def stitched_target_vectors(self, chains):
-        targ_vecs = []
+    def stitched_target_deltas(self, chains):
+        targ_deltas = []
         for chain in chains:
-            targ_vecs.append(chain.target_data)
-        return np.hstack(targ_vecs)
+            targ_dat = chain.target_data
+            mod_dat = chain()
+            deltas = targ_dat - mod_dat
+            targ_deltas.append(deltas)
+        return np.hstack(targ_deltas)
     
     def stitched_inv_covar_matrices(self, chains):
         inv_covars = []
@@ -342,12 +349,15 @@ class Modeler(object):
         return scipy.sparse.block_diag(inv_covars)
     
     def iterate(self, model):
-        relevant_chains = self.model_to_chains(model)
-        fit_mat = self.stitched_fit_matrices(relevant_chains)
+        relevant_chains = self.model_to_chains.get(model)
+        if relevant_chains is None:
+            raise Exception("model not part of this modeler's chain sequence")
+        fit_mat = self.stitched_fit_matrices(relevant_chains, model)
         error_inv_covar = self.stitched_inv_covar_matrices(relevant_chains)
-        target_vec = self.stitched_target_vectors(self, relevant_chains)
+        target_vec = self.stitched_target_deltas(relevant_chains)
         trans_mat = fit_mat.transpose()
         ata_inv = trans_mat*(error_inv_covar*fit_mat)
         rhs = trans_mat*(error_inv_covar*target_vec)
-        fit_result = scipy.sparse.lsqr(ata_inv, rhs)
-        model.set_pvec(fit_result0])
+        fit_result = scipy.sparse.linalg.lsqr(ata_inv, rhs)[0]
+        new_pvec = model.get_pvec() + fit_result
+        model.set_pvec(new_pvec)

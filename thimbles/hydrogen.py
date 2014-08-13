@@ -48,7 +48,7 @@ class HydrogenForegroundModel(Spectrum):
             hwv = self.hdat.wv.iloc[line_idx]
             min_idx = self.get_index(hwv-50*delta_width, clip=True)
             max_idx = self.get_index(hwv+50*delta_width, clip=True)
-            sigma = self.sigma
+            sigma = self.sigma*(hwv/6562.0)
             op_prof = rel_strength*hydrogen_profile(self.wv[min_idx:max_idx+1], hwv, g_width=self.sigma, l_width=self.gamma, stark_width=self.e0_width)
             self._h_opac_profile[min_idx:max_idx+1] += op_prof
     
@@ -90,8 +90,8 @@ class HydrogenForegroundModel(Spectrum):
     def calc_transmission(self):
         self.flux = np.exp(-self.strength*self._h_opac_profile)
     
-    def as_linear_op(self):
-        return scipy.sparse.dia_matrix((self._transmission, 0), shape=(self.npts_model, self.npts_model))
+    def as_linear_op(self, input):
+        return scipy.sparse.dia_matrix((self.flux, 0), shape=(self.npts_model, self.npts_model))
     
     def __call__(self, input):
-        return input*self._transmission
+        return input*self.flux

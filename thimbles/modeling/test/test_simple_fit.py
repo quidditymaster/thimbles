@@ -1,65 +1,71 @@
 import unittest
 import numpy as np
 import matplotlib.pyplot as plt
-from ..models import Model, ModelSpace
-import scipy.sparse as sp
+from thimbles.modeling.modeling import Model, ModelChain, Modeler
+import scipy.sparse
+
+class LineModel(Model):
+    
+    def __init__(self, slope, offset):
+        self.slope = slope
+        self.offset = offset
+    
+    def __call__(self, input, x):
+        return x*self.slope + self.offset
+    
+    def as_linear_op(self, input, x):
+        return None
+    
+    def parameter_damping(self, input, x):
+        return np.zeros(2), 10.0*np.ones(2)
+
+    def parameter_expansion(self, input, x):
+        x = np.asarray(x)
+        mat = np.array([x, np.ones(len(x))]).transpose()
+        return scipy.sparse.csr_matrix(mat)
+    
+    def set_pvec(self, pvec):
+        slope, offset = pvec
+        self.slope = slope
+        self.offset=offset
+    
+    def get_pvec(self):
+        return np.array([self.slope, self.offset])
 
 class LineFitTest(unittest.TestCase):
 
     def setUp(self):
-        npts = 100
+        npts = 200
         x = np.linspace(-1, 1, npts)
-        slope = 1.5
-        intercept = -2.0
-        noise_level = 1.5
-        noise = np.random.normal(size=(npts,))*noise_level
-        self.y_var = noise_level**2
-        y = slope*x + intercept + noise
         self.x = x
+        slope = 3.1415926535
+        self.slope=slope
+        intercept = -2.71828
+        self.offset = intercept
+        noise_level = 0.1
+        noise = np.random.normal(size=(npts,))*noise_level
+        self.y_var = np.ones(npts, dtype=float)*noise_level**2
+        y = slope*x + intercept + noise
         self.y = y
+        
+        start_slope = 0.0
+        start_offset = 0.0
+        self.lmod = LineModel(start_slope, start_offset)
+        chain = ModelChain([self.lmod], target_data=y, target_inv_covar=1.0/self.y_var, kw_inputs=[{"x":x}])
+        
+        self.modeler = Modeler()
+        self.modeler.add_chain(chain)
+        
         self.slope = slope
         self.intercept = intercept
     
     def test_line_fit(self):
-        slope_name = "slope"
-        intercept_name = "intercept"
-        x_name = "x"
-        y_name = "y"
-        
-        def get_x():
-            return self.x
-        
-        def get_y():
-            return self.y
-        
-        def get_y_var():
-            return self.y_var
-        
-        def line_function(**kwargs):
-            x = kwargs[x_name]
-            slope, intercept = kwargs[slope_name], kwargs[intercept_name]
-            return slope*x + intercept
-        
-        data_model = Model(outputs={y_name:get_y}, map_var={y_name:get_y_var})
-        
-        #make the model to be fit
-        line_model = Model(inputs={x_name:get_x, slope_name:Model()},
-                   outputs={y_name:line_function})
-        
-        #build a model space for them and put the base parameters in it
-        msp = ModelSpace()
-        msp.add_global_values({x_name:self.x, slope_name:1.0, intercept_name:0.0})
-        
-        #add the models to the space
-        msp.add_models([data_model, line_model])
-        
-        #build a concordance between the parameterized model and the data
-        msp.add_concordance(line_model, data_model) #should take arbitrary positional args
-        
-        #fill in the values in the space
-        msp.execute()
-        
-        msp.fit_iteration()
+        #import pdb; pdb.set_trace()
+        for i in range(5):
+            self.modeler.iterate(self.lmod)
+            #print "slope {} , offset {}".format(self.lmod.slope, self.lmod.offset)
+        self.assertAlmostEqual(self.lmod.slope, self.slope, delta=0.1)
+        self.assertAlmostEqual(self.lmod.offset, self.offset, delta=0.1)
         
 
 if __name__ == "__main__":

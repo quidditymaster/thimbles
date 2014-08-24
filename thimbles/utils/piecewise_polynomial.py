@@ -239,34 +239,6 @@ class Binning:
                     break
             out_idxs[x_idx] = lbi
         return out_idxs
-    
-class TensoredBinning(Binning):
-    """A binning class for handling bins in multiple dimensions.
-    The multidimensional bins are built up by tensoring together
-    bins along each dimension. That is if we have the bins in x
-    (0, 1), (1, 2) and in y the bins (0, 3), (3,5) then the tensored
-    binning will be [[(0, 1), (0, 3)], [(0, 1), (3, 5)], [(1, 2), (0, 3)]
-    [(1, 2), (3, 5)]]. That is we get one bin for each possible pairing
-    of the input bins. 
-    """
-    
-    def __init__(self, bins_list):
-        """
-        
-        inputs
-            bins_list: a list of the bins along each dimension
-        """
-        self.binnings = [Binning(bins) for bins in bins_list]
-        self.shape = tuple([len(b) for b in self.binnings])
-        
-    def get_bin_multi_index(self, xcoords):
-        indexes_list = []
-        for binning_idx in range(len(self.binnings)):
-            xv = xcoords[:, binning_idx]
-            index_vec = self.binnings[binning_idx].get_bin_index(xv)
-            indexes_list.append(index_vec.reshape((-1, 1)))
-        return np.hstack(indexes_list)
-
 
 class PiecewisePolynomial:
     
@@ -614,7 +586,7 @@ class RegularityConstrainedPiecewisePolynomialBasis:
     
     def b_spline_rotation(self):
         #evaluate the b splines
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
         bound_pts = np.zeros(len(self.centers) + 2)
         bound_pts[1:-1] = self.centers
         if len(self.centers) > 1:

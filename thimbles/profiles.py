@@ -80,10 +80,9 @@ profile_functions["rotational"] = rotational
 #
 #profile_functions["voigt_rotational"] = voigt_rotational
 
-
-def hydrogen_profile(wvs, center, g_width, l_width, stark_width):
-    """a simple model for the line shape of a hydrogen feature a
-    a voigt profile convolved with a nearest-neighbor stark"""
+def convolved_stark(wvs, center, g_width, l_width, stark_width):
+    """a numerically simple model for the line shape of a hydrogen feature.
+    a Voigt profile convolved with a nearest-neighbor stark"""
     if len(wvs) % 2 == 1:
         array_central_wv = wvs[int(len(wvs)/2)]
     else:
@@ -92,7 +91,17 @@ def hydrogen_profile(wvs, center, g_width, l_width, stark_width):
     voigt_prof = voigt(wvs, center, g_width, l_width)
     return scipy.ndimage.filters.convolve(centered_stark, voigt_prof)
 
-
+class InterpolatedGridProfileFunction(object):
+    
+    def __init__(self, parameter_points):
+        pass
+    
+    def get_interp(self):
+        pass
+    
+    def __call__(self, wvs, center, params=None):
+        pass
+        
 class LineProfile:
     
     def __init__(self, center, parameters, profile_func="voigt"):

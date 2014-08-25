@@ -18,7 +18,7 @@ from .flags import SpectrumFlags
 from . import verbosity
 from .reference_frames import InertialFrame
 from .resolution import LineSpreadFunction, GaussianLSF, BoxLSF
-from .binning import CoordinateBinning1D
+from .binning import CoordinateBinning
 from scipy.interpolate import interp1d
 
 # ########################################################################### #
@@ -29,7 +29,7 @@ __all__ = ["WavelengthSolution","Spectrum"]
 
 speed_of_light = 299792.458 #speed of light in km/s
 
-class WavelengthSolution(CoordinateBinning1D):
+class WavelengthSolution(CoordinateBinning):
     
     def __init__(self, obs_wavelengths, rv=None, barycenter_vel=None, lsf=None):
         """a class that encapsulates the manner in which a spectrum is sampled

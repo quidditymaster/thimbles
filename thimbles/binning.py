@@ -12,11 +12,11 @@ def centers_to_bins(coord_centers):
         return np.zeros(0)
     bins = np.zeros(len(coord_centers) + 1, dtype = float)
     bins[1:-1] = 0.5*(coord_centers[1:] + coord_centers[:-1])
-    bins[0] = coord_centers[0] - (bins[1]-coord_centers[0])
+    bins[0] = coord_centers[0] - 0.5*(bins[1]-coord_centers[0])
     bins[-1] = coord_centers[-1] + 0.5*(coord_centers[-1] - coord_centers[-2])
     return bins
 
-class CoordinateBinning1D (object):
+class CoordinateBinning (object):
     """a container that associates a set of coordinates to their indexes
     and vice versa.
     """
@@ -30,6 +30,9 @@ class CoordinateBinning1D (object):
         self._cached_prev_bin_idx = 0
         self._start_dx = self.coordinates[1] - self.coordinates[0]
         self._end_dx = self.coordinates[-1] - self.coordinates[-2]
+    
+    def __len__(self):
+        return len(self.coordinates)
     
     def indicies_to_coordinates(self, input_indicies):
         #TODO:dump this operation out to cython
@@ -65,7 +68,7 @@ class CoordinateBinning1D (object):
         # get the upper and lower bounds for the coordinates
         lb,ub = self.bins[0],self.bins[-1]
         xv = np.asarray(coords)
-        out_idx_vals = np.zeros(len(xv.flat), dtype = int)
+        out_idx_vals = np.zeros(len(xv.flat), dtype = float)
         for x_idx in xrange(len(xv.flat)):
             cur_x = xv.flat[x_idx]
             #check if the last solution still works
@@ -87,7 +90,7 @@ class CoordinateBinning1D (object):
                 continue
             if ub < cur_x:
                 if extrapolation == "linear":
-                    out_idx_vals[x_idx] = (cur_x-self.coordinates[-1])/self._end_dx
+                    out_idx_vals[x_idx] = (len(self.coordinates) -1)+(cur_x-self.coordinates[-1])/self._end_dx
                 elif extrapolation == "nearest":
                     out_idx_vals[x_idx] = len(self.bins)-2
                 elif extrapolation == "nan":
@@ -112,7 +115,7 @@ class CoordinateBinning1D (object):
         return out_idx_vals
     
     def get_bin_index(self, coords):
-        """ find the bin index to which 
+        """ find the bin index to which the coordinate belongs
         """
         out_c = np.around(self.coordinates_to_indicies(coords))
         return np.array(out_c, dtype=int)
@@ -131,7 +134,7 @@ class CoordinateBinning1D (object):
         return Spectrum(wvs, interp_vals, misc.var_2_inv_var(sampled_var))
 
 
-class LinearBinning1d(CoordinateBinning1D):
+class LinearBinning1d(CoordinateBinning):
     
     def __init__(self, x0, dx):
         self.x0 = x0
@@ -149,3 +152,35 @@ class LinearBinning1d(CoordinateBinning1D):
     def get_bin_index(self, input_coordinates):
         #TODO make this handle negatives properly
         return np.asarray(self.coordinates_to_indicies(input_coordinates), dtype = int)
+
+
+class TensoredBinning(object):
+    """A binning class for handling bins in multiple dimensions.
+    The multidimensional bins are built up by tensoring together
+    bins along each dimension. That is if we have the bins in x
+    (0, 1), (1, 2) and in y the bins (0, 3), (3,5) then the tensored
+    binning will be [[(0, 1), (0, 3)], [(0, 1), (3, 5)], [(1, 2), (0, 3)]
+    [(1, 2), (3, 5)]]. That is we get one bin for each possible pairing
+    of the input bins. 
+    """
+    
+    def __init__(self, bin_centers_list):
+        """    
+        inputs
+            bins_list: a list of the bins along each dimension
+        """
+        self.binnings = [CoordinateBinning(bin_centers) for bin_centers in bin_centers_list]
+        self.shape = tuple([len(b) for b in self.binnings])
+    
+    def coordinates_to_indicies(self, xcoords, extrapolation="linear"):
+        xcoords = np.asarray(xcoords)
+        if len(xcoords.shape) != 2:
+            if len(self.shape) == len(xcoords):
+                xcoords = xcoords.reshape((-1, len(self.shape)))
+        indexes_list = []
+        for binning_idx in range(len(self.binnings)):
+            xv = xcoords[:, binning_idx]
+            index_vec = self.binnings[binning_idx].coordinates_to_indicies(xv, extrapolation=extrapolation)
+            indexes_list.append(index_vec.reshape((-1, 1)))
+        return np.hstack(indexes_list)
+    

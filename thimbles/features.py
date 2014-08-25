@@ -109,9 +109,14 @@ and float values.""".format(type(dof_thresholds))
         return 1.0-self.bk_vec-self.feature_matrix*self._pvec
     
     def assign_group_ews(self, group_ews):
-        fgb = self.ew_group_dict
-        for group_idx, group_num in enumerate(self.ew_group_dict):
-            self.fdat["ew"].ix[fgb[group_num]] = self.fdat["ew_frac"].ix[fgb[group_num]]*group_ews[group_idx]
+        non_bk = self.fdat[self.fdat.fit_group > 1]
+        group_gb = non_bk.groupby("fit_group")
+        groups = group_gb.groups
+        n_groups = len(groups)
+        group_keys = sorted(groups.keys())
+        
+        for group_idx, group_num in enumerate(group_keys):
+            self.fdat["ew"].ix[groups[group_num]] = self.fdat["ew_frac"].ix[groups[group_num]]*group_ews[group_idx]
     
     def get_pvec(self):
         return self._pvec
@@ -122,6 +127,9 @@ and float values.""".format(type(dof_thresholds))
     
     def __getattr__(self, attr_name):
         return eval("self.fdat['{}']".format(attr_name))
+    
+    def _for_loop_func1 (self,par1):
+        return par1 
     
     def optimize_fit_groups(self, spectra):
         transforms_to_model = []
@@ -301,18 +309,19 @@ and float values.""".format(type(dof_thresholds))
             lb = int(np.around(self.get_index(feat_wv-5.0*sigma, clip=True)))
             ub = int(np.around(self.get_index(feat_wv+5.0*sigma, clip=True)))
             profile = ew*voigt(self.model_wv[lb:ub+1], feat_wv, sigma, gamma)
-            self.bk_vec[lb:ub+1]=profile
+            profile = np.where(profile < 0.1, profile, 0.1)
+            self.bk_vec[lb:ub+1]=self.bk_vec[lb:ub+1] + profile
+        self.bk_vec = np.where(self.bk_vec < 0.5, self.bk_vec, 0.5)
     
     def generate_feature_matrix(self):
         non_bk = self.fdat[self.fdat.fit_group > 1]
         group_gb = non_bk.groupby("fit_group")
         groups = group_gb.groups
-        self.ew_group_dict = groups
         
         n_groups = len(groups)
         
         self.feature_matrix = scipy.sparse.lil_matrix((self.npts, n_groups), dtype=float)
-        group_keys = groups.keys()
+        group_keys = sorted(groups.keys())
         self.fdat["ew_frac"] = np.zeros(len(self.fdat))
         for group_idx in range(len(group_keys)):
             group_id = group_keys[group_idx]
@@ -341,8 +350,23 @@ and float values.""".format(type(dof_thresholds))
                 self.feature_matrix[lb:ub+1, group_idx] = profile.reshape((-1, 1)) + self.feature_matrix[lb:ub+1, group_idx]
         self.feature_matrix = self.feature_matrix.tocsr()
     
+    def calc_p2_sums(self):
+        pass
+    
     def parameter_expansion(self, input, **kwargs):
         return -1*self.feature_matrix
+    
+    def parameter_damping(self, input):
+        fgb = self.ew_group_dict
+        targ_ews = np.zeros(len(fgb))
+        for group_idx, group_num in enumerate(self.ew_group_dict):
+            group_fdat = self.fdat.ix[fgb[group_num]]
+            ew_sum = np.sum(np.power(10.0, group_fdat["cog_lrw"])*group_fdat["wv"])
+            targ_ews[group_idx] = ew_sum
+        cur_params = self.get_pvec()
+        nparams = len(cur_params)
+        targ_delta = 0.5*(targ_ews-cur_params)
+        return targ_delta, np.ones(targ_delta.shape)*0.01
     
     @property
     def theta(self):
@@ -350,7 +374,7 @@ and float values.""".format(type(dof_thresholds))
     
     def calc_solar_ab(self):
         self.fdat["solar_ab"] = ptable[self.species.values]["abundance"]
-        
+    
     def calc_therm_widths(self):
         #TODO: use real atomic weight
         weight =2.0*self.fdat["Z"]

@@ -243,3 +243,138 @@ class NameTypeTableModel(QAbstractTableModel):
             if row == 0:
                 self.names[row] = value
 
+class TreeNode(object):
+    
+    def __init__(self, name, obj, parent_item, max_depth=100, depth=0):
+        self.name = name
+        self._obj = obj
+        self.parent_item = parent_item
+        self.depth = depth
+        self.max_depth = max_depth
+        self.depth
+        self._children=[]
+        self._children_explored = False
+    
+    @property
+    def children(self):
+        if not self._children_explored:
+            self.refresh_children()
+            self._children_explored = True
+        return self._children
+    
+    def refresh_children(self):
+        self._children = []
+        if self.depth >= self.max_depth:
+            return
+        if hasattr(self._obj, "__dict__"):
+            sub_names = self._obj.__dict__.keys()
+            for key in sub_names:
+                if key[0] == "_":
+                    continue
+                val = self._obj.__dict__[key]
+                self._children.append(TreeNode(key, val, self, self.max_depth, self.depth+1))
+    
+    def __repr__(self):
+        return "node:"+repr(self._obj)
+    
+    def __len__(self):
+        return len(self.children)
+
+
+class ObjectTree(QAbstractItemModel):
+    
+    def __init__(self, obj, max_depth=3):
+        super(ObjectTree, self).__init__()
+        self.root_item = TreeNode("root node", obj, None, max_depth=max_depth)
+    
+    def columnCount(self, parent):
+        return 2
+    
+    def headerData(self, section, orientation, role):
+        if orientation == Qt.Horizontal and role == Qt.DisplayRole:
+            if section == 0:
+                return "Name"
+            if section == 1:
+                return "Value"
+        return None
+    
+    def data(self, index, role):
+        if not index.isValid():
+            return None
+        
+        if role == Qt.DisplayRole:
+            item = index.internalPointer()
+            col = index.column()
+            #row = index.row()
+            if item is None:
+                item = self.root_item
+            if col == 0:
+                data_str = item.name
+            elif col == 1:
+                try:
+                    data_str = repr(item._obj)
+                except Exception as e:
+                    data_str = "repr failed with error {}".format(e)
+            return data_str
+        
+        return None
+    
+    def flags(self, index):
+        if not index.isValid():
+            return Qt.NoItemFlags
+        
+        return Qt.ItemIsEnabled | Qt.ItemIsSelectable
+    
+    def index(self, row, column, parent):
+        if not self.hasIndex(row, column, parent):
+            return QModelIndex()
+        
+        if not parent.isValid():
+            parent_item = self.root_item
+        else:
+            parent_item = parent.internalPointer()
+        
+        child = parent_item.children[row]
+        out_index = self.createIndex(row, column, child)
+        return out_index
+    
+    def parent(self, index):
+        if not index.isValid():
+            return QModelIndex()
+        
+        child = index.internalPointer()
+        parent = child.parent_item
+        
+        if parent == self.root_item:
+            return QModelIndex()
+        
+        return self.createIndex(parent.children.index(child), 0, parent)
+    
+    def rowCount(self, parent):
+        internal_pointer = parent.internalPointer()
+        if internal_pointer is None:
+            parent_node = self.root_item
+        else:
+            parent_node = internal_pointer
+        nrows = len(parent_node)
+        return nrows
+
+if __name__ == "__main__":
+    line_obj ,= plt.plot(range(10))
+    #import numpy as np
+    #import thimbles as tmb
+    #spec = tmb.Spectrum(np.arange(100), np.arange(100))
+    
+    #build a QApplication
+    qap = QApplication([])
+    
+    #build the model tree
+    top_node = ObjectTree(line_obj)
+    
+    #make a view and set its model
+    qtv = QTreeView()
+    qtv.setModel(top_node)
+    
+    #run
+    qtv.show()
+    qap.exec_()

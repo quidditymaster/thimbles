@@ -14,6 +14,52 @@ from thimbles import verbosity
 from thimbles import hydrogen
 from latbin import matching
 
+class SpeciesGrouper(object):
+    
+    def __init__(self, group_indicators, ungrouped_val="unique"):
+        """species grouper object
+        
+        inputs
+        
+        group_indicators: list of functions
+          if a function in group_indicators returns true for a species value
+          that species will be given a group_num which is the index of that 
+          function in the list.
+          if more than one function in the list would return true for a given
+          species the first function in the list takes precedence.
+        ungrouped_val: string
+          "last" species not appearing in one of the group_indicators lists
+            will be grouped together with group_num == len(group_indicators)
+          "unique" species not appearing in one of the passed in lists will
+            be grouped individually, with group num dictated by the first
+            time species_group_num is called with an example of that species.
+        """
+        self.group_indicators = group_indicators
+        ungr_opts = ["last", "unique"]
+        if ungrouped_val not in ungr_opts:
+            raise ValueError("ungrouped_val type {} not recognized must be one of {}".format(ungrouped_val, ungr_opts))
+        self.ungrouped_val = ungrouped_val
+    
+    def species_group_num(self, species):
+        species = np.atleast_1d(species)
+        unique_species, recon_idxs = np.unique(species, return_inverse=True)
+        grp_nums = np.zeros(unique_species.shape)
+        for input_sp_idx in range(len(unique_species)):
+            input_sp_val = unique_species[input_sp_idx]
+            grp_num_found = False
+            for sp_grp_num in range(len(self.group_indicators)):
+                if self.group_indicators[sp_grp_num](input_sp_val):
+                    cur_group_num = sp_grp_num
+                    grp_num_found = True
+                    break
+            if not grp_num_found:
+                if self.ungrouped_val == "unique":
+                    self.group_indicators.append(lambda x: x == input_sp_val)
+                cur_group_num = len(self.group_indicators)-1
+            grp_nums[input_sp_idx] = cur_group_num
+        return grp_nums[recon_idxs]
+                
+
 class SaturatedVoigtFeatureModel(object):
     
     def __init__(self, 
@@ -26,17 +72,25 @@ class SaturatedVoigtFeatureModel(object):
                  teff=5000.0, 
                  vmicro=2.0, 
                  vmacro=1.0,
+                 log_ion_frac=-0.01,
                  mean_gamma_ratio=0.05,
                  initial_x_offset=6.0,
                  max_delta_wv=100,
                  max_delta_x=0.25,
                  domination_ratio=5.0,
                  H_mask_radius=2.0,
+                 species_grouper="unique",
                  model_resolution=5e5,):
-        """provides a model of a normalized absorption spectrum
+        """provides a rough model of a normalized stellar absorption spectrum
+        
+        inputs 
         
         transitions: pandas.DataFrame
           a DataFrame containing all all the transition data
+        min_wv: float
+          mininum model wavelength
+        max_wv: float
+          maximum model wavelength
         teff: float
           effective temperature in Kelvin
         vmicro: float
@@ -48,15 +102,6 @@ class SaturatedVoigtFeatureModel(object):
         """
         self.fdat = transitions.copy()
         self.n_feat = len(self.fdat)
-        self._check_initialize_column("ew", fill_value=0.0)
-        self._check_initialize_column("wv_offset", fill_value=0.0)
-        self._check_initialize_column("sigma_offset", fill_value=0.0)
-        self._check_initialize_column("gamma_offset", fill_value=0.0)
-        self._check_initialize_column("x_offset", fill_value=initial_x_offset)
-        self._check_initialize_column("fit_group", 0.0)
-        self._check_initialize_column("group_dof", 0.0)
-        self._check_initialize_column("group_exemplar", 1)
-        
         self.min_wv = float(min_wv)
         self.max_wv = float(max_wv)
         self.teff = teff
@@ -64,10 +109,24 @@ class SaturatedVoigtFeatureModel(object):
         self.snr_target = snr_target
         self.vmicro = vmicro
         self.vmacro = vmacro
+        assert log_ion_frac < 0 #can't have an ion fraction greater than 1!
+        self.log_ion_frac = log_ion_frac
         self.domination_ratio=domination_ratio
         self.H_mask_radius=H_mask_radius
         self.max_delta_wv = max_delta_wv
         self.max_delta_x = max_delta_x
+        self._check_initialize_column("ew", fill_value=0.0)
+        self._check_initialize_column("wv_offset", fill_value=0.0)
+        self._check_initialize_column("sigma_offset", fill_value=0.0)
+        self._check_initialize_column("gamma_offset", fill_value=0.0)
+        self._check_initialize_column("x_offset", fill_value=initial_x_offset)
+        self._check_initialize_column("group_dof", 0.0)
+        self._check_initialize_column("group_exemplar", 1)
+        self._check_initialize_column("feature_num", np.arange(self.n_feat))
+        self._check_initialize_column("fit_group", 0.0)
+        self._check_initialize_column("species_group", 0.0)
+        
+        self.species_set = np.sort(np.unique(self.fdat.species.values))
         #TODO: make the gamma ratio change as a function of wv
         #TODO: allow for individual gamma ratio's by interpolating cogs
         self.mean_gamma_ratio = mean_gamma_ratio
@@ -94,8 +153,11 @@ and float values.""".format(type(dof_thresholds))
     def _check_initialize_column(self, col_name, fill_value):
         """check if a column is defined and if it is not add it"""
         if not (col_name in self.fdat.columns):
-            new_col = np.empty(self.n_feat, dtype=float)
-            new_col.fill(fill_value)
+            if len(np.atleast_1d(fill_value)) > 1:
+                new_col = fill_value    
+            else:
+                new_col = np.empty(self.n_feat, dtype=float)
+                new_col.fill(fill_value)
             self.fdat[col_name] = new_col
     
     def calc_all(self):
@@ -103,7 +165,7 @@ and float values.""".format(type(dof_thresholds))
         self.calc_solar_ab()
         self.calc_doppler_widths()
         self.calc_x()
-        self.calc_cog_lrws()
+        self.calc_cog_ews()
     
     def __call__(self, input, **kwargs):
         return 1.0-self.bk_vec-self.feature_matrix*self._pvec
@@ -118,6 +180,12 @@ and float values.""".format(type(dof_thresholds))
         for group_idx, group_num in enumerate(group_keys):
             self.fdat["ew"].ix[groups[group_num]] = self.fdat["ew_frac"].ix[groups[group_num]]*group_ews[group_idx]
     
+    def calc_ew_errors(self):
+        self.fdat["ew_error"] = np.ones(len(self.fdat))
+        total_sig2 = self.fdat["ew"]
+        ew_error = np.sqrt(self.fdat["ew_frac"]*self.fdat["ew"])
+        self.fdat["ew_error"] = np.where(self.fdat["ew_frac"])
+    
     def get_pvec(self):
         return self._pvec
     
@@ -128,8 +196,70 @@ and float values.""".format(type(dof_thresholds))
     def __getattr__(self, attr_name):
         return eval("self.fdat['{}']".format(attr_name))
     
-    def _for_loop_func1 (self,par1):
-        return par1 
+    def parameterize(self, after_matrix, target_data, target_inv_covar, alpha=5.0):
+        #generate a full feature matrix one column per feature
+        
+        #generate a vector of max strengths
+        #(A^t * (F*diag(cog_ew))).max()
+        
+        #relegate to background on the basis of the domination and total snr available
+        
+        #chop the background vectors out of the big matrix and form a bk_vector 
+        
+        #for each wavelength bound chop out a segment of spectrum
+        
+        #generate a full feature matrix one column per feature.
+        if bk_mask is None:
+            bk_mask = self.fdat.fit_group > 1
+        if grouping_column is None:
+            grouping_column = "fit_group"
+        non_bk = self.fdat[self.fdat.fit_group > 1]
+        group_gb = non_bk.groupby("fit_group")
+        groups = group_gb.groups
+        
+        n_groups = len(groups)
+        
+        feature_matrix = scipy.sparse.lil_matrix((self.npts, n_groups), dtype=float)
+        group_keys = sorted(groups.keys())
+        self.fdat["ew_frac"] = np.zeros(len(self.fdat))
+        self.fdat["p2_sum"] = np.zeros(len(self.fdat))
+        for group_idx in range(len(group_keys)):
+            group_id = group_keys[group_idx]
+            group_ldf = self.fdat.ix[groups[group_id]]
+            group_cog_lrw = group_ldf.cog_lrw.values
+            max_lrw = np.max(group_cog_lrw)
+            relative_ews = np.power(10, group_cog_lrw-max_lrw)*group_ldf.wv.values
+            relative_ew_sum = np.sum(relative_ews)
+            ew_fracs = relative_ews/relative_ew_sum
+            self.fdat["ew_frac"].ix[groups[group_id]] = ew_fracs
+            min_idx = np.inf
+            max_idx = -np.inf
+            for feat_idx in range(len(group_ldf)):
+                feat_wv = group_ldf.iloc[feat_idx]["wv"]
+                wv_idx = self.get_index(feat_wv)
+                if wv_idx < 0:
+                    continue
+                if wv_idx > self.npts-1:
+                    continue
+                target_width = np.sqrt(group_ldf["doppler_width"].iloc[feat_idx]**2 + group_ldf["sigma_offset"].iloc[feat_idx]**2)
+                
+                lb = int(np.around(self.get_index(feat_wv-7.0*target_width, clip=True)))
+                ub = int(np.around(self.get_index(feat_wv+7.0*target_width, clip=True)))
+                
+                if lb < min_idx:
+                    min_idx = lb
+                if ub > max_idx:
+                    max_idx = ub
+                
+                profile = voigt(self.model_wv[lb:ub+1], feat_wv, target_width, 0.0)
+                profile *= ew_fracs[feat_idx]
+                
+                feature_matrix[lb:ub+1, group_idx] = profile.reshape((-1, 1)) + self.feature_matrix[lb:ub+1, group_idx]
+        feature_matrix = feature_matrix.tocsc()
+        self.feature_matrix = feature_matrix
+        return feature_matrix
+        
+        #maximal_feature_vector
     
     def optimize_fit_groups(self, spectra):
         transforms_to_model = []
@@ -269,10 +399,10 @@ and float values.""".format(type(dof_thresholds))
                         #set their fit group column to match each other
                         for feat_ix in group_ixs:
                             if feat_ix == exemplar_ix:
-                                self.fdat["group_exemplar"].ix[feat_ix] = 1
+                                self.fdat.ix[feat_ix, "group_exemplar"] = 1
                             else:
-                                self.fdat["group_exemplar"].ix[feat_ix] = 0
-                            self.fdat["fit_group"].ix[feat_ix] = len(all_fit_groups)+1
+                                self.fdat.ix[feat_ix, "group_exemplar"] = 0
+                            self.fdat.ix[feat_ix, "fit_group"] = len(all_fit_groups)+1
                             used_features.add(feat_ix)
                         #subtract from our total allotment of signal to noise and degrees of freedom
                         for min_idx, max_idx, dof_prod, snr2_prod in to_subtract:
@@ -282,7 +412,7 @@ and float values.""".format(type(dof_thresholds))
                             dof_available[min_idx:max_idx+1] = np.where(resid_dof > 0, resid_dof, 0.0)
                     if is_last_match:
                         if not add_group:
-                            self.fdat["fit_group"].ix[potential_ixs[0]] = 0
+                            self.fdat.ix[potential_ixs[0], "fit_group"] = 0
     
     def get_index(self, wv, clip=False):
         idx = np.log(np.asarray(wv)/self.min_wv)/self.delta_log
@@ -290,11 +420,16 @@ and float values.""".format(type(dof_thresholds))
             idx = np.clip(idx, 0, self.npts-1)
         return idx
     
-    def generate_bk_vec(self):
-        bk = self.fdat[self.fdat.fit_group <= 1]
-        self.bk_vec = np.zeros(self.npts)
-        for line_ix in bk.index:
-            ldat = bk.ix[line_ix]
+    #def calc_bk_vec(self):
+    #    self.bk_vec = self.generate_bk_vec()
+    
+    def generate_bk_vec(self, bk_mask=None):
+        if bk_mask is None:
+            bk_mask = self.fdat.fit_group <=1    
+        bk_fdat = self.fdat[bk_mask]
+        bk_vec = np.zeros(self.npts)
+        for line_ix in bk_fdat.index:
+            ldat = bk_fdat.ix[line_ix]
             ew = np.power(10.0, ldat["cog_lrw"])*ldat["wv"]
             sigma = np.sqrt(ldat["doppler_width"]**2 +ldat["sigma_offset"]**2)
             gamma = self.mean_gamma_ratio*sigma
@@ -310,63 +445,111 @@ and float values.""".format(type(dof_thresholds))
             ub = int(np.around(self.get_index(feat_wv+5.0*sigma, clip=True)))
             profile = ew*voigt(self.model_wv[lb:ub+1], feat_wv, sigma, gamma)
             profile = np.where(profile < 0.1, profile, 0.1)
-            self.bk_vec[lb:ub+1]=self.bk_vec[lb:ub+1] + profile
-        self.bk_vec = np.where(self.bk_vec < 0.5, self.bk_vec, 0.5)
+            bk_vec[lb:ub+1]=bk_vec[lb:ub+1] + profile
+        bk_vec = np.where(bk_vec < 0.5, bk_vec, 0.5)
+        self.bk_vec = bk_vec
+        return bk_vec
     
-    def generate_feature_matrix(self):
-        non_bk = self.fdat[self.fdat.fit_group > 1]
-        group_gb = non_bk.groupby("fit_group")
+    #def calc_feature_matrix(self):
+    #    self.feature_matrix = self.generate_feature_matrix()
+    
+    def full_feature_matrix(self, overwrite=True):
+        indexes = [] #arrays of the row indexes belonging to each column
+        profiles = []
+        sig_offs = self.fdat["sigma_offset"]
+        target_widths = np.sqrt(np.clip(self.fdat["doppler_width"]**2 + np.sign(sig_offs)*sig_offs**2, 0, np.inf))
+        for feat_idx in range(self.n_feat):
+            column_idx = int(self.fdat["feature_num"].iloc[feat_idx])
+            feat_wv = self.fdat["wv"].iloc[feat_idx]
+            target_width = target_widths.iloc[feat_idx]
+            lb = int(np.around(self.get_index(feat_wv-6.0*target_width, clip=True)))
+            ub = int(np.around(self.get_index(feat_wv+6.0*target_width, clip=True)))
+            prof = voigt(self.model_wv[lb:ub+1], feat_wv, target_width, 0.0)
+            indexes.append(np.array([np.arange(lb, ub+1), np.repeat(column_idx, len(prof))])) 
+            profiles.append(prof)
+        indexes = np.hstack(indexes)
+        profiles = np.hstack(profiles)
+        npts = len(self.model_wv)
+        full_matrix = scipy.sparse.csc_matrix((profiles, indexes), shape=(npts, npts))
+        if overwrite:
+            self.full_matrix = full_matrix 
+        return full_matrix 
+    
+    def collapsed_feature_matrix(self, overwrite=True):
+        full_fm = self.full_feature_matrix(overwrite=overwrite)
+        ew_fracs = self.group_ew_fractions(overwrite=overwrite)
+    
+    def group_ew_fractions(self, grouping=None, overwrite=True):
+        if grouping is None:
+            grouping = ["species", "fit_group"]
+        group_gb = self.fdat.groupby(grouping)
+        group_ew_sum = group_gb["cog_ew"].sum()
         groups = group_gb.groups
-        
         n_groups = len(groups)
-        
-        self.feature_matrix = scipy.sparse.lil_matrix((self.npts, n_groups), dtype=float)
-        group_keys = sorted(groups.keys())
-        self.fdat["ew_frac"] = np.zeros(len(self.fdat))
-        for group_idx in range(len(group_keys)):
+        group_keys = groups.keys()
+        ew_frac = pd.Series(np.zeros(len(self.fdat)), index=np.array(self.fdat.index))
+        for group_idx in range(n_groups):
             group_id = group_keys[group_idx]
             group_ldf = self.fdat.ix[groups[group_id]]
-            group_cog_lrw = group_ldf.cog_lrw.values
-            max_lrw = np.max(group_cog_lrw)
-            relative_ews = np.power(10, group_cog_lrw-max_lrw)*group_ldf.wv.values
-            relative_ew_sum = np.sum(relative_ews)
-            ew_fracs = relative_ews/relative_ew_sum
-            self.fdat["ew_frac"].ix[groups[group_id]] = ew_fracs
-            for feat_idx in range(len(group_ldf)):
-                feat_wv = group_ldf.iloc[feat_idx]["wv"]
-                wv_idx = self.get_index(feat_wv)
-                if wv_idx < 0:
-                    continue
-                if wv_idx > self.npts-1:
-                    continue
-                target_width = np.sqrt(group_ldf["doppler_width"].iloc[feat_idx]**2 + group_ldf["sigma_offset"].iloc[feat_idx]**2)
-                
-                lb = int(np.around(self.get_index(feat_wv-5.0*target_width, clip=True)))
-                ub = int(np.around(self.get_index(feat_wv+5.0*target_width, clip=True)))
-                
-                profile = voigt(self.model_wv[lb:ub+1], feat_wv, target_width, 0.0)
-                profile *= ew_fracs[feat_idx]
-                
-                self.feature_matrix[lb:ub+1, group_idx] = profile.reshape((-1, 1)) + self.feature_matrix[lb:ub+1, group_idx]
-        self.feature_matrix = self.feature_matrix.tocsr()
+            relative_ews = group_ldf.cog_ew/group_ew_sum[group_id]
+            ew_frac.ix[groups[group_id]] = relative_ews
+        if overwrite:
+            self.fdat["ew_frac"] = ew_frac
+        return ew_frac
     
-    def calc_p2_sums(self):
+    def ew_frac_vecs(self):
+        group_gb = self.fdat.groupby(["species", "fit_group"])
+        groups = group_gb.groups
         pass
+    
+    def grouping_matrices(self, grouping=None, overwrite=True):
+        if grouping is None:
+            grouping = ["species", "fit_group"]
+        group_gb = self.fdat.groupby(grouping)
+        groups = group_gb.groups
+        n_groups = len(groups)
+        group_keys = sorted(groups.keys())
+        matrix_idxs = {species:[] for species in self.species_set}
+        for group_idx in range(n_groups):
+            group_id = group_keys[group_idx]
+            #TODO: remove background features by detecting negative fit groups
+            group_feat_nums = self.fdat.ix[groups[group_id], "feature_num"].values
+            n_group_feats = len(group_feat_nums)
+            midxs = np.array([group_feat_nums, np.repeat(group_idx, n_group_feats)])
+            matrix_idxs[group_id[0]].append(midxs)
+        matrix_idxs = {species:np.hstack(matrix_idxs[species]) for species in self.species_set}
+        grouping_matrices = {}
+        for species in self.species_set:
+            n_sub_groups = matrix_idxs[species].shape[1]
+            mdat = np.ones(n_sub_groups, dtype=float)
+            gmat = scipy.sparse.csc_matrix((mdat, matrix_idxs[species]), shape=(self.n_feat, n_sub_groups))
+            grouping_matrices[species] = gmat 
+        if overwrite:
+            self.grouping_matrices = grouping_matrices
+        return grouping_matrices
     
     def parameter_expansion(self, input, **kwargs):
         return -1*self.feature_matrix
     
     def parameter_damping(self, input):
-        fgb = self.ew_group_dict
-        targ_ews = np.zeros(len(fgb))
-        for group_idx, group_num in enumerate(self.ew_group_dict):
-            group_fdat = self.fdat.ix[fgb[group_num]]
-            ew_sum = np.sum(np.power(10.0, group_fdat["cog_lrw"])*group_fdat["wv"])
-            targ_ews[group_idx] = ew_sum
-        cur_params = self.get_pvec()
-        nparams = len(cur_params)
-        targ_delta = 0.5*(targ_ews-cur_params)
-        return targ_delta, np.ones(targ_delta.shape)*0.01
+        bk_mask = self.fdat.fit_group > 1
+        non_bk = self.fdat[self.fdat.fit_group > 1]
+        group_gb = non_bk.groupby("fit_group")
+        groups = group_gb.groups
+        #
+        #n_groups = len(groups)
+        #
+        #sorted_keys = sorted(groups.keys())
+        #targ_ews = np.zeros(len(groups))
+        #for group_idx, group_num in enumerate(sorted_keys):
+        #    group_fdat = self.fdat.ix[groups[group_num]]
+        #    ew_sum = np.sum(np.power(10.0, group_fdat["cog_lrw"])*group_fdat["wv"])
+        #    targ_ews[group_idx] = ew_sum
+        #cur_params = self.get_pvec()
+        #nparams = len(cur_params)
+        #targ_delta = np.clip(targ_ews-cur_params, -0.01, 0.01)
+        targ_delta = np.zeros(len(groups))
+        return targ_delta, np.repeat(10.0, len(targ_delta))
     
     @property
     def theta(self):
@@ -386,19 +569,27 @@ and float values.""".format(type(dof_thresholds))
         self.fdat["vmicro_width"] = self.fdat["wv"]*self.vmicro/299792.458
     
     def calc_doppler_widths(self):
+        "print calculating doppler widths"
         self.calc_therm_widths()
         self.calc_vmicro_widths()
         dop_widths = np.sqrt(self.fdat["vmicro_width"]**2 + self.fdat["thermal_width"]**2)
         self.fdat["doppler_width"] = dop_widths
     
     def calc_x(self):
-        self.fdat["x"] = self.solar_ab + self.loggf - self.ep*self.theta - self.doppler_lrw
+        "print calculating x values"
+        neutral_delt_x = np.log10(1.0 - np.power(10.0, self.log_ion_frac))
+        ionization_delta = np.where(self.fdat.ion == 1, self.log_ion_frac, neutral_delt_x)
+        #TODO: include some sort of basic adjustment of ionization fraction on the basis of element ionization energy.
+        self.fdat["x"] = self.solar_ab + self.loggf - self.ep*self.theta - self.doppler_lrw + ionization_delta
     
-    def calc_cog_lrws(self):
+    def calc_cog_ews(self):
+        print "calculating cog ews"
         lrws = self.cog(self.x_adj.values)
         self.fdat["cog_lrw_adj"] = lrws
-        self.fdat["cog_lrw"] = lrws + self.doppler_lrw.values
-    
+        cog_lrw = lrws + self.doppler_lrw.values
+        self.fdat["cog_lrw"] = cog_lrw
+        self.fdat["cog_ew"] = np.power(10.0, cog_lrw)*self.fdat.wv
+        
     def calc_cog(self):
         """calculate an approximate curve of growth and store its representation
         """
@@ -497,12 +688,12 @@ and float values.""".format(type(dof_thresholds))
     @property
     def lrw_adj(self):
         return self.lrw - self.doppler_lrw
-        
+    
     def cog_plot(self, ax=None, **kwargs):
         foreground = self.fdat[(self.fdat.fit_group > 1)*(self.fdat.group_exemplar > 0)]
         if ax is None:
             fig, ax = plt.subplots()
-        ax.scatter(foreground.x-foreground.x_offset, np.log10(foreground.ew/foreground.wv), **kwargs)
+        ax.scatter(foreground.x-foreground.x_offset, np.log10(foreground.ew/foreground.doppler_width), **kwargs)
         ax.set_xlabel("adjusted relative strength")
         ax.set_ylabel("log(EW/doppler_width)")
 

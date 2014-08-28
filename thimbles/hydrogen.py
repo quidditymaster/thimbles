@@ -95,7 +95,7 @@ class HydrogenForegroundModel(Spectrum):
         self.npts_model = len(self.wv)
         min_wv = self.wv[0]
         max_wv = self.wv[-1]
-        self.hdat = hlines[(hlines.wv > min_wv)*(hlines.wv < max_wv)*(hlines.nup < 22)]
+        self.hdat = hlines[(hlines.wv > min_wv)*(hlines.wv < max_wv)]
         self.initialize_lines()
         self.calc_h_opac()
         self.calc_transmission()

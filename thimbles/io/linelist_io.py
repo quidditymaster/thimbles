@@ -40,7 +40,7 @@ def read_linelist(fname, file_type=None):
                 species = float(moog_cols[1])
                 sp_split = moog_cols[1].split(".")
                 z = int(sp_split[0])
-                ion = int(sp_split[1][0])
+                ion = int(sp_split[1][0])-1
                 #A=sp_split[1][1:]
                 ep = float(moog_cols[2])
                 loggf = float(moog_cols[3])
@@ -86,7 +86,7 @@ def read_linelist(fname, file_type=None):
                 continue
             spl = line.rstrip().split(",")
             species_name, ion_number = spl[0].replace("'", "").split()
-            ion_number = int(ion_number)
+            ion_number = int(ion_number) - 1
             proton_number = ptable[species_name]["z"]
             #species_id = proton_number + 0.1*(int(ion_number)-1)
             wv, loggf, elow, jlo, eup, jup = map(float, spl[1:7])

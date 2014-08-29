@@ -885,12 +885,15 @@ def l1_factor(input_matrix, input_weights, rank=3, n_iter=3):
                 h[rank_idx, col_idx] = opt_h
     return w, h
 
-def pseudo_huber_cost(resid_vec, sigma, gamma):
+def pseudo_huber_cost(resid_vec, sigma, gamma, sum_result=True):
     sig4 = sigma**4
     gam4 = gamma**4 
     rat4 = sig4/gam4
     weights = 1.0/(gamma*np.sqrt(rat4 + resid_vec**2))
-    return np.sum(resid_vec**2*weights)
+    result = resid_vec**2*weights
+    if sum_result:
+        result =  np.sum(resid_vec**2*weights)
+    return result
 
 def pseudo_huber_irls(A, b, sigma, gamma, max_iter=100, conv_thresh=1e-4):
     """
@@ -1045,3 +1048,4 @@ def blackbody_spectrum(sampling_wavelengths, temperature,  normalize = True):
         peak_val = blam(peak_wv, temperature)
         bbspec /= peak_val
     return bbspec
+

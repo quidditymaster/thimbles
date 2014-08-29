@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import thimbles as tmb
 import matplotlib.pyplot as plt
+from copy import copy
 import scipy
 import scipy.integrate as integrate
 import scipy.sparse
@@ -14,9 +15,12 @@ from thimbles import verbosity
 from thimbles import hydrogen
 from latbin import matching
 
+def indicator_factory(indval, tolerance):
+    return lambda x: np.abs(x-indval) < tolerance
+
 class SpeciesGrouper(object):
     
-    def __init__(self, group_indicators, ungrouped_val="unique"):
+    def __init__(self, group_indicators, ungrouped_val="unique", tolerance=1e-5):
         """species grouper object
         
         inputs
@@ -27,20 +31,29 @@ class SpeciesGrouper(object):
           function in the list.
           if more than one function in the list would return true for a given
           species the first function in the list takes precedence.
+          The functions are called once for each possible species input
+          and the result is cached so one need not worry about optimizing them.
         ungrouped_val: string
           "last" species not appearing in one of the group_indicators lists
-            will be grouped together with group_num == len(group_indicators)
+            will be grouped together with group_num == len(group_indicators) -1
           "unique" species not appearing in one of the passed in lists will
             be grouped individually, with group num dictated by the first
             time species_group_num is called with an example of that species.
+          "raise" if there is no match raise a ValueException
+        tolerance: float
+          the max allowed difference to accept a species as a match when
+          generating extra indicators to handle grouping of species values
+          for which no group_indicator function returns True.
         """
         self.group_indicators = group_indicators
-        ungr_opts = ["last", "unique"]
+        ungr_opts = ["last", "unique", "raise"]
         if ungrouped_val not in ungr_opts:
             raise ValueError("ungrouped_val type {} not recognized must be one of {}".format(ungrouped_val, ungr_opts))
         self.ungrouped_val = ungrouped_val
+        self.tolerance = tolerance
     
     def species_group_num(self, species):
+        #import pdb; pdb.set_trace()
         species = np.atleast_1d(species)
         unique_species, recon_idxs = np.unique(species, return_inverse=True)
         grp_nums = np.zeros(unique_species.shape)
@@ -53,8 +66,10 @@ class SpeciesGrouper(object):
                     grp_num_found = True
                     break
             if not grp_num_found:
-                if self.ungrouped_val == "unique":
-                    self.group_indicators.append(lambda x: x == input_sp_val)
+                if self.ungrouped_val == "raise":
+                    raise ValueError("given species {} was not accepted by any indicator function".format(input_sp_val))
+                elif self.ungrouped_val == "unique":
+                    self.group_indicators.append(indicator_factory(input_sp_val, self.tolerance))
                 cur_group_num = len(self.group_indicators)-1
             grp_nums[input_sp_idx] = cur_group_num
         return grp_nums[recon_idxs]

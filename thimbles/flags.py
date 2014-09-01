@@ -106,7 +106,7 @@ feature_flag_space.add_dimension("bad_fit")
 feature_flag_space.add_dimension("viewed")
 
 class FeatureFlags(Flags, Base, ThimblesTable):
-    _val = Column(Integer)
+    flag_int= Column(Integer)
     
     def __init__(self, flag_int=None):
         super(FeatureFlags, self).__init__(feature_flag_space, flag_int)
@@ -127,6 +127,7 @@ spectrum_flag_space.add_dimension("sky")
 # re-sampled
 
 class SpectrumFlags(Flags, Base, ThimblesTable):
+    flag_int= Column(Integer)    
     
     def __init__(self, flag_int=None):
         super(SpectrumFlags, self).__init__(spectrum_flag_space, flag_int)

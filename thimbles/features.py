@@ -77,6 +77,7 @@ class SaturatedVoigtFeatureModel(object):
         self.mean_gamma_ratio = mean_gamma_ratio
         self.model_resolution=model_resolution
         
+        self.parameterize()
         self.calc_all()
         
         self.dof_thresholds = {"ew":1.5, "vel_offset":5.0, "sigma_offset":5.0, "gamma_offset":10.0}

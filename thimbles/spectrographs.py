@@ -40,6 +40,11 @@ class PiecewisePolynomialSpectrographEfficiencyModel(object):
         self.rcppb = ppol.RCPPB(poly_order=self.degree, control_points=self.control_points, scales=np.std(self.wv)*np.ones(len(self.control_points)+1))
         self._basis = self.rcppb.get_basis(self.wv).transpose()
     
+    def retrain(self, target_output, input, **kwargs):
+        mult_basis = self._basis*input.reshape((-1, 1))
+        new_coeffs =  np.linalg.lstsq(mult_basis, target_output)[0]
+        self.coefficients = new_coeffs
+    
     def blaze(self):
         return np.dot(self._basis, self.coefficients)
     
@@ -54,6 +59,9 @@ class PiecewisePolynomialSpectrographEfficiencyModel(object):
     
     def parameter_expansion(self, input, **kwargs):
         return scipy.sparse.csc_matrix((self._basis*input.reshape((-1, 1))))
+    
+    def parameter_damping(self, input):
+        return np.zeros(self.n_coeffs), np.ones(self.n_coeffs)*2.0
     
     def __call__(self, input, **kwargs):
         return self.blaze()*input

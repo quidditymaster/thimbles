@@ -1,5 +1,6 @@
 import numpy as np
 import thimbles as tmb
+import scipy.sparse
 from piecewise_polynomial import powers_from_max_order
 from piecewise_polynomial import MultiVariatePolynomial
 
@@ -44,10 +45,18 @@ def optimal_partition(data, cost_fn, minimize=True):
     partition.append(npts)
     return partition
 
-def partitioned_polynomial_model(xvec, yvec, y_inv_var, poly_order,
-                                grouping_column = 0, min_delta = 0,
-                                alpha=2.0, beta=2.0, beta_epsilon=0.01, 
-                                gamma=2.5, y_mult=None):
+def partitioned_polynomial_model(xvec, 
+                                yvec, 
+                                y_inv_var, 
+                                poly_order,
+                                grouping_column = 0, 
+                                min_delta = 0,
+                                max_delta = np.inf,
+                                alpha=2.0, 
+                                beta=2.0, 
+                                beta_epsilon=0.01, 
+                                gamma=2.5, 
+                                y_mult=None):
     """
     fits optimal multivariate piecewise polynomials to the data with 
     dynamically chosen break points between the polynomials.
@@ -56,7 +65,7 @@ def partitioned_polynomial_model(xvec, yvec, y_inv_var, poly_order,
     
     cost = pseudo_huber_cost(residuals) + alpha*k + beta*k*(k+1)/max(beta_epsilon, npts_region - k -1)
     
-        npts_region is the number of points with non-zero yerrors included
+        npts_region is the number of points with non-zero y errors included
         in the current partition block. 
         k is the number of terms used in the fit e.g. for a one dimensional
         piecewise quadratic k = poly_order + 1 = 3.
@@ -89,6 +98,9 @@ def partitioned_polynomial_model(xvec, yvec, y_inv_var, poly_order,
         the elementary blocks from which the larger partitions are built
         until the difference in the grouping column from start to end 
         exceeds min_delta.
+    max_delta: float
+        the maximum difference in the values of the grouping column
+        to allow before forcing a break.
     alpha: float
         The cost per extra term 2 corresponds to the AIC 
         log(npts_total) corresponds to using the BIC
@@ -164,6 +176,8 @@ def partitioned_polynomial_model(xvec, yvec, y_inv_var, poly_order,
         for j in range(i):
             lb = grouping_idxs[j]
             ub = grouping_idxs[i]
+            if np.abs(xvec_2d[ub-1, grouping_column]-xvec_2d[lb, grouping_column]) > max_delta:
+                continue
             chop_sig=sigma_vec[lb:ub]
             chop_gam=gamma_vec[lb:ub]
             opt_params = tmb.utils.misc.pseudo_huber_irls(pofx[lb:ub], yvec[lb:ub], chop_sig, chop_gam)
@@ -199,6 +213,143 @@ def partitioned_polynomial_model(xvec, yvec, y_inv_var, poly_order,
     orig_space_partition.reverse()
     partition_mvps.reverse()
     return orig_space_partition, partition_mvps
+
+
+class BlockManager(object):
+    
+    def __init__(self, column=0, min_delta=0.0, max_delta=np.inf):
+        self.column = column
+    
+    def ordering_permutation(self, x):
+        return np.argsort(x[:, self.column])
+    
+    def permutation_matrix(self, x):
+        ordering_idxs = self.ordering_permutation(x)
+        return scipy.sparse.identity(len(x), type="csr")[ordering_idxs].copy()
+    
+    def generate_blocks(self):
+        pass
+
+class InformationCriterionPartitioner(object):
+    
+    def __init__(self, matrix_factory, orderer=None, transform=None):
+        pass
+    
+    def partitioning_order(self, x):
+        """return the order """
+        pass
+    
+    def permutation_matrix(self, x):
+        pass
+
+
+class MixedModelPartitioner(object):
+    
+    def __init__(
+                 xvec, 
+                 yvec,
+                 y_inv_var, 
+                 matrix_factory,
+                 matrix_kwargs=None,
+                 grouping_column = 0, 
+                 min_delta = 0,
+                 max_delta = np.inf,
+                 alpha=2.0, 
+                 beta=2.0, 
+                 beta_epsilon=0.01, 
+                 gamma=2.5, 
+                 transform_matrix=None):
+
+        assert len(xvec) == len(yvec)
+        npts = len(xvec)
+        assert len(y_inv_var) == npts
+        
+        if y_mult is None:
+            y_mult = np.ones(npts)
+        
+        #keep a reshaped xvec so it is 2 dim
+        if xvec.ndim == 2:
+            xvec_2d = xvec
+        elif xvec.ndim == 1:
+            xvec_2d = xvec.reshape((-1, 1))
+        else:
+            raise Exception("can't handle input dimensions higher than 2!")
+        n_cols = xvec_2d.shape[1]
+        
+        #create the elementary blocks
+        gcol = xvec_2d[:, grouping_column]
+        grouping_idxs = [0]
+        last_g_val = gcol[0]
+        for x_idx in range(1, npts):
+            if np.abs(gcol[x_idx]-last_g_val) > min_delta:
+                grouping_idxs.append(x_idx)
+                last_g_val = gcol[x_idx]
+        grouping_idxs.append(npts)
+        
+        #determine the center and scale of the x coordinates
+        x_cent = np.mean(xvec_2d, axis = 0)
+        x_scale = np.std(xvec_2d, axis = 0)
+        
+        #build up the polynomial terms to be used
+        powers = powers_from_max_order(poly_order)
+        n_terms = len(powers)
+        
+        #make an array of the monomial terms times the output modulation
+        mvp = MultiVariatePolynomial(np.zeros(n_terms), powers, x_cent, x_scale)
+        pofx = mvp.get_pofx(xvec_2d)*y_mult.reshape((-1, 1))
+        
+        #carry out the optimal partitioning algorithm.
+        n_blocks = len(grouping_idxs)-1
+        opt_val = np.zeros(n_blocks+1)
+        break_idxs = np.zeros(n_blocks+1, dtype = int)
+        opt_fit_params = np.zeros((n_blocks+1, n_terms))
+        sigma_vec = 1.0/np.sqrt(y_inv_var)
+        sigma_vec = np.where(y_inv_var == 0, 1e10, sigma_vec)
+        gamma_vec = gamma*sigma_vec
+        for i in range(1, n_blocks+1):
+            cmin = float("inf")
+            cidx = None
+            last_opt_params = None
+            for j in range(i):
+                lb = grouping_idxs[j] #j is the index of the lower block
+                ub = grouping_idxs[i] #i is the index of the upper block
+                if np.abs(xvec_2d[ub-1, grouping_column]-xvec_2d[lb, grouping_column]) > max_delta:
+                    continue
+                chop_sig=sigma_vec[lb:ub]
+                chop_gam=gamma_vec[lb:ub]
+                opt_params = tmb.utils.misc.pseudo_huber_irls(pofx[lb:ub], yvec[lb:ub], chop_sig, chop_gam)
+                opt_fit_y = np.dot(pofx[lb:ub], opt_params)
+                resids = opt_fit_y-yvec[lb:ub]
+                #chi_sq = np.sum((opt_fit_y-yvec[lb:ub])**2*y_inv_var[lb:ub])
+                ph_cost = tmb.utils.misc.pseudo_huber_cost(resids, chop_sig, chop_gam)
+                n_local = ub-lb
+                param_cost = alpha*n_terms
+                param_cost += beta*n_terms*(n_terms+1)/max(beta_epsilon, n_local-n_terms-1)
+                tot_cost = ph_cost + param_cost + opt_val[j]
+                if tot_cost < cmin:
+                    cmin = tot_cost
+                    cidx = j
+                    last_opt_params = opt_params
+            opt_val[i] = cmin
+            break_idxs[i] = cidx
+            opt_fit_params[i] = last_opt_params
+        first_break = break_idxs[-1]
+        partition = [first_break]
+        while partition[-1] > 0:
+            cbreak = break_idxs[partition[-1]-1]
+            partition.append(cbreak)
+        partition.insert(0, n_blocks)
+        partition_mvps = []
+        for pidx in range(len(partition)-1):
+            coeffs = opt_fit_params[partition[pidx]]
+            cmvp = MultiVariatePolynomial(coeffs, powers, x_cent, x_scale)
+            partition_mvps.append(cmvp)
+        orig_space_partition = []
+        for part_idx in partition:
+            orig_space_partition.append(grouping_idxs[part_idx])
+        orig_space_partition.reverse()
+        partition_mvps.reverse()
+        return orig_space_partition, partition_mvps
 
 
 def partition_average(data, partition):
@@ -268,11 +419,15 @@ if __name__ == "__main__":
     x_in_masked = x_in[good_mask]
     rpoints_masked = rpoints[good_mask]
     in_inv_var_masked = in_inv_var[good_mask]
-
+    
+    import time
+    stime = time.time()    
     part, part_polys = partitioned_polynomial_model(x_in_masked, rpoints_masked, 
                                     in_inv_var_masked, poly_order=(2,2),
-                                    grouping_column = 0, min_delta = 5,
+                                    grouping_column = 0, min_delta = 5, max_delta=50,
                                     alpha=2.0, beta=2.0, beta_epsilon=0.01)
+    etime = time.time()
+    print "partitioned in {} seconds".format(etime-stime)
     
     #part = optimal_partition(rpoints, cost_fn)
     #avgs = partition_average(rpoints, part)

@@ -213,52 +213,6 @@ def local_gaussian_fit(yvalues, peak_idx=None, fit_width=2, xvalues=None):
     peak_y_value = np.dot(center_p_vec, poly_coeffs)
     return center, sigma, np.exp(peak_y_value)
 
-class HypercubeGridInterpolator:
-    
-    """A class for doing quick linear interpolation over a large D dimensional
-     hypercube of vector outputs.
-    
-    inputs:
-    grid_min: ndarray of length D
-      The coodinate of the minimum edge of the cube which is assumed to correspond
-      to grid_data[0, 0, 0, ... 0] 
-    grid_max: ndarray of length D
-      The coordinate of the maximum edge of the data cube which is assumed to 
-      correspond to grid_data[-1, -1, -1, ... -1]
-    grid_data: ndarray
-      a hypercube of data with a shape 
-      n_dim_1, n_dim_2, ... n_dim_D, len(output_vector)
-    """    
-    def __init__(self, grid_min, grid_max, grid_data):
-
-        self.grid_min = grid_min
-        self.grid_max = grid_max
-        self.n_dims_in = len(grid_min)
-        self.grid_deltas = (grid_max-grid_min)/np.asarray(grid_data.shape[:self.n_dims_in], dtype = float)
-        self.grid_data = grid_data
-        return
-        
-    def __call__(self, coord_vec):
-        clipped_coords = np.clip(coord_vec, self.grid_min, self.grid_max)
-        idx_val = (clipped_coords-self.grid_min)/self.grid_deltas
-        min_idx = np.asarray(idx_val, dtype = int)
-        alphas = idx_val-min_idx
-        transform = np.zeros((self.n_dims_in, self.n_dims_in))
-        c_vertex = np.zeros(self.n_dims_in, dtype = int)
-        temp, promote_order = zip(*sorted(zip(alphas, range(self.n_dims_in)), reverse = True))
-        #import pdb;pdb.set_trace()
-        for i in xrange(self.n_dims_in):
-            c_vertex[promote_order[i]] = 1.0
-            transform[i] = c_vertex
-        secondary_weights = np.dot(np.linalg.inv(transform), alphas)
-        first_weight = 1.0 - np.sum(secondary_weights)
-        output = first_weight * self.grid_data[tuple(min_idx)]
-        for i in xrange(self.n_dims_in):
-            vertex_data = self.grid_data[tuple(min_idx + transform[i])]
-            output += secondary_weights[i] * vertex_data
-        #TODO: test this interpolator output heavily
-        return output
-
 
 def get_local_maxima(arr):
     # http://stackoverflow.com/questions/3684484/peak-detection-in-a-2d-asarray/3689710#3689710
@@ -931,12 +885,15 @@ def l1_factor(input_matrix, input_weights, rank=3, n_iter=3):
                 h[rank_idx, col_idx] = opt_h
     return w, h
 
-def pseudo_huber_cost(resid_vec, sigma, gamma):
+def pseudo_huber_cost(resid_vec, sigma, gamma, sum_result=True):
     sig4 = sigma**4
     gam4 = gamma**4 
     rat4 = sig4/gam4
     weights = 1.0/(gamma*np.sqrt(rat4 + resid_vec**2))
-    return np.sum(resid_vec**2*weights)
+    result = resid_vec**2*weights
+    if sum_result:
+        result =  np.sum(resid_vec**2*weights)
+    return result
 
 def pseudo_huber_irls(A, b, sigma, gamma, max_iter=100, conv_thresh=1e-4):
     """
@@ -1091,3 +1048,4 @@ def blackbody_spectrum(sampling_wavelengths, temperature,  normalize = True):
         peak_val = blam(peak_wv, temperature)
         bbspec /= peak_val
     return bbspec
+

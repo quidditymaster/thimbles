@@ -8,6 +8,7 @@ from copy import copy
 class ModelingError(Exception):
     pass
 
+
 #factory_defaults = {
 #"history": ValueHistory,
 #"scale":ParameterScale,
@@ -159,12 +160,14 @@ class Model(object):
     def parameters(self):
         return self._parameters
     
-    def calculate_derivatives(self):
-        self.derivatives = {}
-        for dy_param_id, dy_param in self._parameters.items():
-            for dx_id, dx_param in dy_param.depends_on:
-                if dx_param.is_base:
-                    cpar_val = dx_param.value()
+    def parameter_expansion(self):
+        raise 
+    
+    def as_linear_op(self):
+        pass
+    
+    def damping_matrix(self):
+        pass
 
 class Parameter(object):
     
@@ -173,8 +176,6 @@ class Parameter(object):
         if depends_on is None:
             depends_on=[]
         self.depends_on=depends_on
-        #self.step=step
-        #self.epsilon=epsilon
         history_factory = factories["history"]
         hist_kwargs = factory_kwargs.get("history", {})
         self.history=history_factory(self, **hist_kwargs)
@@ -185,7 +186,7 @@ class Parameter(object):
         self._setter = None        
         self._last_valuated = -np.inf
         self._last_value = None
-    
+        
     @property
     def dist(self):
         return self._dist
@@ -279,7 +280,7 @@ class ModelChain(object):
             further_lop = self.models[model_idx].as_linear_op(inp, **kw)
             lop = further_lop*lop
         return lop
-    
+        
     def model_index(self, model):
         for i in range(self.n_models):
             if model == self.models[i]:
@@ -301,16 +302,33 @@ class ModelChain(object):
         delta_matrix = model.parameter_expansion(inp, **kw)
         return after_matrix*delta_matrix
     
+    def parameter_damping(self, model):
+        md_idx = self.model_index(model)
+        inp, kw = self.get_model_inputs(md_idx)
+        return model.parameter_damping(inp, **kw)
+    
     def __call__(self):
         for model_idx in range(self.n_models):
-            if model_idx == 0:
-                input_value = self.first_input
-            else:
-                input_value = self._result_chain[model_idx-1]
-            kwargs= self.kw_inputs[model_idx]
+            input_value, kwargs = self.get_model_inputs(model_idx)
             output_value = self.models[model_idx](input_value, **kwargs)
             self._result_chain[model_idx] = output_value
         return self._result_chain[-1]
+
+
+class FitPolicy(object):
+    
+    def __init__(self):
+        pass
+
+class FitState(object):
+    
+    def __init__(self):
+        pass
+
+class FitTransitionPolicy(object):
+    
+    def __self__(self):
+        pass
 
 class Modeler(object):
     
@@ -331,30 +349,38 @@ class Modeler(object):
         fit_mats = []
         for chain in chains:
             fit_mats.append([chain.fit_matrix(model)])
-        return scipy.sparse.bmat(fit_mats)
-    
-    def stitched_target_deltas(self, chains):
+        
+        #stitch together a target vector
         targ_deltas = []
         for chain in chains:
             targ_dat = chain.target_data
             mod_dat = chain()
             deltas = targ_dat - mod_dat
             targ_deltas.append(deltas)
-        return np.hstack(targ_deltas)
-    
-    def stitched_inv_covar_matrices(self, chains):
+        
+        #build the data inverse variance matrix
         inv_covars = []
         for chain in chains:
             inv_covars.append(chain.target_inv_covar)
-        return scipy.sparse.block_diag(inv_covars)
+        
+        #add damping matrices
+        n_params = fit_mats[0][0].shape[1]
+        for chain in chains:
+            fit_mats.append([scipy.sparse.identity(n_params, dtype=float)])
+            damping_target, damping_weight = chain.parameter_damping(model)
+            targ_deltas.append(damping_target)
+            inv_covars.append(scipy.sparse.dia_matrix((damping_weight, 0), shape=(n_params, n_params)))
+        
+        fm = scipy.sparse.bmat(fit_mats)
+        td = np.hstack(targ_deltas)
+        ic = scipy.sparse.block_diag(inv_covars)
+        return fm, td, ic
     
     def iterate(self, model):
         relevant_chains = self.model_to_chains.get(model)
         if relevant_chains is None:
             raise Exception("model not part of this modeler's chain sequence")
-        fit_mat = self.stitched_fit_matrices(relevant_chains, model)
-        error_inv_covar = self.stitched_inv_covar_matrices(relevant_chains)
-        target_vec = self.stitched_target_deltas(relevant_chains)
+        fit_mat, target_vec, error_inv_covar = self.stitched_fit_matrices(relevant_chains, model)
         trans_mat = fit_mat.transpose()
         ata_inv = trans_mat*(error_inv_covar*fit_mat)
         rhs = trans_mat*(error_inv_covar*target_vec)

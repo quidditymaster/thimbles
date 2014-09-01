@@ -93,7 +93,7 @@ class Flags(object):
             self.flag_int += self.flag_space.flag_masks[flag_name]
     
     def asdict(self):
-        return self.flag_space.int_to_dict(self._val)
+        return self.flag_space.int_to_dict(self.flag_int)
     
     def __repr__(self):
         return repr(self.asdict())

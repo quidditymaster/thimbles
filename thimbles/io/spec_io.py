@@ -15,6 +15,7 @@ import warnings
 import astropy.io
 from astropy.io import fits
 import numpy as np
+import h5py
 
 # Internal
 from ..utils.misc import var_2_inv_var
@@ -30,8 +31,42 @@ __all__ = ["read_spec","read_txt","read_fits",
            "read_txt","read_fits","read_fits_hdu","read_bintablehdu",
            "read_many_fits"]
 
-# ########################################################################### #
+def read_h5(filepath):
+    hf = h5py.File(filepath, "r")
+    spectra = []
+    spec_keys = hf.keys()
+    for spec_idx in range(len(spec_keys)):
+        spec_grp_name = "spec_{}".format(spec_idx)
+        wv_soln_path = spec_grp_name + "/wv_soln" 
+        wvs = np.array(hf[wv_soln_path + "/wv_centers"])
+        lsf = np.array(hf[wv_soln_path + "/lsf"])
+        rv, bcvel = hf[wv_soln_path + "/velocity_offsets"]
+        
+        quant_path = spec_grp_name + "/spectral_quantities" 
+        flux = np.array(hf[quant_path+"/flux/values"])
+        ivar = np.array(hf[quant_path+"/flux/ivar"])
+        new_spec = Spectrum(wvs, flux, ivar, rv=rv, barycenter_vel=bcvel, lsf=lsf)
+        spectra.append(new_spec)
+    return spectra
 
+def write_h5(filepath, spectra):
+    """writes a list of lists of spectra to a hdf5 file
+    """
+    hf = h5py.File(filepath, "w")
+    for spec_idx in range(len(spectra)):
+        cspec = spectra[spec_idx]
+        spec_grp_name = "spec_{}".format(spec_idx)
+        wv_soln_path = spec_grp_name + "/wv_soln" 
+        hf[wv_soln_path + "/wv_centers"] = cspec.wv
+        hf[wv_soln_path + "/lsf"] = cspec.wv_soln.lsf
+        hf[wv_soln_path + "/velocity_offsets"] = [cspec.wv_soln.rv, cspec.wv_soln.barycenter_vel]
+        
+        quant_path = spec_grp_name + "/spectral_quantities" 
+        hf[quant_path+"/flux/values"] = cspec.flux
+        hf[quant_path+"/flux/ivar"] = cspec.inv_var
+    hf.close()
+
+# ########################################################################### #
 # read functions
 
 def read_txt (filepath,**np_kwargs):
@@ -96,7 +131,6 @@ def read_txt (filepath,**np_kwargs):
     return [Spectrum(wvs,data,inv_var,metadata=metadata)]
     
 ############################################################################
-# readin is the main function for input
 
 def read_fits (filepath, which_hdu=0, band=0, preference=None):
     if not os.path.isfile(filepath): 
@@ -391,13 +425,3 @@ def read_spec(filepath,**kwargs):
             return read_txt(filepath,**kwargs)
     else: # is a fits file
         return read_fits(filepath,**kwargs)
-
-
-
-
-
-
-
-
-
-

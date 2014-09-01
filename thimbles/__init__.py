@@ -19,6 +19,7 @@ from thimbles import stellar_atmospheres
 from thimbles import modeling
 from thimbles import binning
 from thimbles import hydrogen
+from thimbles import continuum
 
 from .spectrum import Spectrum
 from .io import *

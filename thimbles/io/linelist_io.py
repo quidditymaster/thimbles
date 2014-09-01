@@ -12,7 +12,20 @@ def float_or_nan(val):
     except ValueError:
         return np.nan
 
-def read_linelist(fname, file_type="moog"):
+def read_linelist(fname, file_type=None):
+    """
+    fname: string
+      path to linelist file 
+    file_type: string
+       None attempt to detect linelist type from extensions
+      'moog' moog type linelist
+      'vald' vald long format
+    """
+    if file_type is None:
+        if ".ln" in fname:
+            file_type = "moog"
+        elif ".vald" in fname:
+            file_type = "vald"
     lines = open(fname).readlines()
     ldat = {"wv":[], "species":[], "Z":[], "ion":[], 
             "ep":[], "loggf":[], "ew":[],

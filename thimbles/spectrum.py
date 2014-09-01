@@ -10,15 +10,16 @@ import scipy.stats
 import matplotlib.pyplot as plt
 
 # internal
-from .utils import resampling
-from .utils import misc
-from .utils.misc import inv_var_2_var, var_2_inv_var, clean_variances, clean_inverse_variances
+import thimbles as tmb
+from thimbles.utils import resampling
+#from thimbles.utils.misc import inv_var_2_var, var_2_inv_var, clean_variances, clean_inverse_variances
 from .metadata import MetaData
 from .flags import SpectrumFlags
 from . import verbosity
 from .reference_frames import InertialFrame
 from .resolution import LineSpreadFunction, GaussianLSF, BoxLSF
 from .binning import CoordinateBinning1D
+from scipy.interpolate import interp1d
 
 # ########################################################################### #
 
@@ -26,11 +27,11 @@ __all__ = ["WavelengthSolution","Spectrum"]
 
 # ########################################################################### #
 
-speed_of_light = 299792.458
+speed_of_light = 299792.458 #speed of light in km/s
 
 class WavelengthSolution(CoordinateBinning1D):
     
-    def __init__(self, obs_wavelengths, emitter_frame=None, observer_frame=None, lsf=None):
+    def __init__(self, obs_wavelengths, rv=None, barycenter_vel=None, lsf=None):
         """a class that encapsulates the manner in which a spectrum is sampled
         obs_wavelengths: np.ndarray
         emitter_frame: InertialFrame or Float
@@ -45,33 +46,39 @@ class WavelengthSolution(CoordinateBinning1D):
         """
         super(WavelengthSolution, self).__init__(obs_wavelengths)
         
-        if observer_frame is None:
-            observer_frame = InertialFrame(0.0)
-        elif not isinstance(observer_frame, InertialFrame):
-            observer_frame = InertialFrame(observer_frame)
-        self.observer_frame = observer_frame
+        if rv is None:
+            rv = 0.0
+        self._rv = rv
         
-        if emitter_frame is None:
-                emitter_frame = InertialFrame(0.0)
-        elif not isinstance(emitter_frame, InertialFrame):
-            emitter_frame = InertialFrame(emitter_frame)
-        self.emitter_frame = emitter_frame
+        if barycenter_vel is None:
+            barycenter_vel = 0.0
+        self._barycenter_vel = barycenter_vel
         
         if lsf is None:
-            lsf = GaussianLSF(np.ones(len(obs_wavelengths)))
-        elif not isinstance(lsf, LineSpreadFunction):
-            try:
-                lsf = GaussianLSF(lsf)
-            except:
-                verbosity("bad LSF specification defaulting to box LSF")
-                lsf = BoxLSF(self)
+            lsf = np.ones(len(obs_wavelengths))
         self.lsf = lsf
     
+    @property
+    def rv(self):
+        return self._rv
+    
+    @rv.setter
+    def rv(self, value):
+        self._rv = value
+    
     def set_rv(self, rv):
-        self.emitter_frame = InertialFrame(rv)
+        self.rv = rv
     
     def get_rv(self):
-        return self.emitter_frame.rv
+        return self.rv
+    
+    @property
+    def barycenter_vel(self):
+        return self._barycenter_vel
+    
+    @barycenter_vel.setter
+    def barycenter_vel(self, value):
+        self._varycenter_vel = value
     
     def get_wvs(self, pixels=None, frame="emitter"):
         if pixels == None:
@@ -80,27 +87,30 @@ class WavelengthSolution(CoordinateBinning1D):
             obs_wvs = self.indicies_to_coordinates(pixels)
         return self.observer_to_frame(obs_wvs, frame=frame)
     
-    def get_pix(self, wvs, frame="emitter"):
+    def get_index(self, wvs, frame="emitter", clip=False):
         shift_wvs = self.frame_to_observer(wvs, frame="emitter")
-        return self.coordinates_to_indicies(shift_wvs)
+        if clip:
+            return self.coordinates_to_indicies(shift_wvs, extrapolation="nearest")
+        else:
+            return self.coordinates_to_indicies(shift_wvs, extrapolation="linear")
     
     def observer_to_frame(self, observer_wvs, frame="emitter"):
         if frame == "emitter":
-            delta_v = self.emitter_frame - self.observer_frame
+            delta_v = self.rv - self.barycenter_vel
         elif frame == "observer":
             delta_v = 0.0
         else:
-            delta_v = frame - self.observer_frame
-        return observer_wvs*(1.0-delta_v.rv/speed_of_light)
+            delta_v = frame - self.rv
+        return observer_wvs*(1.0-delta_v/speed_of_light)
     
     def frame_to_observer(self, frame_wvs, frame="emitter"):
         if frame == "emitter":
-            delta_v = self.emitter_frame - self.observer_frame
+            delta_v = self.rv - self.barycenter_vel
         elif frame == "observer":
             delta_v = 0.0
         else:
-            delta_v = frame - self.observer_frame
-        return frame_wvs*(1.0+delta_v.rv/speed_of_light)
+            delta_v = frame - self.barycenter_vel
+        return frame_wvs*(1.0+delta_v/speed_of_light)
     
     def frame_conversion(self, wvs, wv_frame, target_frame):
         rest_wvs = self.frame_to_observer(wvs, frame=wv_frame)
@@ -157,9 +167,9 @@ class SpectralQuantity(object):
     
     def set_variance(self, variances):
         if not variances is None:
-            variances = clean_variances(variances)
+            variances = tmb.utils.misc.clean_variances(variances)
             self._var = variances
-            self._inv_var = var_2_inv_var(variances)
+            self._inv_var = tmb.utils.misc.var_2_inv_var(variances)
         else:
             self._var = None
             self._inv_var = None
@@ -172,7 +182,7 @@ class SpectralQuantity(object):
     
     @ivar.setter
     def ivar(self, value):
-        var = inv_var_2_var(value)
+        var = tmb.utils.misc.inv_var_2_var(value)
         self.set_variance(var)
     
     @property
@@ -187,31 +197,34 @@ class Spectrum(object):
     """A representation of a collection of relative flux measurements
     """
     
-    def __init__(self, 
-                 wavelength_solution, 
+    def __init__(self,
+                 wavelengths, 
                  flux, 
                  inv_var=None,
+                 rv=None,
+                 barycenter_vel=None,
+                 lsf=None,
                  norm="ones", 
                  metadata=None,
                  flags=None
              ):
         """makes a spectrum from a wavelength solution, flux and optional inv_var
         """
-        if isinstance(wavelength_solution, WavelengthSolution):
-            self.wv_soln = wavelength_solution
+        if isinstance(wavelengths, WavelengthSolution):
+            self.wv_soln = wavelengths
         else:
             #TODO proper error handling for odd inputs
-            self.wv_soln = WavelengthSolution(wavelength_solution)
+            self.wv_soln = WavelengthSolution(wavelengths, rv=rv, barycenter_vel=barycenter_vel, lsf=lsf)
         
         # TODO: check that the dimensions of the inputs match
         self.flux = np.asarray(flux)
         if inv_var == None:
             self.inv_var = (self.flux > 0.0)*np.ones(self.flux.shape, dtype=float)
-            inv_var = misc.smoothed_mad_error(self, 1.0, overwrite_error=True)
-        self.inv_var = misc.clean_inverse_variances(inv_var)
+            inv_var = tmb.utils.misc.smoothed_mad_error(self, 1.0)
+        self.inv_var = tmb.utils.misc.clean_inverse_variances(inv_var)
         #the memory address of the last stored transform
         if norm == "auto":
-            norm_res = misc.approximate_normalization(self, overwrite=True)
+            norm_res = tmb.utils.misc.approximate_normalization(self, overwrite=True)
         elif norm == "ones":
             self.norm = np.ones(len(self.wv))
         else:
@@ -239,7 +252,7 @@ class Spectrum(object):
             except TypeError:
                 raise TypeError("operation not supported between Spectrum and type %s" % type(other))
         rebinned_other = other.rebin(self.wv_soln)
-        return Spectrum(self.wv_soln, self.flux+rebinned_other.flux, var_2_inv_var(self.var + other.var))
+        return Spectrum(self.wv_soln, self.flux+rebinned_other.flux, tmb.utils.misc.var_2_inv_var(self.var + other.var))
     
     def __div__(self, other):
         if not isinstance(other, Spectrum):
@@ -249,7 +262,7 @@ class Spectrum(object):
             except TypeError:
                 raise TypeError("operation not supported between Spectrum and type %s" % type(other))
         rebinned_other = other.rebin(self.wv_soln)
-        return Spectrum(self.wv_soln, self.flux-rebinned_other.flux, var_2_inv_var(self.var/other.flux**2 + (self.flux/other.flux**2)**2*other.var))
+        return Spectrum(self.wv_soln, self.flux-rebinned_other.flux, tmb.utils.misc.var_2_inv_var(self.var/other.flux**2 + (self.flux/other.flux**2)**2*other.var))
     
     def __equal__ (self,other):
         if not isinstance(other,Spectrum):
@@ -272,7 +285,7 @@ class Spectrum(object):
             except TypeError:
                 raise TypeError("operation not supported between Spectrum and type %s" % type(other))
         rebinned_other = other.rebin(self.wv_soln)
-        return Spectrum(self.wv_soln, self.flux*rebinned_other.flux, var_2_inv_var(self.var*other.flux + other.var*self.flux))
+        return Spectrum(self.wv_soln, self.flux*rebinned_other.flux, tmb.utils.misc.var_2_inv_var(self.var*other.flux + other.var*self.flux))
     
     def __repr__(self):
         wvs = self.wv
@@ -288,11 +301,11 @@ class Spectrum(object):
             except TypeError:
                 raise TypeError("operation not supported between Spectrum and type %s" % type(other))
         rebinned_other = other.rebin(self.wv_soln)
-        return Spectrum(self.wv_soln, self.flux-rebinned_other.flux, var_2_inv_var(self.var + other.var))
+        return Spectrum(self.wv_soln, self.flux-rebinned_other.flux, tmb.utils.misc.var_2_inv_var(self.var + other.var))
     
     @property
     def px(self):
-        return self.wv_soln.get_pix()
+        return self.wv_soln.get_index()
     
     @property
     def rv(self):
@@ -314,19 +327,19 @@ class Spectrum(object):
     def get_wvs(self, pixels=None, frame="emitter"):
         return self.wv_soln.get_wvs(pixels, frame)
     
-    def get_pix(self, wvs, frame="emitter"):
-        return self.wv_soln.get_pix(wvs, frame=frame)
+    def get_index(self, wvs, frame="emitter", clip=False):
+        return self.wv_soln.get_index(wvs, frame=frame, clip=clip)
     
     def get_inv_var(self):
         return self.inv_var
     
     def get_var(self):
         #TODO deal with zeros appropriately
-        return inv_var_2_var(self.inv_var)
+        return tmb.utils.misc.inv_var_2_var(self.inv_var)
     
-    def normalize(self):
+    def normalize(self, **kwargs):
         #TODO: put extra controls in here
-        norm_res = misc.approximate_normalization(self, overwrite=True)    
+        norm_res = tmb.utils.misc.approximate_normalization(self, overwrite=True, **kwargs)    
         return norm_res
     
     def normalized(self):
@@ -353,6 +366,14 @@ class Spectrum(object):
         """
         pass
     
+    def lsf_sampling_matrix(self, model_wvs):
+        wv_widths = scipy.gradient(self.wv)*self.wv_soln.lsf
+        #TODO: use faster interpolation
+        interper = interp1d(self.wv, wv_widths, bounds_error=False, fill_value=1.0)
+        gdense = resampling.GaussianDensity(model_wvs, interper(model_wvs))
+        transform = resampling.get_resampling_matrix(model_wvs, self.wv, preserve_normalization=True, pixel_density=gdense)    
+        return transform
+        
     def rebin(self, new_wv_soln, frame="emitter"):
         #check if we have the transform stored
         if self._last_rebin_wv_soln_id == id(new_wv_soln):
@@ -382,7 +403,7 @@ class Spectrum(object):
         returns: Spectrum
         """
         #shift the wavelengths to the observed frame
-        index_vals = self.get_pix(wvs, frame=frame)
+        index_vals = self.get_index(wvs, frame=frame)
         upper_index = np.ceil(index_vals)
         lower_index = np.floor(index_vals)
         alphas = index_vals - lower_index
@@ -391,11 +412,11 @@ class Spectrum(object):
         var = self.get_var()
         sampled_var = var[upper_index]*alphas**2
         sampled_var += var[lower_index]*(1-alphas)**2
-        return Spectrum(wvs, interp_vals, misc.var_2_inv_var(sampled_var))
+        return Spectrum(wvs, interp_vals, tmb.utils.misc.var_2_inv_var(sampled_var))
     
     def bounding_indexes(self, bounds, frame="emitter"):
         bvec = np.asarray(bounds)
-        l_idx, u_idx = map(int, np.around(self.get_pix(bvec, frame=frame)))
+        l_idx, u_idx = map(int, np.around(self.get_index(bvec, frame=frame)))
         l_idx = min(max(0, l_idx), len(self.flux)-1)
         u_idx = max(min(len(self.flux)-1, u_idx), 0)
         return l_idx, u_idx
@@ -412,17 +433,16 @@ class Spectrum(object):
         wvs, flux, inv_var
         """
         l_idx, u_idx = self.bounding_indexes(bounds, frame)
-        out_wvs = self.get_wvs(np.arange(l_idx, u_idx+1), frame=frame)
-        if copy:
-            out_flux = self.flux[l_idx:u_idx+1].copy()
-            out_invvar = self.inv_var[l_idx:u_idx+1].copy()
-            out_norm = self.norm[l_idx:u_idx+1].copy()
-        else:
-            out_flux = self.flux[l_idx:u_idx+1]
-            out_invvar = self.inv_var[l_idx:u_idx+1]
-            out_norm = self.norm[l_idx:u_idx+1]
-        if len(out_flux) < 2:
+        if u_idx-l_idx < 1:
             return None
+        out_wvs = self.get_wvs(np.arange(l_idx, u_idx+1), frame=frame)
+        out_flux = self.flux[l_idx:u_idx+1]
+        out_invvar = self.inv_var[l_idx:u_idx+1]
+        out_norm = self.norm[l_idx:u_idx+1]
+        if copy:
+            out_flux = out_flux.copy()
+            out_invvar = out_invvar.copy()
+            out_norm = out_norm.copy()
         return Spectrum(out_wvs, out_flux, out_invvar, norm=out_norm)
     
     def plot(self, axes=None, frame="emitter", **mpl_kwargs):
@@ -438,4 +458,8 @@ class Spectrum(object):
     
     @property
     def var(self):
-        return inv_var_2_var(self.inv_var)
+        return tmb.utils.misc.inv_var_2_var(self.inv_var)
+    
+    @property
+    def ivar(self):
+        return self.inv_var

@@ -25,6 +25,7 @@ except ImportError:
 
 # Internal
 import thimbles
+from thimbles import hydrogen
 from . import resampling
 from . import partitioning
 from . import piecewise_polynomial
@@ -158,22 +159,26 @@ def cross_corr(arr1, arr2, offset_number, overlap_adj=False):
         cur_corr = np.sum(arr1[lb1:ub1]*arr2[lb2:ub2])
         if overlap_adj:
             n_overlap = min(ub1, ub2) - max(lb1, lb2)
-            assert n_overlap > 0
             cur_corr /= float(n_overlap)
         cor_out[offset_idx] = cur_corr
     return cor_out
 
-def local_gaussian_fit(yvalues, peak_idx, fit_width=2, xvalues=None):
-    """near the peak of a gaussian it is well described by a quadratic.
-    this function fits a quadratic function taking pixels from 
-    peak_idx - fit_width to peak_idx + fit_width, and then maps the resulting
-    quadratic function onto parameters for an associated gaussian.
+
+def local_gaussian_fit(yvalues, peak_idx=None, fit_width=2, xvalues=None):
+    """fit a quadratic function taking pixels from 
+    peak_idx - fit_width to peak_idx + fit_width, to the log of the yvalues
+    passed in. Giving back the parameters of a best fit gaussian.
     
     inputs:
-    values: the asarray of input values to which the fit will be made
-    peak_idx: the rough pixel location of the maximum about which to fit.
-    fit_width: the width of the gaussian fit
-    xvalues: if None then the parameters of the gaussian will be determined
+    values: numpy.ndarray 
+      the asarray of input values to which the fit will be made
+    peak_idx: int
+      the rough pixel location of the maximum about which to fit.
+      if None the global maximum is found and used.
+    fit_width: float
+      the width of the gaussian fit
+    xvalues: numpy.ndarray
+      if None then the parameters of the gaussian will be determined
       in terms of indicies (e.g. the center occurs at index=20.82) if given
       xvalues is interpreted as the corresponding x values for the yvalues
       asarray and the returned coefficients will be for that coordinate space
@@ -183,6 +188,8 @@ def local_gaussian_fit(yvalues, peak_idx, fit_width=2, xvalues=None):
     center, sigma, peak_y_value
     """
     #import pdb; pdb.set_trace()
+    if peak_idx is None:
+        peak_idx = np.argmax(yvalues)
     lb = max(peak_idx - fit_width, 0)
     ub = min(peak_idx + fit_width, len(yvalues)-1)
     if xvalues == None:
@@ -196,14 +203,15 @@ def local_gaussian_fit(yvalues, peak_idx, fit_width=2, xvalues=None):
     delta = chopped_xvals-peak_xval
     xmatrix[:, 1] = delta
     xmatrix[:, 2] = delta**2
-    chopped_yvalues = yvalues[lb:ub+1]
+    chopped_yvalues = np.log(yvalues[lb:ub+1])
+    #if the y values are negative 
     poly_coeffs = np.linalg.lstsq(xmatrix, chopped_yvalues)[0]
     offset = -poly_coeffs[1]/(2*poly_coeffs[2])
     center = peak_xval + offset
-    sigma = 1./np.sqrt(4*np.abs(poly_coeffs[2])) 
+    sigma = 1.0/np.sqrt(2*np.abs(poly_coeffs[2])) 
     center_p_vec = np.asarray([1.0, offset, offset**2])
     peak_y_value = np.dot(center_p_vec, poly_coeffs)
-    return center, sigma, peak_y_value
+    return center, sigma, np.exp(peak_y_value)
 
 class HypercubeGridInterpolator:
     
@@ -496,21 +504,27 @@ def smoothed_mad_error(spectrum,
                        apply_poisson=True, 
                        overwrite_error=False):
     cinv_var = spectrum.inv_var
-    inv_mask = (cinv_var >= 0)*(spectrum.flux >= 0)
+    good_mask = (cinv_var > 0)*(spectrum.flux > 0)
+    #detect and reject perfectly flat regions
+    flux_der = scipy.gradient(spectrum.flux)
+    flux_sec_der = scipy.gradient(flux_der)
+    good_mask *= np.abs(flux_sec_der) > 0
     #smfl ,= wavelet_transform(spectrum.flux, [smoothing_scale], inv_mask)
     smfl = filters.gaussian_filter(spectrum.flux, smoothing_scale)
     eff_width = 2.0*smoothing_scale #effective filter width
     #need to correct for loss of variance from the averaging
     correction_factor = eff_width/max(1, (eff_width-1))
     diffs = (spectrum.flux - smfl)
-    #use the running median change to protect ourselves from 
+    #use the running median change to protect ourselves from outliers
     mad = filters.median_filter(np.abs(diffs), error_scale)
     char_sigma = correction_factor*1.48*mad
     if apply_poisson:
-        mean_one_flux = spectrum.flux/np.sum(spectrum.flux*inv_mask)*np.sum(inv_mask)
-        new_inv_var = np.where(inv_mask, 1.0/(mean_one_flux*char_sigma**2), 0.0)
+        var = (smfl/np.median(smfl[good_mask])*char_sigma)**2
     else:
-        new_inv_var = np.ones(spectrum.flux.shape)*char_sigma
+        var = char_sigma**2
+    #put an upper limit on detected snr
+    var += spectrum.flux*1e-3
+    new_inv_var = np.where(good_mask, 1.0/var, 0.0)
     new_inv_var = clean_inverse_variances(new_inv_var)
     if overwrite_error:
         spectrum.inv_var = new_inv_var
@@ -723,19 +737,20 @@ def echelle_normalize(spectra, masks="layered median", partition="adaptive", mas
 
     
 def approximate_normalization(spectrum,
-                              partition_scale=300, 
+                              partition_scale=500, 
                               poly_order=3,
                               mask_kwargs=None,
                               smart_partition=False, 
                               alpha=4.0,
                               beta=4.0,
+                              H_mask_radius=2.0,
                               norm_hints=None,
                               overwrite=False,
                               min_stats=None,
                               ):
     """estimates a normalization curve for the input spectrum.
     spectrum: Spectrum
-        a spectrum object
+        a Spectrum object
     partition_scale: float
         a rough scale of the smallest allowable level of structure to be fit
         in pixels
@@ -781,7 +796,8 @@ def approximate_normalization(spectrum,
     flux = spectrum.flux
     variance = spectrum.get_var()
     inv_var = spectrum.get_inv_var()
-    good_mask = (inv_var > 0)*(flux > 0)
+    hmask = hydrogen.get_H_mask(wavelengths, H_mask_radius)
+    good_mask = (inv_var > 0)*(flux > 0)*hmask
     #min_stats, fmask = detect_features(flux, variance, 
     #                                   reject_fraction=reject_fraction,
     #                                   mask_back_off=mask_back_off, 
@@ -790,7 +806,7 @@ def approximate_normalization(spectrum,
     
     #generate a layered median mask.
     if mask_kwargs is None:
-        mask_kwargs = {'n_layers':3, 'first_layer_width':101, 'last_layer_width':11, 'rejection_sigma':2.0} 
+        mask_kwargs = {'n_layers':3, 'first_layer_width':201, 'last_layer_width':11, 'rejection_sigma':1.5} 
     fmask = layered_median_mask(flux, **mask_kwargs)*good_mask
     
     mwv = wavelengths[fmask].copy()
@@ -802,7 +818,7 @@ def approximate_normalization(spectrum,
                     poly_order=(poly_order,),
                     grouping_column=0, 
                     min_delta=pscale,
-                    alpha=alpha, beta=beta, epsilon=0.01)
+                    alpha=alpha, beta=beta, beta_epsilon=0.01)
             break_wvs = mwv[np.asarray(opt_part[1:-1], dtype=int)]
             use_simple_partition = False
         except:
@@ -915,6 +931,13 @@ def l1_factor(input_matrix, input_weights, rank=3, n_iter=3):
                 h[rank_idx, col_idx] = opt_h
     return w, h
 
+def pseudo_huber_cost(resid_vec, sigma, gamma):
+    sig4 = sigma**4
+    gam4 = gamma**4 
+    rat4 = sig4/gam4
+    weights = 1.0/(gamma*np.sqrt(rat4 + resid_vec**2))
+    return np.sum(resid_vec**2*weights)
+
 def pseudo_huber_irls(A, b, sigma, gamma, max_iter=100, conv_thresh=1e-4):
     """
     fits for an optimal x such that
@@ -971,7 +994,7 @@ def pseudo_huber_irls(A, b, sigma, gamma, max_iter=100, conv_thresh=1e-4):
             deltas = mod-b
             weights = 1.0/(gamma*np.sqrt(rat4 + deltas**2))
             ata_inv = A.transpose()*(weights*A)
-            fit = scipy.sparse.linalg.lsqr(ata_inv, A.transpose()*(weights*b))
+            fit = scipy.sparse.linalg.lsqr(ata_inv, A.transpose()*(weights*b))[0]
             if np.mean(np.abs(last_deltas-deltas)) < conv_thresh:
                 break
             last_deltas = deltas
@@ -1057,9 +1080,14 @@ def blam(wavelength, temperature):
     take into account the sampling derivative"""
     return blconst*wavelength**-5.0/(np.exp(hcoverk/(temperature*wavelength))-1.0)
 
+
+#wien_constant = 2.8977721(26)e-3 in units of M*K
+wien_constant = 2.897772126e7 #in units of Angstrom*Kelvin
 def blackbody_spectrum(sampling_wavelengths, temperature,  normalize = True):
     dlam_dx = scipy.gradient(sampling_wavelengths)
     bbspec = blam(sampling_wavelengths, temperature)/dlam_dx
     if normalize:
-        bbspec *= len(bbspec)/np.sum(bbspec)
+        peak_wv = wien_constant/temperature
+        peak_val = blam(peak_wv, temperature)
+        bbspec /= peak_val
     return bbspec

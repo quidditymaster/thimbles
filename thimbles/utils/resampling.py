@@ -82,7 +82,7 @@ class Density:
         upper_val = self.get_density_integral(index, ub)
         return upper_val-lower_val
 
-class Gaussian_Density(Density):
+class GaussianDensity(Density):
     def __init__(self, coord_centers, widths, max_sigma = 5.0):
         self.centers = coord_centers
         self.widths = widths

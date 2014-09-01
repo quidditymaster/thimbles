@@ -57,7 +57,6 @@ def read_linelist(fname, file_type=None):
                 else:
                     ew = 0
                 z = int(species)
-                ion = int(10*(species-z))
                 
                 rad_damp = np.nan
                 stark_damp = np.nan
@@ -88,12 +87,11 @@ def read_linelist(fname, file_type=None):
             species_name, ion_number = spl[0].replace("'", "").split()
             ion_number = int(ion_number) - 1
             proton_number = ptable[species_name]["z"]
-            #species_id = proton_number + 0.1*(int(ion_number)-1)
             wv, loggf, elow, jlo, eup, jup = map(float, spl[1:7])
             l_lande, u_lande, m_lande = map(float_or_nan, spl[8:11])
             rad_damp, stark_damp, waals_damp = map(float_or_nan, spl[12:15])
             ldat["wv"].append(wv)
-            ldat["species"].append(proton_number+(ion_number-1)*0.1)
+            ldat["species"].append(proton_number+ion_number*0.1)
             ldat["Z"].append(proton_number)
             #TODO: add a nucleon number column "A"
             ldat["ion"].append(ion_number)

@@ -52,7 +52,7 @@ class SpeciesGrouper(object):
         self.ungrouped_val = ungrouped_val
         self.tolerance = tolerance
     
-    def species_group_num(self, species):
+    def __call__(self, species):
         #import pdb; pdb.set_trace()
         species = np.atleast_1d(species)
         unique_species, recon_idxs = np.unique(species, return_inverse=True)
@@ -136,17 +136,21 @@ class SaturatedVoigtFeatureModel(object):
         self._check_initialize_column("gamma_offset", fill_value=0.0)
         self._check_initialize_column("x_offset", fill_value=initial_x_offset)
         self._check_initialize_column("group_dof", 0.0)
-        self._check_initialize_column("group_exemplar", 1)
+        self._check_initialize_column("group_exemplar", 0)
         self._check_initialize_column("feature_num", np.arange(self.n_feat))
-        self._check_initialize_column("fit_group", 0.0)
-        self._check_initialize_column("species_group", 0.0)
+        self._check_initialize_column("fit_group", 0)
+        self._check_initialize_column("species_group", 0)
         
-        self.species_set = np.sort(np.unique(self.fdat.species.values))
+        if isinstance(species_grouper, basestring):
+            species_grouper = SpeciesGrouper([], ungrouped_val=species_grouper) 
+        self.species_grouper = species_grouper
+        
         #TODO: make the gamma ratio change as a function of wv
         #TODO: allow for individual gamma ratio's by interpolating cogs
         self.mean_gamma_ratio = mean_gamma_ratio
         self.model_resolution=model_resolution
         
+        self.parameterize()
         self.calc_all()
         
         self.dof_thresholds = {"ew":1.5, "vel_offset":5.0, "sigma_offset":5.0, "gamma_offset":10.0}
@@ -164,6 +168,13 @@ and float values.""".format(type(dof_thresholds))
         self.model_wv_gradient = scipy.gradient(self.model_wv)
         self.delta_log = np.log(self.max_wv/self.min_wv)/self.npts
         #a is defined as gamma*wv**2/(4*pi*c*doppler_width)
+        
+        self.calc_feature_matrix(overwrite=True)
+        self.calc_grouping_matrix(overwrite=True)
+        self.collapse_feature_matrix(overwrite=True)
+        
+        n_params = self.cfm.shape[1]
+        self._pvec = np.zeros(n_params)
     
     def _check_initialize_column(self, col_name, fill_value):
         """check if a column is defined and if it is not add it"""
@@ -183,23 +194,18 @@ and float values.""".format(type(dof_thresholds))
         self.calc_cog_ews()
     
     def __call__(self, input, **kwargs):
-        return 1.0-self.bk_vec-self.feature_matrix*self._pvec
+        ret_val = 1.0 - self.cfm*self.get_pvec()
+        return ret_val
     
-    def assign_group_ews(self, group_ews):
-        non_bk = self.fdat[self.fdat.fit_group > 1]
-        group_gb = non_bk.groupby("fit_group")
-        groups = group_gb.groups
-        n_groups = len(groups)
-        group_keys = sorted(groups.keys())
-        
-        for group_idx, group_num in enumerate(group_keys):
-            self.fdat["ew"].ix[groups[group_num]] = self.fdat["ew_frac"].ix[groups[group_num]]*group_ews[group_idx]
+    def assign_group_ews(self, group_ews):            
+        ews = self.grouping_matrix*group_ews
+        self.fdat['ew'] = ews
     
-    def calc_ew_errors(self):
-        self.fdat["ew_error"] = np.ones(len(self.fdat))
-        total_sig2 = self.fdat["ew"]
-        ew_error = np.sqrt(self.fdat["ew_frac"]*self.fdat["ew"])
-        self.fdat["ew_error"] = np.where(self.fdat["ew_frac"])
+    #def calc_ew_errors(self):
+    #    self.fdat["ew_error"] = np.ones(len(self.fdat))
+    #    total_sig2 = self.fdat["ew"]
+    #    ew_error = np.sqrt(self.fdat["ew_frac"]*self.fdat["ew"])
+    #    self.fdat["ew_error"] = np.where(self.fdat["ew_frac"])
     
     def get_pvec(self):
         return self._pvec
@@ -211,70 +217,34 @@ and float values.""".format(type(dof_thresholds))
     def __getattr__(self, attr_name):
         return eval("self.fdat['{}']".format(attr_name))
     
-    def parameterize(self, after_matrix, target_data, target_inv_covar, alpha=5.0):
+    def group_species(self, overwrite=True):
+        species_nums = self.species_grouper(self.fdat.species.values)
+        if overwrite:
+            self.fdat["species_group"] = species_nums
+            unique = np.unique(self.fdat.species_group.values)
+            self.species_id_set = np.sort(unique)
+        return species_nums
+    
+    def parameterize(self, fit_state=None):
+        if fit_state is None:
+            #start with the most basic possible parameterization
+            self.group_species(overwrite=True)
+            species_gb = self.fdat.groupby("species_group")
+            species_groups = species_gb.groups
+            for species_key in species_groups:
+                species_ixs = species_groups[species_key]
+                self.fdat.ix[species_ixs, "fit_group"] = 0
+                exemplar_idx = np.random.randint(len(species_ixs))
+                grp_exemplar = np.zeros(len(species_ixs), dtype=int)
+                grp_exemplar[exemplar_idx] = 1
+                self.fdat.ix[species_ixs, "group_exemplar"] = grp_exemplar 
+        #TODO
         #generate a full feature matrix one column per feature
-        
         #generate a vector of max strengths
         #(A^t * (F*diag(cog_ew))).max()
-        
         #relegate to background on the basis of the domination and total snr available
-        
         #chop the background vectors out of the big matrix and form a bk_vector 
-        
         #for each wavelength bound chop out a segment of spectrum
-        
-        #generate a full feature matrix one column per feature.
-        if bk_mask is None:
-            bk_mask = self.fdat.fit_group > 1
-        if grouping_column is None:
-            grouping_column = "fit_group"
-        non_bk = self.fdat[self.fdat.fit_group > 1]
-        group_gb = non_bk.groupby("fit_group")
-        groups = group_gb.groups
-        
-        n_groups = len(groups)
-        
-        feature_matrix = scipy.sparse.lil_matrix((self.npts, n_groups), dtype=float)
-        group_keys = sorted(groups.keys())
-        self.fdat["ew_frac"] = np.zeros(len(self.fdat))
-        self.fdat["p2_sum"] = np.zeros(len(self.fdat))
-        for group_idx in range(len(group_keys)):
-            group_id = group_keys[group_idx]
-            group_ldf = self.fdat.ix[groups[group_id]]
-            group_cog_lrw = group_ldf.cog_lrw.values
-            max_lrw = np.max(group_cog_lrw)
-            relative_ews = np.power(10, group_cog_lrw-max_lrw)*group_ldf.wv.values
-            relative_ew_sum = np.sum(relative_ews)
-            ew_fracs = relative_ews/relative_ew_sum
-            self.fdat["ew_frac"].ix[groups[group_id]] = ew_fracs
-            min_idx = np.inf
-            max_idx = -np.inf
-            for feat_idx in range(len(group_ldf)):
-                feat_wv = group_ldf.iloc[feat_idx]["wv"]
-                wv_idx = self.get_index(feat_wv)
-                if wv_idx < 0:
-                    continue
-                if wv_idx > self.npts-1:
-                    continue
-                target_width = np.sqrt(group_ldf["doppler_width"].iloc[feat_idx]**2 + group_ldf["sigma_offset"].iloc[feat_idx]**2)
-                
-                lb = int(np.around(self.get_index(feat_wv-7.0*target_width, clip=True)))
-                ub = int(np.around(self.get_index(feat_wv+7.0*target_width, clip=True)))
-                
-                if lb < min_idx:
-                    min_idx = lb
-                if ub > max_idx:
-                    max_idx = ub
-                
-                profile = voigt(self.model_wv[lb:ub+1], feat_wv, target_width, 0.0)
-                profile *= ew_fracs[feat_idx]
-                
-                feature_matrix[lb:ub+1, group_idx] = profile.reshape((-1, 1)) + self.feature_matrix[lb:ub+1, group_idx]
-        feature_matrix = feature_matrix.tocsc()
-        self.feature_matrix = feature_matrix
-        return feature_matrix
-        
-        #maximal_feature_vector
     
     def optimize_fit_groups(self, spectra):
         transforms_to_model = []
@@ -468,7 +438,8 @@ and float values.""".format(type(dof_thresholds))
     #def calc_feature_matrix(self):
     #    self.feature_matrix = self.generate_feature_matrix()
     
-    def full_feature_matrix(self, overwrite=True):
+    def calc_feature_matrix(self, overwrite=True):
+        print "generating full feature matrix"
         indexes = [] #arrays of the row indexes belonging to each column
         profiles = []
         sig_offs = self.fdat["sigma_offset"]
@@ -485,86 +456,64 @@ and float values.""".format(type(dof_thresholds))
         indexes = np.hstack(indexes)
         profiles = np.hstack(profiles)
         npts = len(self.model_wv)
-        full_matrix = scipy.sparse.csc_matrix((profiles, indexes), shape=(npts, npts))
+        full_matrix = scipy.sparse.csc_matrix((profiles, indexes), shape=(npts, self.n_feat))
         if overwrite:
-            self.full_matrix = full_matrix 
+            self.feature_matrix = full_matrix 
         return full_matrix 
     
-    def collapsed_feature_matrix(self, overwrite=True):
-        full_fm = self.full_feature_matrix(overwrite=overwrite)
-        ew_fracs = self.group_ew_fractions(overwrite=overwrite)
-    
-    def group_ew_fractions(self, grouping=None, overwrite=True):
-        if grouping is None:
-            grouping = ["species", "fit_group"]
+    def calc_grouping_matrix(self, overwrite=True):
+        print "generating grouping matrix"
+        grouping = ["species_group", "fit_group"]
         group_gb = self.fdat.groupby(grouping)
         group_ew_sum = group_gb["cog_ew"].sum()
         groups = group_gb.groups
         n_groups = len(groups)
-        group_keys = groups.keys()
-        ew_frac = pd.Series(np.zeros(len(self.fdat)), index=np.array(self.fdat.index))
-        for group_idx in range(n_groups):
-            group_id = group_keys[group_idx]
-            group_ldf = self.fdat.ix[groups[group_id]]
-            relative_ews = group_ldf.cog_ew/group_ew_sum[group_id]
-            ew_frac.ix[groups[group_id]] = relative_ews
-        if overwrite:
-            self.fdat["ew_frac"] = ew_frac
-        return ew_frac
-    
-    def ew_frac_vecs(self):
-        group_gb = self.fdat.groupby(["species", "fit_group"])
-        groups = group_gb.groups
-        pass
-    
-    def grouping_matrices(self, grouping=None, overwrite=True):
-        if grouping is None:
-            grouping = ["species", "fit_group"]
-        group_gb = self.fdat.groupby(grouping)
-        groups = group_gb.groups
-        n_groups = len(groups)
         group_keys = sorted(groups.keys())
-        matrix_idxs = {species:[] for species in self.species_set}
+        ew_frac = pd.Series(np.zeros(len(self.fdat)), index=np.array(self.fdat.index))
+        matrix_idxs = {species:[] for species in self.species_id_set}
+        ew_frac_data = {species:[] for species in self.species_id_set}
+        col_max = {}
         for group_idx in range(n_groups):
             group_id = group_keys[group_idx]
             #TODO: remove background features by detecting negative fit groups
+            group_ldf = self.fdat.ix[groups[group_id]]
+            relative_ews = group_ldf.cog_ew/group_ew_sum[group_id]
+            ew_frac.ix[groups[group_id]] = relative_ews
             group_feat_nums = self.fdat.ix[groups[group_id], "feature_num"].values
             n_group_feats = len(group_feat_nums)
-            midxs = np.array([group_feat_nums, np.repeat(group_idx, n_group_feats)])
+            grp_col = int(group_id[1])
+            col_max[group_id[0]] = grp_col+1 #this will end up the max since we sort the keys
+            midxs = np.array([group_feat_nums, np.repeat(grp_col, n_group_feats)])
             matrix_idxs[group_id[0]].append(midxs)
-        matrix_idxs = {species:np.hstack(matrix_idxs[species]) for species in self.species_set}
-        grouping_matrices = {}
-        for species in self.species_set:
-            n_sub_groups = matrix_idxs[species].shape[1]
-            mdat = np.ones(n_sub_groups, dtype=float)
-            gmat = scipy.sparse.csc_matrix((mdat, matrix_idxs[species]), shape=(self.n_feat, n_sub_groups))
-            grouping_matrices[species] = gmat 
+            ew_frac_data[group_id[0]].append(relative_ews.values)
+        matrix_idxs = {species:np.hstack(matrix_idxs[species]) for species in self.species_id_set}
+        ew_frac_data = {species:np.hstack(ew_frac_data[species]) for species in self.species_id_set}
+        grouping_matrices = []
+        for species in self.species_id_set:
+            n_sub_groups = col_max[species]
+            n_grouped_feats = matrix_idxs[species].shape[1]
+            mdat = ew_frac_data[species]
+            idx_dat = matrix_idxs[species]
+            gmat = scipy.sparse.csc_matrix((mdat, idx_dat), shape=(self.n_feat, n_sub_groups))
+            grouping_matrices.append(gmat)
+        grouping_matrix = scipy.sparse.bmat([grouping_matrices]) 
         if overwrite:
-            self.grouping_matrices = grouping_matrices
-        return grouping_matrices
+            self.grouping_matrix = grouping_matrix 
+        return grouping_matrix
+    
+    def collapse_feature_matrix(self, overwrite=True):
+        print "collapsing to group feature matrices"
+        cfm = -1*self.feature_matrix*self.grouping_matrix
+        if overwrite:
+            self.cfm = cfm
+        return cfm
     
     def parameter_expansion(self, input, **kwargs):
-        return -1*self.feature_matrix
+        return self.cfm
     
     def parameter_damping(self, input):
-        bk_mask = self.fdat.fit_group > 1
-        non_bk = self.fdat[self.fdat.fit_group > 1]
-        group_gb = non_bk.groupby("fit_group")
-        groups = group_gb.groups
-        #
-        #n_groups = len(groups)
-        #
-        #sorted_keys = sorted(groups.keys())
-        #targ_ews = np.zeros(len(groups))
-        #for group_idx, group_num in enumerate(sorted_keys):
-        #    group_fdat = self.fdat.ix[groups[group_num]]
-        #    ew_sum = np.sum(np.power(10.0, group_fdat["cog_lrw"])*group_fdat["wv"])
-        #    targ_ews[group_idx] = ew_sum
-        #cur_params = self.get_pvec()
-        #nparams = len(cur_params)
-        #targ_delta = np.clip(targ_ews-cur_params, -0.01, 0.01)
-        targ_delta = np.zeros(len(groups))
-        return targ_delta, np.repeat(10.0, len(targ_delta))
+        cur_pvec = self.get_pvec()
+        return np.zeros(len(cur_pvec)), np.repeat(10.0, len(cur_pvec))
     
     @property
     def theta(self):
@@ -653,30 +602,21 @@ and float values.""".format(type(dof_thresholds))
         self.cog = ppol.InvertiblePiecewiseQuadratic(fit_quad.coefficients, fit_quad.control_points, centers=fit_quad.centers, scales=fit_quad.scales)
     
     def fit_offsets(self):
-        exemplar_mask = self.fdat.group_exemplar > 0
-        non_bk = self.fdat[(self.fdat.fit_group > 1)*exemplar_mask]
-        bk = self.fdat[self.fdat.fit_group <= 1]
-        gb_cols = ["Z", "ion"]
-        species_gb = non_bk.groupby(gb_cols)
-        bk_gb = bk.groupby(gb_cols)
+        species_gb = self.fdat.groupby("species_num")
         groups = species_gb.groups
-        bk_groups = bk_gb.groups
         #order the species keys so we do the species with the most exemplars first
-        num_exemplars = [(len(groups[k]), k) for k in groups.keys()]
-        num_exemplars = sorted(num_exemplars)
+        num_exemplars = sorted([(len(groups[k]), k) for k in groups.keys()], reverse=True)
         fallback_offset = 0.0
         for group_idx in range(len(num_exemplars)):
             species_key = num_exemplars[group_idx][1]
             species_df = self.fdat.ix[groups[species_key]]
-            delta_rews = np.log10(species_df.ew/species_df.doppler_width)
-            x_deltas = species_df.x.values - self.cog.inverse(delta_rews.values)
-            offset = np.median(x_deltas)
+            exemplars = species_df[species_df.group_exemplar > 0]
+            delta_rews = np.log10(exemplars.ew/exemplars.doppler_width)
+            x_deltas = exemplars.x.values - self.cog.inverse(delta_rews.values)
+            offset = np.sum(x_deltas)
             if np.isnan(offset):
                 offset = fallback_offset
-            self.fdat["x_offset"][groups[species_key]] = offset
-            bk_ixs = bk_groups.get(species_key)
-            if not bk_ixs is None:
-                self.fdat["x_offset"][bk_ixs] = offset
+            self.fdat.ix[groups[species_key], "x_offset"] = offset
             if group_idx == 0:
                 if not np.isnan(offset):
                     fallback_offset = offset

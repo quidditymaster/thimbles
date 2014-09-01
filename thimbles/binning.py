@@ -1,5 +1,4 @@
 import numpy as np
-
 from . import verbosity
 
 def bins_to_centers(bins):

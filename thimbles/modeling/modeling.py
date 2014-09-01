@@ -309,15 +309,26 @@ class ModelChain(object):
     
     def __call__(self):
         for model_idx in range(self.n_models):
-            if model_idx == 0:
-                input_value = self.first_input
-            else:
-                input_value = self._result_chain[model_idx-1]
-            kwargs= self.kw_inputs[model_idx]
+            input_value, kwargs = self.get_model_inputs(model_idx)
             output_value = self.models[model_idx](input_value, **kwargs)
             self._result_chain[model_idx] = output_value
         return self._result_chain[-1]
 
+
+class FitPolicy(object):
+    
+    def __init__(self):
+        pass
+
+class FitState(object):
+    
+    def __init__(self):
+        pass
+
+class FitTransitionPolicy(object):
+    
+    def __self__(self):
+        pass
 
 class Modeler(object):
     

@@ -226,14 +226,13 @@ class BlockManager(object):
     def permutation_matrix(self, x):
         ordering_idxs = self.ordering_permutation(x)
         return scipy.sparse.identity(len(x), type="csr")[ordering_idxs].copy()
-
+    
     def generate_blocks(self):
         pass
 
 class InformationCriterionPartitioner(object):
     
     def __init__(self, matrix_factory, orderer=None, transform=None):
-        
         pass
     
     def partitioning_order(self, x):

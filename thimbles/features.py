@@ -194,7 +194,7 @@ and float values.""".format(type(dof_thresholds))
         self.calc_cog_ews()
     
     def __call__(self, input, **kwargs):
-        ret_val = 1.0 - self.cfm*self.get_pvec()
+        ret_val = 1.0 + self.cfm*self.get_pvec()
         return ret_val
     
     def assign_group_ews(self, group_ews):            
@@ -513,7 +513,7 @@ and float values.""".format(type(dof_thresholds))
     
     def parameter_damping(self, input):
         cur_pvec = self.get_pvec()
-        return np.zeros(len(cur_pvec)), np.repeat(10.0, len(cur_pvec))
+        return np.zeros(len(cur_pvec)), np.repeat(2.0, len(cur_pvec))
     
     @property
     def theta(self):
@@ -602,7 +602,7 @@ and float values.""".format(type(dof_thresholds))
         self.cog = ppol.InvertiblePiecewiseQuadratic(fit_quad.coefficients, fit_quad.control_points, centers=fit_quad.centers, scales=fit_quad.scales)
     
     def fit_offsets(self):
-        species_gb = self.fdat.groupby("species_num")
+        species_gb = self.fdat.groupby("species_group")
         groups = species_gb.groups
         #order the species keys so we do the species with the most exemplars first
         num_exemplars = sorted([(len(groups[k]), k) for k in groups.keys()], reverse=True)

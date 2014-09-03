@@ -38,7 +38,7 @@ class ThimblesDB(object):
         
         #set up the hdf5 file
         hdf5_path = os.path.join(abs_path, "tdb.h5")
-        self.h5 = h5py.File(hdf5_path, "a")
+        self.h5 = h5py.File(hdf5_path, "r+")
         
     
     def save(self):
@@ -49,7 +49,7 @@ class ThimblesDB(object):
         self.h5.close()
 
 current_dbs = {}
-current_db_path = os.environ.get("thimblesprojectdbpath", None)
+current_db_path = os.environ.get("THIMBLESPROJECTDB", None)
 if not current_db_path is None:
     current_db_path = os.path.abspath(current_db_path)
 
@@ -75,11 +75,11 @@ class ThimblesTable(object):
     def __tablename__(cls):
         return cls.__name__
     
-    db = None
+    #db = get_db()
     _id = Column(Integer, primary_key=True)
     
     @classmethod
-    def load(cls, db=None, **kwargs):
+    def load(cls, **kwargs):
         if isinstance(db, basestring):
             db = get_db(db)
         elif not isinstance(db, ThimblesDB):
@@ -93,7 +93,7 @@ class ThimblesTable(object):
 
 
 class ArrayColumn(object):
-    """an array column will get your data if 
+    """a column type to be used for large numerical data arrays.
     """
     
     def __init__(self):

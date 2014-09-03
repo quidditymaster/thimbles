@@ -31,10 +31,6 @@ def get_H_mask(wvs, masking_radius=10.0):
         mask *= np.abs(wvs-lwv) > masking_radius
     return mask
 
-class HydgrogenProfile(object):
-    
-    def __init__(self):
-        pass
 
 def try_load_lemke():
     try:
@@ -141,16 +137,8 @@ class HydrogenForegroundModel(Spectrum):
     
     @strength.setter 
     def strength(self, value):
-        self._strength = value
+        self._strength = np.clip(value, 0.0, np.inf)
         self.calc_transmission()
-        
-    def parameter_expansion(self, input):
-        str_delta = self.strength*0.01
-        plus_trans = np.exp(-(self.strength+str_delta)*self._h_opac)
-        minus_trans = np.exp(-(self.strength-str_delta)*self._h_opac)
-        strength_deriv_vec = (plus_trans-minus_trans)/(2.0*str_delta)
-        expansion_mat = scipy.sparse.csc_matrix(strength_deriv_vec.reshape((-1, 1)))
-        return expansion_mat
     
     def calc_transmission(self):
         self.flux = np.exp(-self.strength*self._h_opac_profile)
@@ -161,11 +149,18 @@ class HydrogenForegroundModel(Spectrum):
     def __call__(self, input):
         return input*self.flux
     
+    def parameter_damping(self, input):
+        npts = len(self.flux)
+        return np.zeros(npts, dtype=float), np.repeat(10.0, npts)
+    
     def parameter_expansion(self, input):
+        delt_eps = 0.001
         start_strength = self.strength
-        self.strength = 0.99*start_strength
+        self.strength = (1.0-delt_eps)*start_strength
         low_vec = self(input)
-        self.strength = 1.01*start_strength
+        self.strength = (1.0+delt_eps)*start_strength
         high_vec = self(input)
-        str_delta_vec = ()
-        return 
+        str_delta = 2.0*delt_eps*self.strength
+        dvec = (high_vec-low_vec)/str_delta
+        pexp_mat = scipy.sparse.csc_matrix(dvec.reshape((-1, 1)))
+        return pexp_mat

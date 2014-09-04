@@ -160,7 +160,7 @@ class HydrogenForegroundModel(Spectrum):
     
     @strength.setter 
     def strength(self, value):
-        self._strength = np.clip(value, 0.0, np.inf)
+        self._strength = np.clip(value, 0.01, np.inf)
         self.calc_transmission()
     
     def calc_transmission(self):
@@ -174,7 +174,7 @@ class HydrogenForegroundModel(Spectrum):
     
     def parameter_damping(self, input):
         nparams = len(self.strength)
-        return np.zeros(nparams, dtype=float), np.repeat(100.0, nparams)
+        return np.zeros(nparams, dtype=float), np.repeat(200.0, nparams)
     
     def parameter_expansion(self, input):
         delt_eps = 0.001

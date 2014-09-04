@@ -73,7 +73,6 @@ class SpeciesGrouper(object):
                 cur_group_num = len(self.group_indicators)-1
             grp_nums[input_sp_idx] = cur_group_num
         return grp_nums[recon_idxs]
-                
 
 class SaturatedVoigtFeatureModel(object):
     
@@ -121,10 +120,10 @@ class SaturatedVoigtFeatureModel(object):
         self.n_feat = len(self.fdat)
         self.min_wv = float(min_wv)
         self.max_wv = float(max_wv)
-        self.teff = teff
+        self._teff = teff
         self.snr_threshold = snr_threshold
         self.snr_target = snr_target
-        self.vmicro = vmicro
+        self._vmicro = vmicro
         self.vmacro = vmacro
         assert log_ion_frac < 0 #can't have an ion fraction greater than 1!
         self.log_ion_frac = log_ion_frac
@@ -175,8 +174,10 @@ and float values.""".format(type(dof_thresholds))
         self.calc_grouping_matrix(overwrite=True)
         self.collapse_feature_matrix(overwrite=True)
         
-        n_params = self.cfm.shape[1]
-        self._pvec = np.zeros(n_params)
+        n_params = self.cfm.shape[1] + 2
+        self._pvec = np.ones(n_params)*0.1
+        self._pvec[0] = self.teff
+        self._pvec[1] = self.vmicro
     
     def _check_initialize_column(self, col_name, fill_value):
         """check if a column is defined and if it is not add it"""
@@ -196,7 +197,7 @@ and float values.""".format(type(dof_thresholds))
         self.calc_cog_ews()
     
     def __call__(self, input, **kwargs):
-        ret_val = 1.0 + self.cfm*self.get_pvec()
+        ret_val = 1.0 + self.cfm*self.get_pvec()[2:]
         return ret_val
     
     def assign_group_ews(self, group_ews):            
@@ -214,7 +215,9 @@ and float values.""".format(type(dof_thresholds))
     
     def set_pvec(self, pvec):
         self._pvec = pvec
-        self.assign_group_ews(pvec)
+        self.teff = pvec[0]
+        self.vmicro = pvec[1]
+        self.assign_group_ews(pvec[2:])
     
     def __getattr__(self, attr_name):
         return eval("self.fdat['{}']".format(attr_name))
@@ -464,7 +467,7 @@ and float values.""".format(type(dof_thresholds))
         return full_matrix 
     
     def calc_grouping_matrix(self, overwrite=True):
-        print "generating grouping matrix"
+        #print "generating grouping matrix"
         grouping = ["species_group", "fit_group"]
         group_gb = self.fdat.groupby(grouping)
         group_ew_sum = group_gb["cog_ew"].sum()
@@ -504,22 +507,77 @@ and float values.""".format(type(dof_thresholds))
         return grouping_matrix
     
     def collapse_feature_matrix(self, overwrite=True):
-        print "collapsing to group feature matrices"
+        #print "collapsing to group feature matrices"
         cfm = -1*self.feature_matrix*self.grouping_matrix
         if overwrite:
             self.cfm = cfm
         return cfm
     
     def parameter_expansion(self, input, **kwargs):
-        return self.cfm
+        teff_delta = 50.0
+        vmic_delta = 0.01
+        
+        cteff = self.teff
+        self.teff = cteff-teff_delta
+        teff_minus_vec = self(input, **kwargs)
+        self.teff = cteff+teff_delta
+        teff_plus_vec = self(input, **kwargs)
+        teff_deriv = (teff_plus_vec-teff_minus_vec)/teff_delta
+        self.teff = cteff
+        
+        cvmicro = self.vmicro
+        self.vmicro = cvmicro-vmic_delta
+        vmicro_minus_vec = self(input, **kwargs)
+        self.vmicro = cvmicro+vmic_delta
+        vmicro_plus_vec = self(input, **kwargs)
+        vmicro_deriv = (vmicro_plus_vec-vmicro_minus_vec)/vmic_delta
+        self.vmicro = cvmicro
+        
+        pexp_mat = scipy.sparse.hstack([teff_deriv.reshape((-1, 1)), vmicro_deriv.reshape((-1, 1)), self.cfm])
+        return pexp_mat
     
     def parameter_damping(self, input):
         cur_pvec = self.get_pvec()
-        return np.zeros(len(cur_pvec)), np.repeat(2.0, len(cur_pvec))
+        targ_damp = np.repeat(2.0, len(cur_pvec))
+        targ_damp[0]=0.00001
+        targ_damp[1]=200.0
+        targ_pdelta = np.zeros(len(cur_pvec))
+        targ_pdelta[1] = 2.0 - cur_pvec[1]
+        return targ_pdelta, targ_damp
+    
+    @property
+    def teff(self):
+        return self._teff
+    
+    @teff.setter
+    def teff(self, value):
+        self._teff = value
+        self.calc_doppler_widths()
+        self.calc_x()
+        self.calc_cog_ews()
+        self.calc_grouping_matrix()
+        self.collapse_feature_matrix()
+    
+    @property
+    def vmicro(self):
+        return self._vmicro
+    
+    @vmicro.setter
+    def vmicro(self, value):
+        self._vmicro = value
+        self.calc_doppler_widths()
+        self.calc_x()
+        self.calc_cog_ews()
+        self.calc_grouping_matrix()
+        self.collapse_feature_matrix()
     
     @property
     def theta(self):
         return 5040.0/self.teff
+    
+    @theta.setter
+    def theta(self, value):
+        self.teff = 5040.0/value
     
     def calc_solar_ab(self):
         self.fdat["solar_ab"] = ptable[self.species.values]["abundance"]
@@ -535,21 +593,21 @@ and float values.""".format(type(dof_thresholds))
         self.fdat["vmicro_width"] = self.fdat["wv"]*self.vmicro/299792.458
     
     def calc_doppler_widths(self):
-        "print calculating doppler widths"
+        #"print calculating doppler widths"
         self.calc_therm_widths()
         self.calc_vmicro_widths()
         dop_widths = np.sqrt(self.fdat["vmicro_width"]**2 + self.fdat["thermal_width"]**2)
         self.fdat["doppler_width"] = dop_widths
     
     def calc_x(self):
-        "print calculating x values"
+        #"print calculating x values"
         neutral_delt_x = np.log10(1.0 - np.power(10.0, self.log_ion_frac))
         ionization_delta = np.where(self.fdat.ion == 1, self.log_ion_frac, neutral_delt_x)
         #TODO: include some sort of basic adjustment of ionization fraction on the basis of element ionization energy.
         self.fdat["x"] = self.solar_ab + self.loggf - self.ep*self.theta - self.doppler_lrw + ionization_delta
     
     def calc_cog_ews(self):
-        print "calculating cog ews"
+        #print "calculating cog ews"
         lrws = self.cog(self.x_adj.values)
         self.fdat["cog_lrw_adj"] = lrws
         cog_lrw = lrws + self.doppler_lrw.values

@@ -61,7 +61,7 @@ class PiecewisePolynomialSpectrographEfficiencyModel(object):
         return scipy.sparse.csc_matrix((self._basis*input.reshape((-1, 1))))
     
     def parameter_damping(self, input):
-        return np.zeros(self.n_coeffs), np.ones(self.n_coeffs)*2.0
+        return np.zeros(self.n_coeffs), np.ones(self.n_coeffs)*0.05
     
     def __call__(self, input, **kwargs):
         return self.blaze()*input

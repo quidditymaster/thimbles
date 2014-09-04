@@ -15,6 +15,7 @@ import numpy as np
 from astropy import units
 from astropy import coordinates
 import astropy.io.fits as fits
+import scipy.optimize
 try:
     import cvxopt
     import cvxopt.solvers
@@ -885,11 +886,29 @@ def l1_factor(input_matrix, input_weights, rank=3, n_iter=3):
                 h[rank_idx, col_idx] = opt_h
     return w, h
 
+def pseudo_residual(resids, sigma, gamma_frac):
+    """a convenience function for use in conjunction with 
+    scipy.optimize.leastsq, instead of returning the true residuals
+    call this function on the residual vector to carry out a 
+    least pseudo-huber cost fit to the data instead of a least squares fit.
+    
+    for small residuals this function is linear but for larger residuals
+    it becomes square root.
+    """
+    sig4 = sigma**4
+    gamma = sigma*gamma_frac
+    gam4 = gamma**4 
+    rat4 = sig4/gam4
+    weights = 0.5/(gamma*np.sqrt(rat4 + resids**2))
+    result = np.sqrt(resids**2*weights)
+    result *= np.sign(resids)
+    return result
+
 def pseudo_huber_cost(resid_vec, sigma, gamma, sum_result=True):
     sig4 = sigma**4
     gam4 = gamma**4 
     rat4 = sig4/gam4
-    weights = 1.0/(gamma*np.sqrt(rat4 + resid_vec**2))
+    weights = 0.5/(gamma*np.sqrt(rat4 + resid_vec**2))
     result = resid_vec**2*weights
     if sum_result:
         result =  np.sum(resid_vec**2*weights)
@@ -949,7 +968,7 @@ def pseudo_huber_irls(A, b, sigma, gamma, max_iter=100, conv_thresh=1e-4):
         for iter_idx in range(max_iter):
             mod = A*fit
             deltas = mod-b
-            weights = 1.0/(gamma*np.sqrt(rat4 + deltas**2))
+            weights = 0.5/(gamma*np.sqrt(rat4 + deltas**2))
             ata_inv = A.transpose()*(weights*A)
             fit = scipy.sparse.linalg.lsqr(ata_inv, A.transpose()*(weights*b))[0]
             if np.mean(np.abs(last_deltas-deltas)) < conv_thresh:
@@ -962,7 +981,7 @@ def pseudo_huber_irls(A, b, sigma, gamma, max_iter=100, conv_thresh=1e-4):
         for iter_idx in range(max_iter):
             mod = np.dot(A, fit)
             deltas = mod-b
-            weights = 1.0/(gamma*np.sqrt(rat4 + deltas**2))
+            weights = 0.5/(gamma*np.sqrt(rat4 + deltas**2))
             ata_inv = np.dot(A.transpose()*weights, A)
             pinv = np.linalg.pinv(ata_inv)
             fit = np.dot(pinv, np.dot(A.transpose()*weights, b))
@@ -1049,3 +1068,19 @@ def blackbody_spectrum(sampling_wavelengths, temperature,  normalize = True):
         bbspec /= peak_val
     return bbspec
 
+
+def fit_blackbody_phirls(spectrum, start_teff=5000.0, gamma_frac=3.0):
+    flux = spectrum.flux
+    variance = spectrum.var
+    wvs = spectrum.wv
+    def get_resids(pvec):
+        multiplier, teff = pvec
+        model_flux = multiplier*blackbody_spectrum(wvs, teff, normalize=True)
+        resid = flux - model_flux
+        return pseudo_residual(resid, variance, gamma_frac=gamma_frac)
+    
+    start_bbod = blackbody_spectrum(wvs, start_teff, normalize=True)
+    ivar = spectrum.inv_var
+    start_norm = np.sum(flux*start_bbod*ivar)/np.sum(start_bbod**2*ivar)
+    x0 = np.array([start_norm, start_teff])
+    return scipy.optimize.leastsq(get_resids, x0)

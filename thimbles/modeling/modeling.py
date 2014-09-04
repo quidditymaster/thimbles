@@ -376,14 +376,39 @@ class Modeler(object):
         ic = scipy.sparse.block_diag(inv_covars)
         return fm, td, ic
     
-    def iterate(self, model):
-        relevant_chains = self.model_to_chains.get(model)
-        if relevant_chains is None:
-            raise Exception("model not part of this modeler's chain sequence")
-        fit_mat, target_vec, error_inv_covar = self.stitched_fit_matrices(relevant_chains, model)
-        trans_mat = fit_mat.transpose()
-        ata_inv = trans_mat*(error_inv_covar*fit_mat)
-        rhs = trans_mat*(error_inv_covar*target_vec)
-        fit_result = scipy.sparse.linalg.lsqr(ata_inv, rhs)[0]
-        new_pvec = model.get_pvec() + fit_result
-        model.set_pvec(new_pvec)
+    def iterate(self, models):
+        #accumulate the linear fit expansions for all models
+        lhs_list, rhs_list = [], []
+        for model_idx in range(len(models)):
+            model = models[model_idx]
+            relevant_chains = self.model_to_chains.get(model)
+            if relevant_chains is None:
+                raise Exception("model {} not part of this modeler's chain sequence".format(model))
+            fit_mat, target_vec, error_inv_covar = self.stitched_fit_matrices(relevant_chains, model)
+            trans_mat = fit_mat.transpose()
+            rhs = trans_mat*(error_inv_covar*target_vec)
+            ata_inv = trans_mat*(error_inv_covar*fit_mat)
+            lhs_list.append(ata_inv)
+            rhs_list.append(rhs)
+        
+        #build the full fit and run it
+        full_lhs = scipy.sparse.block_diag(lhs_list)
+        full_rhs = np.hstack(rhs_list)
+        if full_lhs.shape == (1, 1):
+            numerator = float(full_rhs)
+            denominator = full_lhs.todense()[0, 0]
+            fit_result = np.atleast_1d(numerator/denominator)
+        else:
+            fit_result = scipy.sparse.linalg.lsqr(full_lhs, full_rhs)[0]
+        
+        #break up the results by model and assign
+        lb = 0 
+        ub = 0
+        for model_idx in range(len(models)):
+            model = models[model_idx]
+            old_pvec = model.get_pvec()
+            n_params = len(old_pvec)
+            ub += n_params
+            new_pvec = old_pvec + fit_result[lb:ub]
+            model.set_pvec(new_pvec)
+            lb = ub

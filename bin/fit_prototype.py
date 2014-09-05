@@ -149,7 +149,7 @@ def fit_lowres_spectrum(spec_idx, plot=True):
     spec = tmb.Spectrum(spectrum_wvs, np.array(hf["flux"][spec_idx]), np.array(hf["invvar"][spec_idx]))
     smod = SpectralModeler(target_spectra=[spec], lsf_models=lsf_models, ldat=ldat, species_grouper=grouper)
     
-    max_iter = 40
+    max_iter = 15
     first_stime = time.time()
     
     damping_schedule = {0:(1e5, 1e5), 3:(1e4, 1e4), 5:(1e3, 1e3), 7:(3e2, 3e2), 12:(1e2, 1e2), 18:(5.0, 5.0)}
@@ -162,7 +162,7 @@ def fit_lowres_spectrum(spec_idx, plot=True):
         if not new_damps is None:
             tdamp, vdamp = new_damps
             smod.feature_mod.fit_damping_factors["theta"] = tdamp
-            smod.feature_mod.fit_damping_factors["theta"] = vdamp
+            smod.feature_mod.fit_damping_factors["vmicro"] = vdamp
         
         print "fit iterating"
         smod.iterate()
@@ -171,13 +171,13 @@ def fit_lowres_spectrum(spec_idx, plot=True):
         #import pdb; pdb.set_trace()
         if iter_idx < max_iter - 5:
             print "applying fudge factors"
-            if iter_idx < 5:
-                fpvec[2:] = fpvec[2:] + (10.0-2.0*iter_idx)
+            if iter_idx < 2:
+                fpvec[2:] = fpvec[2:] + (5.0-2*iter_idx)
                 smod.feature_mod.set_pvec(fpvec)
             cteff = smod.feature_mod.teff
             smod.ctm_mod.teff = cteff
             smod.iterate(smod.blaze_models)
-            
+        
         print "teff {:5.4f}  vmicro {:5.3f}".format(5040.0/fpvec[0], fpvec[1])
         print "rest of strengths {}".format(fpvec[2:])
         
@@ -212,8 +212,8 @@ def fit_lowres_spectrum(spec_idx, plot=True):
 if __name__ == "__main__":
     args = parser.parse_args()
     
-    pool = multiprocessing.Pool(2)
-    pool.map(fit_lowres_spectrum, range(5))
+    pool = multiprocessing.Pool(multiprocessing.cpu_count())
+    pool.map(fit_lowres_spectrum, range(1024))
     
     #import pdb; pdb.set_trace()
     

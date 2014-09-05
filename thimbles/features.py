@@ -96,7 +96,9 @@ class SaturatedVoigtFeatureModel(object):
                  domination_ratio=5.0,
                  H_mask_radius=2.0,
                  species_grouper="unique",
-                 model_resolution=5e5,):
+                 model_resolution=5e5,
+                 fit_damping_factors = None,
+                 ):
         """provides a rough model of a normalized stellar absorption spectrum
         
         inputs 
@@ -131,6 +133,11 @@ class SaturatedVoigtFeatureModel(object):
         self.H_mask_radius=H_mask_radius
         self.max_delta_wv = max_delta_wv
         self.max_delta_x = max_delta_x
+        default_pdamp = {"theta":5000.0, "vmicro":100}
+        if fit_damping_factors is None:
+            fit_damping_factors = {}
+        default_pdamp.update(fit_damping_factors)
+        self.fit_damping_factors = default_pdamp
         self._check_initialize_column("ew", fill_value=0.0)
         self._check_initialize_column("wv_offset", fill_value=0.0)
         self._check_initialize_column("sigma_offset", fill_value=0.0)
@@ -176,7 +183,7 @@ and float values.""".format(type(dof_thresholds))
         
         n_params = self.cfm.shape[1] + 2
         self._pvec = np.ones(n_params)*0.1
-        self._pvec[0] = self.teff
+        self._pvec[0] = self.theta
         self._pvec[1] = self.vmicro
     
     def _check_initialize_column(self, col_name, fill_value):
@@ -215,7 +222,7 @@ and float values.""".format(type(dof_thresholds))
     
     def set_pvec(self, pvec):
         self._pvec = pvec
-        self.teff = pvec[0]
+        self.theta = pvec[0]
         self.vmicro = pvec[1]
         self.assign_group_ews(pvec[2:])
     
@@ -514,16 +521,16 @@ and float values.""".format(type(dof_thresholds))
         return cfm
     
     def parameter_expansion(self, input, **kwargs):
-        teff_delta = 50.0
+        theta_delta = 0.01
         vmic_delta = 0.01
         
-        cteff = self.teff
-        self.teff = cteff-teff_delta
-        teff_minus_vec = self(input, **kwargs)
-        self.teff = cteff+teff_delta
-        teff_plus_vec = self(input, **kwargs)
-        teff_deriv = (teff_plus_vec-teff_minus_vec)/teff_delta
-        self.teff = cteff
+        ctheta = self.theta
+        self.theta = ctheta-theta_delta
+        theta_minus_vec = self(input, **kwargs)
+        self.theta = ctheta+theta_delta
+        theta_plus_vec = self(input, **kwargs)
+        theta_deriv = (theta_plus_vec-theta_minus_vec)/theta_delta
+        self.theta = ctheta
         
         cvmicro = self.vmicro
         self.vmicro = cvmicro-vmic_delta
@@ -533,14 +540,14 @@ and float values.""".format(type(dof_thresholds))
         vmicro_deriv = (vmicro_plus_vec-vmicro_minus_vec)/vmic_delta
         self.vmicro = cvmicro
         
-        pexp_mat = scipy.sparse.hstack([teff_deriv.reshape((-1, 1)), vmicro_deriv.reshape((-1, 1)), self.cfm])
+        pexp_mat = scipy.sparse.hstack([theta_deriv.reshape((-1, 1)), vmicro_deriv.reshape((-1, 1)), self.cfm])
         return pexp_mat
     
     def parameter_damping(self, input):
         cur_pvec = self.get_pvec()
         targ_damp = np.repeat(2.0, len(cur_pvec))
-        targ_damp[0]=0.00001
-        targ_damp[1]=200.0
+        targ_damp[0]=self.fit_damping_factors["theta"]
+        targ_damp[1]=self.fit_damping_factors["vmicro"]
         targ_pdelta = np.zeros(len(cur_pvec))
         targ_pdelta[1] = 2.0 - cur_pvec[1]
         return targ_pdelta, targ_damp
@@ -577,6 +584,8 @@ and float values.""".format(type(dof_thresholds))
     
     @theta.setter
     def theta(self, value):
+        if value < 0:
+            value = 0.01
         self.teff = 5040.0/value
     
     def calc_solar_ab(self):

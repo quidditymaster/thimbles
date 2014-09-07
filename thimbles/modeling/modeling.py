@@ -15,27 +15,20 @@ class ModelingError(Exception):
 #"distribution":NormalDeltaDistribution,
 #}
 
-def parameterize(depends_on=None, 
-                 free=False, 
-                 factories=None,
-                 factory_kwargs=None
-                 ):
+def parameter(free=False):
     """a decorator to turn getter methods of Model class objects 
     into Parameter objects.
     """
-    if factories is None:
-        factories = {}
-    for factory_key in factory_defaults:
-        factory = factories.get(factor_key)
-        if factory is None:
-            factory = factory_defaults[factory_key]
+    #if factories is None:
+    #    factories = {}
+    #for factory_key in factory_defaults:
+    #    factory = factories.get(factor_key)
+    #    if factory is None:
+    #        factory = factory_defaults[factory_key]
     def function_to_parameter(func):
         param=Parameter(
             func,
-            depends_on=depends_on,
             free=free,
-            factories=factories,
-            factory_kwargs=factory_kwargs,
         )
         return param
     return function_to_parameter
@@ -142,51 +135,100 @@ class ConvergencePolicy(object):
             return True
         return False
 
+mult_func = lambda x, y: x*y
+
+def flat_size(shape_tup):
+    if shape_tup == tuple():
+        return 1
+    return reduce(mult_func, shape_tup)
+
 class Model(object):
     
     def __init__(self):
         self.attach_parameters()
     
     def attach_parameters(self):
-        self._parameters = {}
+        self._parameters = []
         for attrib in dir(self):
             val = getattr(self, attrib)
             if isinstance(val, Parameter):
                 val.set_model(self)
-                self._parameters[attrib]=val
+                self._parameters.append(val)
                 val.validate()
     
     @property
     def parameters(self):
         return self._parameters
     
-    def parameter_expansion(self):
-        raise 
+    @property
+    def free_parameters(self):
+        return [param for param in self.parameters if param.is_free]
     
-    def as_linear_op(self):
+    def get_pvec(self):
+        pvals = [np.array(p.get()).reshape((-1,)) for p in self.free_parameters]
+        return np.hstack(pvals)
+    
+    def parameter_index(self, parameter):
+        return self.parameters.index(parameter)
+    
+    def set_pvec(self, pvec):
+        parameters = self.free_parameters
+        pshapes = [p.shape for p in parameters]
+        nvals = [flat_size(pshape) for pshape in pshapes]
+        break_idxs = np.cumsum(nvals)[:-1]
+        flat_params = np.split(pvec, break_idxs)
+        for p_idx in range(len(parameters)):
+            param = parameters[p_idx]
+            pshape = pshapes[p_idx]
+            flat_val = flat_params[p_idx]
+            if pshape == tuple():
+                param.set(float(flat_val))
+            else:
+                param.set(flat_val.reshape(pshape))
+    
+    def parameter_expansion(self, input_vec, **kwargs):
+        parameters = self.free_parameters
+        deriv_vecs = []
+        pval_delta = 0.0001
+        for p in parameters:
+            pval = p.get()
+            #TODO: use the parameters own epsilon scale
+            if p.shape == tuple():
+                p.set(pval+pval_delta)
+                plus_d = self(input_vec, **kwargs)
+                p.set(pval-pval_delta)
+                minus_d = self(input_vec, **kwargs)
+                deriv = (0.5*(plus_d-minus_d)/pval_delta)
+                deriv_vecs.append(deriv)
+                #don't forget to reset the parameters back to the start
+                p.set(pval)
+            else:
+                raise NotImplementedError
+                cur_n_param =  flat_size(pval.shape)
+                delta_vals = np.eye(cur_n_param)*pval_delta
+                p.set()
+        pexp_mat = scipy.sparse.bmat(deriv_vecs).transpose()
+        return pexp_mat
+    
+    def as_linear_op(self, input_vec, **kwargs):
         pass
     
-    def damping_matrix(self):
+    def parameter_damping(self, input_vec, **kwargs):
         pass
 
 class Parameter(object):
     
-    def __init__(self, getter, depends_on, free, factories, factory_kwargs):
+    def __init__(self, getter, free):#, factories, factory_kwargs):
         self._getter=getter
-        if depends_on is None:
-            depends_on=[]
-        self.depends_on=depends_on
-        history_factory = factories["history"]
-        hist_kwargs = factory_kwargs.get("history", {})
-        self.history=history_factory(self, **hist_kwargs)
-        self.model=None
+        #history_factory = factories["history"]
+        #hist_kwargs = factory_kwargs.get("history", {})
+        #self.history=history_factory(self, **hist_kwargs)
+        #self.model=None
         
         self._free=free
         self._dist=None
         self._setter = None        
-        self._last_valuated = -np.inf
-        self._last_value = None
-        
+    
     @property
     def dist(self):
         return self._dist
@@ -203,20 +245,12 @@ class Parameter(object):
             self._dist = NormalDeltaDistribution(asndarr, parameter=self)
     
     @property
-    def is_base(self):
-        return self.is_free and self.is_independent
+    def shape(self):
+        return np.asarray(self.get()).shape
     
     @property
     def is_free(self):
         return self._free
-    
-    @property
-    def is_independent(self):
-        return self.depends_on == []
-    
-    @property
-    def is_settable(self):
-        return not self._setter is None
     
     def remember(self):
         self.history.remember()
@@ -226,21 +260,17 @@ class Parameter(object):
     
     def setter(self, setter):
         self._setter=setter
-        return self._setter
+        return setter
     
     def set(self, value):
         self._setter(self.model, value)
     
+    def get(self):
+        return self._getter(self.model)
+    
     def validate(self):
         if self.model is None:
             raise ModelingError("parameter.model is None")
-        if (not self.is_settable) and self.is_free:
-            raise ModelingError("parameter cannot be free with no setter")
-        if self.is_settable and (not self.is_independent):
-            raise ModelingError("parameter must be independent if it has a set method")
-    
-    def value(self):
-        return self._getter(self.model)
     
     def weight(self, offset=None):
         return self.dist.weight(offset)

@@ -8,14 +8,13 @@ from copy import copy
 class ModelingError(Exception):
     pass
 
-
 #factory_defaults = {
 #"history": ValueHistory,
 #"scale":ParameterScale,
 #"distribution":NormalDeltaDistribution,
 #}
 
-def parameter(free=False):
+def parameter(free=False, min_step=None, max_step=None, start_damp=10.0, epsilon=0.01, min=None, max=None):
     """a decorator to turn getter methods of Model class objects 
     into Parameter objects.
     """
@@ -29,6 +28,12 @@ def parameter(free=False):
         param=Parameter(
             func,
             free=free,
+            min_step=min_step,
+            max_step=max_step,
+            start_damp=start_damp,
+            epsilon=epsilon,
+            min=min,
+            max=max
         )
         return param
     return function_to_parameter
@@ -40,7 +45,7 @@ class DeltaDistribution(object):
     
     def set_parameter(self, parameter):
         self.parameter=parameter
-    
+        
     def set_variance(self, value):
         raise NotImplementedError("abstract class; implement for subclasses")
     
@@ -68,24 +73,6 @@ class NormalDeltaDistribution(DeltaDistribution):
     
     def weight(self, offset):
         return self._variance**-2.0
-
-class ParameterScale(object):
-    
-    def __init__(self, small_step=None, large_step=None, epsilon=0.01):
-        """step sizes for a parameter,
-        small_step: float or ndarray
-          the scale of the smallest meaningful differences
-        large_step: float or ndarray
-          the scale over which changes in the parameter have
-          large effects, this is important when non-linear
-          effects are in play, even if the non-linearity
-          is not directly dependent on this parameter
-        epsilon: float or ndarray
-          the fraction of a small step to use to evaluate derivatives.
-        """
-        self.small_step = small_step
-        self.large_step = large_step
-        self.epsilon = epsilon
 
 class ValueHistory(object):
     
@@ -165,7 +152,7 @@ class Model(object):
         return [param for param in self.parameters if param.is_free]
     
     def get_pvec(self):
-        pvals = [np.array(p.get()).reshape((-1,)) for p in self.free_parameters]
+        pvals = [np.asarray(p.get()).reshape((-1,)) for p in self.free_parameters]
         return np.hstack(pvals)
     
     def parameter_index(self, parameter):
@@ -211,20 +198,36 @@ class Model(object):
         return pexp_mat
     
     def as_linear_op(self, input_vec, **kwargs):
-        pass
+        return IdentityPlaceHolder()
     
     def parameter_damping(self, input_vec, **kwargs):
-        pass
+        parameters = self.free_parameters
+        damp_vecs = []
+        for p in parameters:
+            damp_val = np.asarray(p.damp)
+            if damp_val.shape == tuple():
+                pshape = p.shape
+                if not pshape == tuple():
+                    damp_val = np.repeat(damp_val, flat_size(pshape))*damp_val
+            damp_vecs.append(damp_val)
+        damp_weights = np.hstack(damp_vecs)
+        return np.zeros(damp_weights.shape), damp_weights
 
 class Parameter(object):
     
-    def __init__(self, getter, free):#, factories, factory_kwargs):
+    def __init__(self, getter, free, start_damp, min_step, max_step, min, max, epsilon):#, factories, factory_kwargs):
         self._getter=getter
         #history_factory = factories["history"]
         #hist_kwargs = factory_kwargs.get("history", {})
         #self.history=history_factory(self, **hist_kwargs)
         #self.model=None
         
+        self.damp=start_damp
+        self.epsilon=epsilon
+        self.min = min
+        self.max = max
+        self.max_step = max_step
+        self.min_step = min_step
         self._free=free
         self._dist=None
         self._setter = None        
@@ -415,21 +418,21 @@ class Modeler(object):
             if relevant_chains is None:
                 raise Exception("model {} not part of this modeler's chain sequence".format(model))
             fit_mat, target_vec, error_inv_covar = self.stitched_fit_matrices(relevant_chains, model)
-            trans_mat = fit_mat.transpose()
-            rhs = trans_mat*(error_inv_covar*target_vec)
-            ata_inv = trans_mat*(error_inv_covar*fit_mat)
-            lhs_list.append(ata_inv)
+            #trans_mat = fit_mat.transpose()
+            rhs = error_inv_covar*target_vec
+            lhs = error_inv_covar*fit_mat
+            lhs_list.append(lhs)
             rhs_list.append(rhs)
         
         #build the full fit and run it
         full_lhs = scipy.sparse.block_diag(lhs_list)
         full_rhs = np.hstack(rhs_list)
-        if full_lhs.shape == (1, 1):
-            numerator = float(full_rhs)
-            denominator = full_lhs.todense()[0, 0]
-            fit_result = np.atleast_1d(numerator/denominator)
-        else:
-            fit_result = scipy.sparse.linalg.lsqr(full_lhs, full_rhs)[0]
+        #if full_lhs.shape == (1, 1):
+        #    numerator = float(full_rhs)
+        #    denominator = full_lhs.todense()[0, 0]
+        #    fit_result = np.atleast_1d(numerator/denominator)
+        #else:
+        fit_result = scipy.sparse.linalg.lsqr(full_lhs, full_rhs)[0]
         
         #break up the results by model and assign
         lb = 0 

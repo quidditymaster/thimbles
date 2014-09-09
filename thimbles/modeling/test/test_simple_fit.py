@@ -15,7 +15,7 @@ class LineModel(Model):
     def __call__(self, input, x):
         return x*self.slope + self.intercept
     
-    @parameter(free=True)
+    @parameter(free=True, start_damp=10.0)
     def slope_p(self):
         return self.slope
     
@@ -24,16 +24,12 @@ class LineModel(Model):
         self.slope = value
     
     @parameter(free=True)
-    def intercept_p(self):
+    def intercept_p(self, start_damp=10.0):
         return self.intercept
     
     @intercept_p.setter
     def set_intercept(self, value):
-        self.intercept = value
-        
-    def parameter_damping(self, input, x):
-        return np.zeros(2), 10.0*np.ones(2)
-    
+        self.intercept = value    
 
 class LineFitTest(unittest.TestCase):
 
@@ -69,7 +65,8 @@ class LineFitTest(unittest.TestCase):
             #print "slope {} , intercept {}".format(self.lmod.slope, self.lmod.intercept)
         self.assertAlmostEqual(self.lmod.slope, self.slope, delta=0.1)
         self.assertAlmostEqual(self.lmod.intercept, self.intercept, delta=0.1)
-        
+
+    
 
 if __name__ == "__main__":
     unittest.main()

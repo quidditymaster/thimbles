@@ -4,6 +4,7 @@ import h5py
 import os
 import scipy.sparse
 import thimbles as tmb
+from thimbles.modeling.modeling import parameter, Model
 from thimbles.hypercube_interpolator import HypercubeGridInterpolator
 from thimbles import resource_dir
 from profiles import convolved_stark
@@ -81,10 +82,11 @@ class HydrogenLineOpacity(tmb.profiles.LineProfile):
         interped_profile += alpha_profile[np.clip(min_indexes+1, 0, len(alpha_profile)-1)]*mixing_ratio
         return np.exp(interped_profile)
 
-class HydrogenForegroundModel(Spectrum):
+class HydrogenForegroundModel(Spectrum, Model):
     
     def __init__(self, wvs, strength, temperature, electron_density):
-        super(HydrogenForegroundModel, self).__init__(wvs, np.ones(len(wvs)))
+        Model.__init__(self)
+        Spectrum.__init__(self, wvs, np.ones(len(wvs)))
         self._temperature = temperature
         self._electron_density = electron_density
         self.npts_model = len(self.wv)
@@ -152,16 +154,18 @@ class HydrogenForegroundModel(Spectrum):
     def strength(self):
         return self._strength
     
-    def get_pvec(self):
-        return self.strength
-    
-    def set_pvec(self, value):
-        self.strength = value 
-    
     @strength.setter 
     def strength(self, value):
         self._strength = np.clip(value, 0.01, np.inf)
         self.calc_transmission()
+    
+    @parameter(free=True, start_damp=1000, min=0.01, max=8.0, min_step=0.0001, max_step=0.25)
+    def strength_p(self):
+        return self.strength
+    
+    @strength_p.setter
+    def set_strength(self, value):
+        self.strength = value
     
     def calc_transmission(self):
         self.flux = np.exp(-(self.opac_matrix*self.strength))
@@ -171,11 +175,7 @@ class HydrogenForegroundModel(Spectrum):
     
     def __call__(self, input):
         return input*self.flux
-    
-    def parameter_damping(self, input):
-        nparams = len(self.strength)
-        return np.zeros(nparams, dtype=float), np.repeat(200.0, nparams)
-    
+        
     def parameter_expansion(self, input):
         delt_eps = 0.001
         start_strength = self.strength

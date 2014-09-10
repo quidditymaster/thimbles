@@ -152,17 +152,17 @@ def fit_lowres_spectrum(spec_idx, plot=True):
     max_iter = 15
     first_stime = time.time()
     
-    damping_schedule = {0:(1e5, 1e5), 3:(1e4, 1e4), 5:(1e3, 1e3), 7:(3e2, 3e2), 12:(1e2, 1e2), 18:(5.0, 5.0)}
+    #damping_schedule = {0:(1e5, 1e5), 3:(1e4, 1e4), 5:(1e3, 1e3), 7:(3e2, 3e2), 12:(1e2, 1e2), 18:(5.0, 5.0)}
     
     for iter_idx in range(max_iter):
         iter_stime = time.time()
         
         #set the damping
-        new_damps = damping_schedule.get(iter_idx)
-        if not new_damps is None:
-            tdamp, vdamp = new_damps
-            smod.feature_mod.fit_damping_factors["theta"] = tdamp
-            smod.feature_mod.fit_damping_factors["vmicro"] = vdamp
+        #new_damps = damping_schedule.get(iter_idx)
+        #if not new_damps is None:
+        #    tdamp, vdamp = new_damps
+        #    smod.feature_mod.fit_damping_factors["theta"] = tdamp
+        #    smod.feature_mod.fit_damping_factors["vmicro"] = vdamp
         
         print "fit iterating"
         smod.iterate()
@@ -212,8 +212,9 @@ def fit_lowres_spectrum(spec_idx, plot=True):
 if __name__ == "__main__":
     args = parser.parse_args()
     
-    pool = multiprocessing.Pool(multiprocessing.cpu_count())
-    pool.map(fit_lowres_spectrum, range(1024))
+    #pool = multiprocessing.Pool(multiprocessing.cpu_count())
+    #pool.map(fit_lowres_spectrum, range(1024))
     
     #import pdb; pdb.set_trace()
+    fit_lowres_spectrum(13)
     

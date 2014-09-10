@@ -233,6 +233,7 @@ class Model(object):
             delta_mag = np.abs(flat_val-cur_pvecs[p_idx])
             max_step_violated = delta_mag > p.max_step
             min_step_violated = delta_mag < p.min_step
+            pvec_ok = np.where(min_step_violated, -1, pvec_ok)
             pvec_ok = np.where(min_violated, 1, pvec_ok)
             pvec_ok = np.where(max_violated, 2, pvec_ok)
             pvec_ok = np.where(max_step_violated, 3, pvec_ok)
@@ -371,11 +372,12 @@ class Parameter(object):
     
     def set(self, value):
         min_respected = np.atleast_1d(value) >= self.min
-        max_respected = np.atleast_1d(value) <= self.max 
+        max_respected = np.atleast_1d(value) <= self.max
+        self._setter(self.model, np.clip(value, self.min, self.max)) 
         if np.all(min_respected*max_respected):
-            self._setter(self.model, np.clip(value, self.min, self.max))
             return True
-        return False
+        else:
+            return False
     
     def expander(self, expander):
         self._expander=expander
@@ -527,6 +529,7 @@ class Modeler(object):
     def iterate(self, models):
         delta_acceptable = False
         max_clamping_iters = 2
+        #import pdb; pdb.set_trace()
         for clamp_iter_idx in range(max_clamping_iters):
             #innocent until proven guilty
             delta_acceptable = True

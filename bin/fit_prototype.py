@@ -119,7 +119,7 @@ class SpectralModeler(object):
             models.extend(self.blaze_models)
         self.modeler.iterate(models)
 
-def fit_lowres_spectrum(spec_idx, plot=True):
+def fit_lowres_spectrum(spec_idx, plot=True, max_iter=50):
     hf = h5py.File("globulars_all.h5", "r")
     spectrum_wvs = np.power(10.0, np.array(hf["log_wvs"]))
     spectrum_lsf = np.array(hf["resolution"])
@@ -149,7 +149,6 @@ def fit_lowres_spectrum(spec_idx, plot=True):
     spec = tmb.Spectrum(spectrum_wvs, np.array(hf["flux"][spec_idx]), np.array(hf["invvar"][spec_idx]))
     smod = SpectralModeler(target_spectra=[spec], lsf_models=lsf_models, ldat=ldat, species_grouper=grouper)
     
-    max_iter = 15
     first_stime = time.time()
     
     #damping_schedule = {0:(1e5, 1e5), 3:(1e4, 1e4), 5:(1e3, 1e3), 7:(3e2, 3e2), 12:(1e2, 1e2), 18:(5.0, 5.0)}
@@ -167,19 +166,16 @@ def fit_lowres_spectrum(spec_idx, plot=True):
         print "fit iterating"
         smod.iterate()
         
-        fpvec = smod.feature_mod.get_pvec() 
         #import pdb; pdb.set_trace()
         if iter_idx < max_iter - 5:
-            print "applying fudge factors"
-            if iter_idx < 2:
-                fpvec[2:] = fpvec[2:] + (5.0-2*iter_idx)
-                smod.feature_mod.set_pvec(fpvec)
             cteff = smod.feature_mod.teff
             smod.ctm_mod.teff = cteff
             smod.iterate(smod.blaze_models)
         
-        print "teff {:5.4f}  vmicro {:5.3f}".format(5040.0/fpvec[0], fpvec[1])
-        print "rest of strengths {}".format(fpvec[2:])
+        teff = smod.feature_mod.teff
+        vmicro = smod.feature_mod.vmicro
+        print "teff {:5.4f}  vmicro {:5.3f}".format(teff, vmicro)
+        #print "feature of params \n {}".format(fpvec)
         
         if plot:
             lwv = np.log10(spec.wv)

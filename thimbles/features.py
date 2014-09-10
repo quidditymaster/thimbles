@@ -201,6 +201,8 @@ and float values.""".format(type(dof_thresholds))
     def __call__(self, input, **kwargs):
         if self._recalc_doppler_widths:
             self.calc_doppler_widths()
+        if self._recalc_cog:
+            self.calc_cog()
         if self._recalc_x:
             self.calc_x()
         if self._recalc_cog_ews:
@@ -212,9 +214,10 @@ and float values.""".format(type(dof_thresholds))
         ret_val = 1.0 + self.cfm*self.exemplar_ews_p.get()
         return ret_val
     
-    @parameter(free=True, start_damp=10.0, min_step=0.001, max_step=20.0, min=0.0, max=1000.0)
+    @parameter(free=True, start_damp=0.5, min_step=0.0001, max_step=500.0, min=0.0001, max=1000.0)
     def exemplar_ews_p(self, ):
-        return self.grouping_matrix.transpose()*self.fdat["ew"].values
+        #TODO cache this value
+        return scipy.sparse.linalg.lsqr(self.grouping_matrix, self.fdat["ew"].values)[0]
     
     @exemplar_ews_p.setter
     def assign_exemplar_ews(self, exemplar_ews):            
@@ -224,6 +227,16 @@ and float values.""".format(type(dof_thresholds))
     @exemplar_ews_p.expander
     def expand_exemplar_effects(self, input_vec, **kwargs):
         return self.cfm
+    
+    @parameter(free=True, start_damp=100.0, min=0.001, max=1.0, max_step=0.1, min_step=0.0001)
+    def mean_gamma_ratio_p(self):
+        return self.mean_gamma_ratio
+    
+    @mean_gamma_ratio_p.setter
+    def set_mean_gamma_ratio(self, value):
+        self.mean_gamma_ratio = value
+        self._recalc_cog = True
+        self._recalc_cog_ews = True
     
     #def calc_ew_errors(self):
     #    self.fdat["ew_error"] = np.ones(len(self.fdat))
@@ -584,7 +597,7 @@ and float values.""".format(type(dof_thresholds))
         self._recalc_grouping_matrix = True
         self._recollapse_feature_matrix = True
     
-    @parameter(free=True, start_damp=1000, min=0.01, max=10.0, min_step=0.01, max_step=0.5)
+    @parameter(free=True, start_damp=100, min=0.01, max=10.0, min_step=0.005, max_step=0.1)
     def vmicro_p(self):
         return self.vmicro
     
@@ -600,7 +613,7 @@ and float values.""".format(type(dof_thresholds))
     def theta(self, value):
         self.teff = 5040.0/value
     
-    @parameter(free=True, min=0.2, max=3.0, start_damp=1000, min_step=0.02, max_step=0.25)
+    @parameter(free=True, min=0.2, max=3.0, start_damp=100, min_step=0.001, max_step=0.1)
     def theta_p(self):
         return self.theta
     
@@ -695,13 +708,13 @@ and float values.""".format(type(dof_thresholds))
         self._recalc_cog = False
     
     def fit_offsets(self):
+        #import pdb; pdb.set_trace()
         species_gb = self.fdat.groupby("species_group")
         groups = species_gb.groups
         #order the species keys so we do the species with the most exemplars first
-        num_exemplars = sorted([(len(groups[k]), k) for k in groups.keys()], reverse=True)
-        fallback_offset = 0.0
-        for group_idx in range(len(num_exemplars)):
-            species_key = num_exemplars[group_idx][1]
+        #num_exemplars = sorted([(len(groups[k]), k) for k in groups.keys()], reverse=True)
+        fallback_offset = 10.0 #totally arbitrary
+        for species_key in range(len(groups)):
             species_df = self.fdat.ix[groups[species_key]]
             exemplars = species_df[species_df.group_exemplar > 0]
             delta_rews = np.log10(exemplars.ew/exemplars.doppler_width)
@@ -710,9 +723,6 @@ and float values.""".format(type(dof_thresholds))
             if np.isnan(offset):
                 offset = fallback_offset
             self.fdat.ix[groups[species_key], "x_offset"] = offset
-            if group_idx == 0:
-                if not np.isnan(offset):
-                    fallback_offset = offset
     
     @property
     def doppler_lrw(self):

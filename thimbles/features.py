@@ -231,16 +231,6 @@ and float values.""".format(type(dof_thresholds))
     #    ew_error = np.sqrt(self.fdat["ew_frac"]*self.fdat["ew"])
     #    self.fdat["ew_error"] = np.where(self.fdat["ew_frac"])
     
-    #def get_pvec(self):
-    #    return self._pvec
-    #
-    #def set_pvec(self, pvec):
-    #    self._pvec = pvec
-    #    self.theta = pvec[0]
-    #    self.vmicro = pvec[1]
-    #    self.assign_group_ews(pvec[2:])
-    #
-        
     def group_species(self, overwrite=True):
         species_nums = self.species_grouper(self.fdat.species.values)
         if overwrite:

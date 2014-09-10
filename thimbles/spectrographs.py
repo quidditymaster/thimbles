@@ -50,7 +50,7 @@ class PiecewisePolynomialSpectrographEfficiencyModel(Model):
     def blaze(self):
         return np.dot(self._basis, self.coefficients)
     
-    @parameter(free=True, start_damp=100, min=-np.inf, max=np.inf, min_step=0.0, max_step=1000)
+    @parameter(free=True, start_damp=0.05, min=-np.inf, max=np.inf, min_step=0.0, max_step=1000)
     def poly_coeffs_p(self):
         return self.coefficients
     
@@ -62,17 +62,8 @@ class PiecewisePolynomialSpectrographEfficiencyModel(Model):
     def parameter_expansion(self, input, **kwargs):
         return scipy.sparse.csc_matrix((self._basis*input.reshape((-1, 1))))
     
-    #def get_pvec(self):
-    #    return self.coefficients
-    #
-    #def set_pvec(self, pvec):
-    #    self.coefficients = pvec
-    
     def as_linear_op(self, input, **kwargs):
         return scipy.sparse.dia_matrix((self.blaze(), 0), shape = (len(self.wv), len(self.wv)))
-    
-    #def parameter_damping(self, input):
-    #    return np.zeros(self.n_coeffs), np.ones(self.n_coeffs)*0.05
-    
+        
     def __call__(self, input, **kwargs):
         return self.blaze()*input

@@ -9,6 +9,7 @@ import scipy.sparse
 from flags import FeatureFlags
 from thimbles.stellar_atmospheres import solar_abundance as ptable
 from thimbles.profiles import voigt
+from thimbles.modeling.modeling import parameter, Model
 from thimbles.utils.misc import smooth_ppol_fit
 import thimbles.utils.piecewise_polynomial as ppol
 from thimbles import verbosity
@@ -74,7 +75,7 @@ class SpeciesGrouper(object):
             grp_nums[input_sp_idx] = cur_group_num
         return grp_nums[recon_idxs]
 
-class SaturatedVoigtFeatureModel(object):
+class SaturatedVoigtFeatureModel(Model):
     
     def __init__(self, 
                  transitions, 
@@ -83,21 +84,19 @@ class SaturatedVoigtFeatureModel(object):
                  snr_threshold=5.0,
                  snr_target=100.0,
                  dof_thresholds=None,
-                 teff=5000.0, 
+                 teff=5000.0,
+                 mean_gamma_ratio=0.05, 
                  vmicro=2.0, 
                  vmacro=1.0, 
-                 gamma_ratio_5000=0.02,
-                 initial_x_offset=6.0,
+                 initial_x_offset=7.0,
                  dof_threshold=0.0,
                  log_ion_frac=-0.01,
-                 mean_gamma_ratio=0.05,
                  max_delta_wv=100,
                  max_delta_x=0.25,
                  domination_ratio=5.0,
                  H_mask_radius=2.0,
                  species_grouper="unique",
-                 model_resolution=5e5,
-                 fit_damping_factors = None,
+                 model_resolution=2e5,
                  ):
         """provides a rough model of a normalized stellar absorption spectrum
         
@@ -118,6 +117,7 @@ class SaturatedVoigtFeatureModel(object):
         mean_gamma_ratio: float
           the ratio of the lorentz width to the thermal width at 5000 angstroms.
         """
+        super(SaturatedVoigtFeatureModel, self).__init__()
         self.fdat = transitions.copy()
         self.n_feat = len(self.fdat)
         self.min_wv = float(min_wv)
@@ -133,11 +133,11 @@ class SaturatedVoigtFeatureModel(object):
         self.H_mask_radius=H_mask_radius
         self.max_delta_wv = max_delta_wv
         self.max_delta_x = max_delta_x
-        default_pdamp = {"theta":5000.0, "vmicro":100}
-        if fit_damping_factors is None:
-            fit_damping_factors = {}
-        default_pdamp.update(fit_damping_factors)
-        self.fit_damping_factors = default_pdamp
+        #default_pdamp = {"theta":5000.0, "vmicro":100}
+        #if fit_damping_factors is None:
+        #    fit_damping_factors = {}
+        #default_pdamp.update(fit_damping_factors)
+        #self.fit_damping_factors = default_pdamp
         self._check_initialize_column("ew", fill_value=0.0)
         self._check_initialize_column("wv_offset", fill_value=0.0)
         self._check_initialize_column("sigma_offset", fill_value=0.0)
@@ -181,11 +181,6 @@ and float values.""".format(type(dof_thresholds))
         self.calc_grouping_matrix(overwrite=True)
         self.collapse_feature_matrix(overwrite=True)
         
-        n_params = self.cfm.shape[1] + 2
-        self._pvec = np.ones(n_params)*0.1
-        self._pvec[0] = self.theta
-        self._pvec[1] = self.vmicro
-    
     def _check_initialize_column(self, col_name, fill_value):
         """check if a column is defined and if it is not add it"""
         if not (col_name in self.fdat.columns):
@@ -204,12 +199,31 @@ and float values.""".format(type(dof_thresholds))
         self.calc_cog_ews()
     
     def __call__(self, input, **kwargs):
-        ret_val = 1.0 + self.cfm*self.get_pvec()[2:]
+        if self._recalc_doppler_widths:
+            self.calc_doppler_widths()
+        if self._recalc_x:
+            self.calc_x()
+        if self._recalc_cog_ews:
+            self.calc_cog_ews()
+        if self._recalc_grouping_matrix:
+            self.calc_grouping_matrix()
+        if self._recollapse_feature_matrix:
+            self.collapse_feature_matrix()
+        ret_val = 1.0 + self.cfm*self.exemplar_ews_p.get()
         return ret_val
     
-    def assign_group_ews(self, group_ews):            
-        ews = self.grouping_matrix*group_ews
+    @parameter(free=True, start_damp=10.0, min_step=0.001, max_step=20.0, min=0.0, max=1000.0)
+    def exemplar_ews_p(self, ):
+        return self.grouping_matrix.transpose()*self.fdat["ew"].values
+    
+    @exemplar_ews_p.setter
+    def assign_exemplar_ews(self, exemplar_ews):            
+        ews = self.grouping_matrix*exemplar_ews
         self.fdat['ew'] = ews
+    
+    @exemplar_ews_p.expander
+    def expand_exemplar_effects(self, input_vec, **kwargs):
+        return self.cfm
     
     #def calc_ew_errors(self):
     #    self.fdat["ew_error"] = np.ones(len(self.fdat))
@@ -217,18 +231,16 @@ and float values.""".format(type(dof_thresholds))
     #    ew_error = np.sqrt(self.fdat["ew_frac"]*self.fdat["ew"])
     #    self.fdat["ew_error"] = np.where(self.fdat["ew_frac"])
     
-    def get_pvec(self):
-        return self._pvec
-    
-    def set_pvec(self, pvec):
-        self._pvec = pvec
-        self.theta = pvec[0]
-        self.vmicro = pvec[1]
-        self.assign_group_ews(pvec[2:])
-    
-    def __getattr__(self, attr_name):
-        return eval("self.fdat['{}']".format(attr_name))
-    
+    #def get_pvec(self):
+    #    return self._pvec
+    #
+    #def set_pvec(self, pvec):
+    #    self._pvec = pvec
+    #    self.theta = pvec[0]
+    #    self.vmicro = pvec[1]
+    #    self.assign_group_ews(pvec[2:])
+    #
+        
     def group_species(self, overwrite=True):
         species_nums = self.species_grouper(self.fdat.species.values)
         if overwrite:
@@ -511,6 +523,8 @@ and float values.""".format(type(dof_thresholds))
         grouping_matrix = scipy.sparse.bmat([grouping_matrices]) 
         if overwrite:
             self.grouping_matrix = grouping_matrix 
+            self._recalc_grouping_matrix=False
+            self._recollapse_feature_matrix=True
         return grouping_matrix
     
     def collapse_feature_matrix(self, overwrite=True):
@@ -518,39 +532,41 @@ and float values.""".format(type(dof_thresholds))
         cfm = -1*self.feature_matrix*self.grouping_matrix
         if overwrite:
             self.cfm = cfm
+            self._recollapse_feature_matrix = False
         return cfm
     
-    def parameter_expansion(self, input, **kwargs):
-        theta_delta = 0.01
-        vmic_delta = 0.01
-        
-        ctheta = self.theta
-        self.theta = ctheta-theta_delta
-        theta_minus_vec = self(input, **kwargs)
-        self.theta = ctheta+theta_delta
-        theta_plus_vec = self(input, **kwargs)
-        theta_deriv = (theta_plus_vec-theta_minus_vec)/theta_delta
-        self.theta = ctheta
-        
-        cvmicro = self.vmicro
-        self.vmicro = cvmicro-vmic_delta
-        vmicro_minus_vec = self(input, **kwargs)
-        self.vmicro = cvmicro+vmic_delta
-        vmicro_plus_vec = self(input, **kwargs)
-        vmicro_deriv = (vmicro_plus_vec-vmicro_minus_vec)/vmic_delta
-        self.vmicro = cvmicro
-        
-        pexp_mat = scipy.sparse.hstack([theta_deriv.reshape((-1, 1)), vmicro_deriv.reshape((-1, 1)), self.cfm])
-        return pexp_mat
     
-    def parameter_damping(self, input):
-        cur_pvec = self.get_pvec()
-        targ_damp = np.repeat(2.0, len(cur_pvec))
-        targ_damp[0]=self.fit_damping_factors["theta"]
-        targ_damp[1]=self.fit_damping_factors["vmicro"]
-        targ_pdelta = np.zeros(len(cur_pvec))
-        targ_pdelta[1] = 2.0 - cur_pvec[1]
-        return targ_pdelta, targ_damp
+    #def parameter_expansion(self, input, **kwargs):
+    #    theta_delta = 0.01
+    #    vmic_delta = 0.01
+    #    
+    #    ctheta = self.theta
+    #    self.theta = ctheta-theta_delta
+    #    theta_minus_vec = self(input, **kwargs)
+    #    self.theta = ctheta+theta_delta
+    #    theta_plus_vec = self(input, **kwargs)
+    #    theta_deriv = (theta_plus_vec-theta_minus_vec)/theta_delta
+    #    self.theta = ctheta
+    #    
+    #    cvmicro = self.vmicro
+    #    self.vmicro = cvmicro-vmic_delta
+    #    vmicro_minus_vec = self(input, **kwargs)
+    #    self.vmicro = cvmicro+vmic_delta
+    #    vmicro_plus_vec = self(input, **kwargs)
+    #    vmicro_deriv = (vmicro_plus_vec-vmicro_minus_vec)/vmic_delta
+    #    self.vmicro = cvmicro
+    #    
+    #    pexp_mat = scipy.sparse.hstack([theta_deriv.reshape((-1, 1)), vmicro_deriv.reshape((-1, 1)), self.cfm])
+    #    return pexp_mat
+    #
+    #def parameter_damping(self, input):
+    #    cur_pvec = self.get_pvec()
+    #    targ_damp = np.repeat(2.0, len(cur_pvec))
+    #    targ_damp[0]=1000#self.fit_damping_factors["theta"]
+    #    targ_damp[1]=100#self.fit_damping_factors["vmicro"]
+    #    targ_pdelta = np.zeros(len(cur_pvec))
+    #    targ_pdelta[1] = 2.0 - cur_pvec[1]
+    #    return targ_pdelta, targ_damp
     
     @property
     def teff(self):
@@ -559,11 +575,11 @@ and float values.""".format(type(dof_thresholds))
     @teff.setter
     def teff(self, value):
         self._teff = value
-        self.calc_doppler_widths()
-        self.calc_x()
-        self.calc_cog_ews()
-        self.calc_grouping_matrix()
-        self.collapse_feature_matrix()
+        self._recalc_doppler_widths = True
+        self._recalc_x = True
+        self._recalc_cog_ews = True
+        self._recalc_grouping_matrix = True
+        self._recollapse_feature_matrix = True
     
     @property
     def vmicro(self):
@@ -572,11 +588,19 @@ and float values.""".format(type(dof_thresholds))
     @vmicro.setter
     def vmicro(self, value):
         self._vmicro = value
-        self.calc_doppler_widths()
-        self.calc_x()
-        self.calc_cog_ews()
-        self.calc_grouping_matrix()
-        self.collapse_feature_matrix()
+        self._recalc_doppler_widths = True
+        self._recalc_x = True
+        self._recalc_cog_ews = True
+        self._recalc_grouping_matrix = True
+        self._recollapse_feature_matrix = True
+    
+    @parameter(free=True, start_damp=1000, min=0.01, max=10.0, min_step=0.01, max_step=0.5)
+    def vmicro_p(self):
+        return self.vmicro
+    
+    @vmicro_p.setter
+    def set_vmicro(self, value):
+        self.vmicro = value
     
     @property
     def theta(self):
@@ -584,12 +608,18 @@ and float values.""".format(type(dof_thresholds))
     
     @theta.setter
     def theta(self, value):
-        if value < 0:
-            value = 0.01
         self.teff = 5040.0/value
     
+    @parameter(free=True, min=0.2, max=3.0, start_damp=1000, min_step=0.02, max_step=0.25)
+    def theta_p(self):
+        return self.theta
+    
+    @theta_p.setter
+    def set_theta(self, value):
+        self.theta = value
+    
     def calc_solar_ab(self):
-        self.fdat["solar_ab"] = ptable[self.species.values]["abundance"]
+        self.fdat["solar_ab"] = ptable[self.fdat.species.values]["abundance"]
     
     def calc_therm_widths(self):
         #TODO: use real atomic weight
@@ -607,13 +637,15 @@ and float values.""".format(type(dof_thresholds))
         self.calc_vmicro_widths()
         dop_widths = np.sqrt(self.fdat["vmicro_width"]**2 + self.fdat["thermal_width"]**2)
         self.fdat["doppler_width"] = dop_widths
+        self._recalc_doppler_widths = False
     
     def calc_x(self):
         #"print calculating x values"
         neutral_delt_x = np.log10(1.0 - np.power(10.0, self.log_ion_frac))
         ionization_delta = np.where(self.fdat.ion == 1, self.log_ion_frac, neutral_delt_x)
         #TODO: include some sort of basic adjustment of ionization fraction on the basis of element ionization energy.
-        self.fdat["x"] = self.solar_ab + self.loggf - self.ep*self.theta - self.doppler_lrw + ionization_delta
+        self.fdat["x"] = self.fdat.solar_ab + self.fdat.loggf - self.fdat.ep*self.theta - self.doppler_lrw + ionization_delta
+        self._recalc_x = False
     
     def calc_cog_ews(self):
         #print "calculating cog ews"
@@ -622,7 +654,8 @@ and float values.""".format(type(dof_thresholds))
         cog_lrw = lrws + self.doppler_lrw.values
         self.fdat["cog_lrw"] = cog_lrw
         self.fdat["cog_ew"] = np.power(10.0, cog_lrw)*self.fdat.wv
-        
+        self._recalc_cog_ews = False
+    
     def calc_cog(self):
         """calculate an approximate curve of growth and store its representation
         """
@@ -669,6 +702,7 @@ and float values.""".format(type(dof_thresholds))
         
         #fit_quad = smooth_ppol_fit(log_strengths, log_rews, y_inv=10.0*np.ones(n_strength), order=2)
         self.cog = ppol.InvertiblePiecewiseQuadratic(fit_quad.coefficients, fit_quad.control_points, centers=fit_quad.centers, scales=fit_quad.scales)
+        self._recalc_cog = False
     
     def fit_offsets(self):
         species_gb = self.fdat.groupby("species_group")
@@ -692,7 +726,7 @@ and float values.""".format(type(dof_thresholds))
     
     @property
     def doppler_lrw(self):
-        return np.log10(self.doppler_width/self.wv)
+        return np.log10(self.fdat.doppler_width/self.fdat.wv)
     
     @property
     def lrw(self):
@@ -700,7 +734,7 @@ and float values.""".format(type(dof_thresholds))
     
     @property
     def x_adj(self):
-        return self.x - self.x_offset
+        return self.fdat.x - self.fdat.x_offset
     
     @property
     def sigma(self):

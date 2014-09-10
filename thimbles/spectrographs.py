@@ -4,6 +4,7 @@ import scipy.sparse
 from thimbles.utils.partitioning import partitioned_polynomial_model
 from thimbles.utils import piecewise_polynomial as ppol 
 from thimbles.thimblesdb import Base, ThimblesTable
+from thimbles.modeling.modeling import parameter, Model
 
 from sqlalchemy import create_engine, ForeignKey
 from sqlalchemy import Column, Date, Integer, String, Float
@@ -18,9 +19,10 @@ class SpectrographSetup(Base, ThimblesTable):
     spectrograph_id = Column(Integer, ForeignKey("Spectrograph._id"))
     spectrograph = relationship(Spectrograph)
 
-class PiecewisePolynomialSpectrographEfficiencyModel(object):
+class PiecewisePolynomialSpectrographEfficiencyModel(Model):
     
     def __init__(self, spec_wvs, degree=3, n_max_part=5):
+        Model.__init__(self)
         self.wv = spec_wvs
         self.degree = degree
         self.n_max_part = n_max_part
@@ -48,20 +50,29 @@ class PiecewisePolynomialSpectrographEfficiencyModel(object):
     def blaze(self):
         return np.dot(self._basis, self.coefficients)
     
-    def get_pvec(self):
+    @parameter(free=True, start_damp=100, min=-np.inf, max=np.inf, min_step=0.0, max_step=1000)
+    def poly_coeffs_p(self):
         return self.coefficients
     
-    def set_pvec(self, pvec):
-        self.coefficients = pvec
+    @poly_coeffs_p.setter
+    def set_poly_coeffs(self, value):
+        self.coefficients = value
+    
+    @poly_coeffs_p.expander
+    def parameter_expansion(self, input, **kwargs):
+        return scipy.sparse.csc_matrix((self._basis*input.reshape((-1, 1))))
+    
+    #def get_pvec(self):
+    #    return self.coefficients
+    #
+    #def set_pvec(self, pvec):
+    #    self.coefficients = pvec
     
     def as_linear_op(self, input, **kwargs):
         return scipy.sparse.dia_matrix((self.blaze(), 0), shape = (len(self.wv), len(self.wv)))
     
-    def parameter_expansion(self, input, **kwargs):
-        return scipy.sparse.csc_matrix((self._basis*input.reshape((-1, 1))))
-    
-    def parameter_damping(self, input):
-        return np.zeros(self.n_coeffs), np.ones(self.n_coeffs)*0.05
+    #def parameter_damping(self, input):
+    #    return np.zeros(self.n_coeffs), np.ones(self.n_coeffs)*0.05
     
     def __call__(self, input, **kwargs):
         return self.blaze()*input

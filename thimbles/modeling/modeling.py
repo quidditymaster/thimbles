@@ -211,14 +211,14 @@ class Model(object):
         return pexp_mat
     
     def as_linear_op(self, input_vec, **kwargs):
-        pass
+        raise NotImplementedError
     
     def parameter_damping(self, input_vec, **kwargs):
         pass
 
 class Parameter(object):
     
-    def __init__(self, getter, free):#, factories, factory_kwargs):
+    def __init__(self, getter, free, damp, min=-np.inf, max=np.inf):#, factories, factory_kwargs):
         self._getter=getter
         #history_factory = factories["history"]
         #hist_kwargs = factory_kwargs.get("history", {})

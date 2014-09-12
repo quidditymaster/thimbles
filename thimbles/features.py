@@ -243,7 +243,7 @@ and float values.""".format(type(dof_thresholds))
     #    total_sig2 = self.fdat["ew"]
     #    ew_error = np.sqrt(self.fdat["ew_frac"]*self.fdat["ew"])
     #    self.fdat["ew_error"] = np.where(self.fdat["ew_frac"])
-            
+    
     def group_species(self, overwrite=True):
         species_nums = self.species_grouper(self.fdat.species.values)
         if overwrite:
@@ -597,7 +597,7 @@ and float values.""".format(type(dof_thresholds))
         self._recalc_grouping_matrix = True
         self._recollapse_feature_matrix = True
     
-    @parameter(free=True, start_damp=100, min=0.01, max=10.0, min_step=0.005, max_step=0.1)
+    @parameter(free=True, start_damp=100, min=0.01, max=10.0, min_step=0.0, max_step=np.inf)
     def vmicro_p(self):
         return self.vmicro
     
@@ -613,7 +613,7 @@ and float values.""".format(type(dof_thresholds))
     def theta(self, value):
         self.teff = 5040.0/value
     
-    @parameter(free=True, min=0.2, max=3.0, start_damp=100, min_step=0.001, max_step=0.1)
+    @parameter(free=True, min=0.2, max=3.0, start_damp=100, min_step=0.00, max_step=np.inf)
     def theta_p(self):
         return self.theta
     

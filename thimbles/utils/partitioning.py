@@ -214,97 +214,52 @@ def partitioned_polynomial_model(xvec,
     partition_mvps.reverse()
     return orig_space_partition, partition_mvps
 
-
-class BlockManager(object):
     
-    def __init__(self, column=0, min_delta=0.0, max_delta=np.inf):
-        self.column = column
-    
-    def ordering_permutation(self, x):
-        return np.argsort(x[:, self.column])
-    
-    def permutation_matrix(self, x):
-        ordering_idxs = self.ordering_permutation(x)
-        return scipy.sparse.identity(len(x), type="csr")[ordering_idxs].copy()
-    
-    def generate_blocks(self):
-        pass
-
-class InformationCriterionPartitioner(object):
-    
-    def __init__(self, matrix_factory, orderer=None, transform=None):
-        pass
-    
-    def partitioning_order(self, x):
-        """return the order """
-        pass
-    
-    def permutation_matrix(self, x):
-        pass
-
-
-class MixedModelPartitioner(object):
-    
-    def __init__(
-                 xvec, 
-                 yvec,
-                 y_inv_var, 
-                 matrix_factory,
-                 matrix_kwargs=None,
-                 grouping_column = 0, 
-                 min_delta = 0,
-                 max_delta = np.inf,
-                 alpha=2.0, 
-                 beta=2.0, 
-                 beta_epsilon=0.01, 
-                 gamma=2.5, 
-                 transform_matrix=None):
-
-        assert len(xvec) == len(yvec)
-        npts = len(xvec)
-        assert len(y_inv_var) == npts
+def matrix_partition(
+                     model_matrix, 
+                     y,
+                     y_weight, 
+                     partitioning_ordinal=None,
+                     min_delta = None,
+                     max_delta = np.inf,
+                     alpha=2.0, 
+                     beta=2.0, 
+                     beta_epsilon=0.01, 
+                     gamma=2.5, 
+                     ):
+        npts = len(y)
+        assert len(y_weight) == npts
+        assert len(model_matrix)== npts
+        #is_sorted = np.all(np.sort(partitioning_ordinal) == partitioning_ordinal)
+        #if not is_sorted:
+        #    raise ValueError("partitioning_ordinal must be sorted")
         
-        if y_mult is None:
-            y_mult = np.ones(npts)
+        if partitioning_ordinal is None:
+            partitioning_ordinal = np.arange(npts)
         
-        #keep a reshaped xvec so it is 2 dim
-        if xvec.ndim == 2:
-            xvec_2d = xvec
-        elif xvec.ndim == 1:
-            xvec_2d = xvec.reshape((-1, 1))
-        else:
-            raise Exception("can't handle input dimensions higher than 2!")
-        n_cols = xvec_2d.shape[1]
+        if min_delta is None:
+            med_ord = np.median(partitioning_ordinal)
+            min_delta = np.median(np.abs(partitioning_ordinal-med_ord))
+            if min_delta == 0:
+                min_delta = np.std(partitioning_ordinal)
+            min_delta /= 10.0
         
-        #create the elementary blocks
-        gcol = xvec_2d[:, grouping_column]
+        #create the elementary blocks        
         grouping_idxs = [0]
-        last_g_val = gcol[0]
+        last_g_val = partitioning_ordinal[0]
         for x_idx in range(1, npts):
-            if np.abs(gcol[x_idx]-last_g_val) > min_delta:
+            if np.abs(partitioning_ordinal[x_idx]-last_g_val) > min_delta:
                 grouping_idxs.append(x_idx)
-                last_g_val = gcol[x_idx]
+                last_g_val = partitioning_ordinal[x_idx]
         grouping_idxs.append(npts)
         
-        #determine the center and scale of the x coordinates
-        x_cent = np.mean(xvec_2d, axis = 0)
-        x_scale = np.std(xvec_2d, axis = 0)
-        
-        #build up the polynomial terms to be used
-        powers = powers_from_max_order(poly_order)
-        n_terms = len(powers)
-        
-        #make an array of the monomial terms times the output modulation
-        mvp = MultiVariatePolynomial(np.zeros(n_terms), powers, x_cent, x_scale)
-        pofx = mvp.get_pofx(xvec_2d)*y_mult.reshape((-1, 1))
-        
+        n_cols = model_matrix.shape        
         #carry out the optimal partitioning algorithm.
         n_blocks = len(grouping_idxs)-1
         opt_val = np.zeros(n_blocks+1)
         break_idxs = np.zeros(n_blocks+1, dtype = int)
-        opt_fit_params = np.zeros((n_blocks+1, n_terms))
-        sigma_vec = 1.0/np.sqrt(y_inv_var)
-        sigma_vec = np.where(y_inv_var == 0, 1e10, sigma_vec)
+        opt_fit_params = np.zeros((n_blocks+1, n_cols))
+        sigma_vec = 1.0/np.sqrt(np.where(y_weight == 0, 1e-20, y_weight))
         gamma_vec = gamma*sigma_vec
         for i in range(1, n_blocks+1):
             cmin = float("inf")
@@ -313,18 +268,18 @@ class MixedModelPartitioner(object):
             for j in range(i):
                 lb = grouping_idxs[j] #j is the index of the lower block
                 ub = grouping_idxs[i] #i is the index of the upper block
-                if np.abs(xvec_2d[ub-1, grouping_column]-xvec_2d[lb, grouping_column]) > max_delta:
+                if np.abs(partitioning_ordinal[ub-1]-partitioning_ordinal[lb]) > max_delta:
                     continue
                 chop_sig=sigma_vec[lb:ub]
                 chop_gam=gamma_vec[lb:ub]
-                opt_params = tmb.utils.misc.pseudo_huber_irls(pofx[lb:ub], yvec[lb:ub], chop_sig, chop_gam)
-                opt_fit_y = np.dot(pofx[lb:ub], opt_params)
-                resids = opt_fit_y-yvec[lb:ub]
+                opt_params = tmb.utils.misc.pseudo_huber_irls(model_matrix, y[lb:ub], chop_sig, chop_gam)
+                opt_fit_y = np.dot(opt_params[lb:ub], opt_params)
+                resids = opt_fit_y-y[lb:ub]
                 #chi_sq = np.sum((opt_fit_y-yvec[lb:ub])**2*y_inv_var[lb:ub])
                 ph_cost = tmb.utils.misc.pseudo_huber_cost(resids, chop_sig, chop_gam)
                 n_local = ub-lb
-                param_cost = alpha*n_terms
-                param_cost += beta*n_terms*(n_terms+1)/max(beta_epsilon, n_local-n_terms-1)
+                param_cost = alpha*n_cols
+                param_cost += beta*n_cols*(n_cols+1)/max(beta_epsilon, n_local-n_cols-1)
                 tot_cost = ph_cost + param_cost + opt_val[j]
                 if tot_cost < cmin:
                     cmin = tot_cost
@@ -339,17 +294,11 @@ class MixedModelPartitioner(object):
             cbreak = break_idxs[partition[-1]-1]
             partition.append(cbreak)
         partition.insert(0, n_blocks)
-        partition_mvps = []
-        for pidx in range(len(partition)-1):
-            coeffs = opt_fit_params[partition[pidx]]
-            cmvp = MultiVariatePolynomial(coeffs, powers, x_cent, x_scale)
-            partition_mvps.append(cmvp)
         orig_space_partition = []
         for part_idx in partition:
             orig_space_partition.append(grouping_idxs[part_idx])
         orig_space_partition.reverse()
-        partition_mvps.reverse()
-        return orig_space_partition, partition_mvps
+        return orig_space_partition
 
 
 def partition_average(data, partition):

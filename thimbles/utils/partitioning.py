@@ -253,7 +253,7 @@ def matrix_partition(
                 last_g_val = partitioning_ordinal[x_idx]
         grouping_idxs.append(npts)
         
-        n_cols = model_matrix.shape        
+        n_cols = model_matrix.shape[1]     
         #carry out the optimal partitioning algorithm.
         n_blocks = len(grouping_idxs)-1
         opt_val = np.zeros(n_blocks+1)
@@ -262,6 +262,7 @@ def matrix_partition(
         sigma_vec = 1.0/np.sqrt(np.where(y_weight == 0, 1e-20, y_weight))
         gamma_vec = gamma*sigma_vec
         for i in range(1, n_blocks+1):
+            print "optimizing block {} of {}".format(i, n_blocks)
             cmin = float("inf")
             cidx = None
             last_opt_params = None
@@ -272,8 +273,8 @@ def matrix_partition(
                     continue
                 chop_sig=sigma_vec[lb:ub]
                 chop_gam=gamma_vec[lb:ub]
-                opt_params = tmb.utils.misc.pseudo_huber_irls(model_matrix, y[lb:ub], chop_sig, chop_gam)
-                opt_fit_y = np.dot(opt_params[lb:ub], opt_params)
+                opt_params = tmb.utils.misc.pseudo_huber_irls(model_matrix[lb:ub], y[lb:ub], chop_sig, chop_gam)
+                opt_fit_y = np.dot(model_matrix[lb:ub], opt_params)
                 resids = opt_fit_y-y[lb:ub]
                 #chi_sq = np.sum((opt_fit_y-yvec[lb:ub])**2*y_inv_var[lb:ub])
                 ph_cost = tmb.utils.misc.pseudo_huber_cost(resids, chop_sig, chop_gam)
@@ -298,7 +299,7 @@ def matrix_partition(
         for part_idx in partition:
             orig_space_partition.append(grouping_idxs[part_idx])
         orig_space_partition.reverse()
-        return orig_space_partition
+        return orig_space_partition, opt_val
 
 
 def partition_average(data, partition):

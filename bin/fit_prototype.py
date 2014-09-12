@@ -115,7 +115,7 @@ class SpectralModeler(object):
     
     def iterate(self, models=None):
         if models is None:
-            models = [self.feature_mod, self.hmod]
+            models = [self.feature_mod]#, self.hmod]
             models.extend(self.blaze_models)
         self.modeler.iterate(models)
 
@@ -157,24 +157,30 @@ def fit_lowres_spectrum(spec_idx, plot=True, max_iter=50):
         iter_stime = time.time()
         
         #set the damping
-        #new_damps = damping_schedule.get(iter_idx)
-        #if not new_damps is None:
-        #    tdamp, vdamp = new_damps
-        #    smod.feature_mod.fit_damping_factors["theta"] = tdamp
-        #    smod.feature_mod.fit_damping_factors["vmicro"] = vdamp
+        iter_frac = float(iter_idx)/max_iter
+        if iter_idx < 5:
+            smod.feature_mod.theta_p._free = False
+            smod.feature_mod.vmicro_p._free = False
+        else:
+            smod.feature_mod.theta_p._free = True
+            smod.feature_mod.theta_p.damp = 1000*(1.0-iter_frac*0.9)
+            smod.feature_mod.vmicro_p._free = True
+            smod.feature_mod.vmicro_p.damp = 1000*(1.0-iter_frac*0.9)
+            smod.feature_mod.exemplar_ews_p.damp = 0.5*(1.0-iter_frac*0.95)
         
         print "fit iterating"
         smod.iterate()
         
         #import pdb; pdb.set_trace()
-        if iter_idx < max_iter - 5:
-            cteff = smod.feature_mod.teff
-            smod.ctm_mod.teff = cteff
-            smod.iterate(smod.blaze_models)
+        #if iter_idx < max_iter - 5:
+        #    cteff = smod.feature_mod.teff
+        #    smod.ctm_mod.teff = cteff
+        #    smod.iterate(smod.blaze_models)
         
         teff = smod.feature_mod.teff
         vmicro = smod.feature_mod.vmicro
-        print "teff {:5.4f}  vmicro {:5.3f}".format(teff, vmicro)
+        gamma_rat = smod.feature_mod.mean_gamma_ratio
+        print "teff {:5.3f}  vmicro {:5.3f} gamma_ratio {:5.3f} ".format(teff, vmicro, gamma_rat)
         #print "feature of params \n {}".format(fpvec)
         
         if plot:
@@ -182,8 +188,9 @@ def fit_lowres_spectrum(spec_idx, plot=True, max_iter=50):
             axes[0].cla()
             axes[0].plot(lwv, spec.flux, lwv, smod.modeler.chains[0]())
             axes[1].cla()
-            axes[1].plot(lwv, np.sqrt((smod.modeler.chains[0]()-spec.flux)**2*spec.inv_var))
-            axes[1].set_ylim(0.0, 15.0)
+            resid = smod.modeler.chains[0]()-spec.flux
+            axes[1].plot(lwv, np.sign(resid)*np.sqrt(resid**2*spec.inv_var))
+            axes[1].set_ylim(-15.0, 15.0)
             fig.savefig("figures/spec_{}_iter_{}".format(spec_idx, iter_idx))
                 #plt.show()
             

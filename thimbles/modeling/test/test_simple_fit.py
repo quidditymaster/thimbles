@@ -31,6 +31,7 @@ class LineModel(Model):
     def set_intercept(self, value):
         self.intercept = value    
 
+
 class LineFitTest(unittest.TestCase):
 
     def setUp(self):
@@ -66,6 +67,11 @@ class LineFitTest(unittest.TestCase):
         self.assertAlmostEqual(self.lmod.slope, self.slope, delta=0.1)
         self.assertAlmostEqual(self.lmod.intercept, self.intercept, delta=0.1)
 
+
+class TestParameterize(unittest.TestCase):
+    
+    def setUp(self):
+        
     
 
 if __name__ == "__main__":

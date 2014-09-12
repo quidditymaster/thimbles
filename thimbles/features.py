@@ -214,7 +214,7 @@ and float values.""".format(type(dof_thresholds))
         ret_val = 1.0 + self.cfm*self.exemplar_ews_p.get()
         return ret_val
     
-    @parameter(free=True, start_damp=0.5, min_step=0.0001, max_step=500.0, min=0.0001, max=1000.0)
+    @parameter(free=True, start_damp=0.5, min_step=0.0000, max_step=np.inf, min=0.0001, max=1000.0)
     def exemplar_ews_p(self, ):
         #TODO cache this value
         return scipy.sparse.linalg.lsqr(self.grouping_matrix, self.fdat["ew"].values)[0]
@@ -597,7 +597,7 @@ and float values.""".format(type(dof_thresholds))
         self._recalc_grouping_matrix = True
         self._recollapse_feature_matrix = True
     
-    @parameter(free=True, start_damp=100, min=0.01, max=10.0, min_step=0.005, max_step=0.1)
+    @parameter(free=True, start_damp=100, min=0.01, max=10.0, min_step=0.0, max_step=np.inf)
     def vmicro_p(self):
         return self.vmicro
     
@@ -613,7 +613,7 @@ and float values.""".format(type(dof_thresholds))
     def theta(self, value):
         self.teff = 5040.0/value
     
-    @parameter(free=True, min=0.2, max=3.0, start_damp=100, min_step=0.001, max_step=0.1)
+    @parameter(free=True, min=0.2, max=3.0, start_damp=100, min_step=0.00, max_step=np.inf)
     def theta_p(self):
         return self.theta
     

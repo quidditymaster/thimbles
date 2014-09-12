@@ -87,6 +87,7 @@ class HydrogenForegroundModel(Spectrum, Model):
     def __init__(self, wvs, strength, temperature, electron_density):
         Model.__init__(self)
         Spectrum.__init__(self, wvs, np.ones(len(wvs)))
+        self.max_delta_wv_frac = 0.01
         self._temperature = temperature
         self._electron_density = electron_density
         self.npts_model = len(self.wv)
@@ -147,7 +148,8 @@ class HydrogenForegroundModel(Spectrum, Model):
             rel_strengths = np.power(10.0, series_dat["loggf"]-theta*(series_dat["ep"]))
             for line_idx, line_profile in enumerate(self.hprofiles[series_idx]):
                 rel_strength = rel_strengths.iloc[line_idx]
-                opac_vecs[series_idx] += line_profile(self.wv, [np.log10(self.temperature), np.log10(self.electron_density)])
+                lb, ub = self.get_index(line_profile.wv*np.array([1.0-self.max_delta_wv_frac, 1.0+self.max_delta_wv_frac]), clip=True)
+                opac_vecs[series_idx][lb:ub+1] += line_profile(self.wv[lb:ub+1], [np.log10(self.temperature), np.log10(self.electron_density)])
         self.opac_matrix = scipy.sparse.bmat(opac_vecs).transpose()
     
     @property

@@ -14,23 +14,15 @@ class ModelingError(Exception):
 #"distribution":NormalDeltaDistribution,
 #}
 
-def parameter(free=False, min_step=0.0, max_step=np.inf, start_damp=10.0, epsilon=0.01, min=-np.inf, max=np.inf):
+def parameter(free=False, scale=1.0, epsilon=0.001, min=-np.inf, max=np.inf, history_max=10):
     """a decorator to turn getter methods of Model class objects 
     into Parameter objects.
     """
-    #if factories is None:
-    #    factories = {}
-    #for factory_key in factory_defaults:
-    #    factory = factories.get(factor_key)
-    #    if factory is None:
-    #        factory = factory_defaults[factory_key]
     def function_to_parameter(func):
         param=Parameter(
             func,
             free=free,
-            min_step=min_step,
-            max_step=max_step,
-            start_damp=start_damp,
+            delta_scale=1.0,
             epsilon=epsilon,
             min=min,
             max=max
@@ -48,7 +40,7 @@ class DeltaDistribution(object):
         
     def set_variance(self, value):
         raise NotImplementedError("abstract class; implement for subclasses")
-    
+        
     def realize(self):
         """return an offset sampled from this distribution
         """
@@ -80,6 +72,7 @@ class ValueHistory(object):
         self.set_parameter(parameter)
         self._vals = []
         self.max_length = max_length
+        self.named_vals = {}
     
     def __len__(self):
         return len(self._vals)
@@ -87,14 +80,17 @@ class ValueHistory(object):
     def set_parameter(self, parameter):
         self.parameter = parameter
     
-    def remember(self):
-        current_val = copy(self.parameter.value())
-        self._vals.append(current_val)
-        if len(self._vals) > self.max_length:
-            self._vals.pop(0)
+    def remember(self, val_name=None):
+        current_val = copy(self.parameter.get())
+        if val_name is None:
+            self._vals.append(current_val)
+            if len(self._vals) > self.max_length:
+                self._vals.pop(0)
+        else:
+            self.named_vals[val_name] = current_val
     
     @property
-    def history(self):
+    def values(self):
         return self._vals
     
     @property
@@ -103,27 +99,19 @@ class ValueHistory(object):
             return self._vals[-1]
         else:
             return None
-
-class ConvergencePolicy(object):
-
-    def __init__(self, abs_delta=1e-5):
-        #self.frac_delta = frac_delta
-        self.abs_delta = abs_delta
     
-    def check_converged(self, parameter):
-        last_val = parameter.history.last
-        if val_stack is None:
-            return False
-        cur_val = parameter.value()
-        diff = last_val - cur_val
-        abs_diff = np.abs(diff)
-        if np.max(abs_diff) < self.abs_delta:
-            #if np.max(abs_diff/(np.abs(cur_val))
-            return True
-        return False
+    def revert(self, val_name=None, pop=False):
+        if val_name is None:
+            if pop:
+                last_val = self._vals.pop()
+            else:
+                last_val = self.last
+            self.parameter.set(last_val)
+        else:
+            self.parameter.set(self.named_vals[val_name])
+
 
 mult_func = lambda x, y: x*y
-
 def flat_size(shape_tup):
     if shape_tup == tuple():
         return 1
@@ -155,107 +143,58 @@ class Model(object):
     def free_parameters(self):
         return [param for param in self.parameters if param.is_free]
     
-    def get_pvec(self):
-        pvals = [np.asarray(p.get()).reshape((-1,)) for p in self.free_parameters]
-        return np.hstack(pvals)
-    
-    def min_pvec(self):
-        parameters = self.free_parameters
-        pshapes = [p.shape for p in parameters]
-        pmins = [np.asarray(p.min) for p in parameters]
-        flat_mins = []
-        for p_idx in range(len(parameters)):
-            if (pshapes[p_idx] == tuple()) or pmins[p_idx].shape != tuple():
-                flat_mins.append(pmins[p_idx])
-            else:
-                flat_mins.append(np.repeat(pmins[p_idx], flat_size(pshapes[p_idx])))
-        return np.hstack(flat_mins)
-    
-    def max_pvec(self):
-        parameters = self.free_parameters
-        pshapes = [p.shape for p in parameters]
-        pmaxs = [np.asarray(p.max) for p in parameters]
-        flat_maxs = []
-        for p_idx in range(len(parameters)):
-            if (pshapes[p_idx] == tuple()) or pmaxs[p_idx].shape != tuple():
-                flat_maxs.append(pmaxs[p_idx])
-            else:
-                flat_maxs.append(np.repeat(pmaxs[p_idx], flat_size(pshapes[p_idx])))
-        return np.hstack(flat_maxs)
-    
     def parameter_index(self, parameter):
         return self.parameters.index(parameter)
     
-    def set_pvec(self, pvec):
-        parameters = self.free_parameters
+    def get_pvec(self, attr=None, free_only=True):
+        if free_only:
+            parameters = self.free_parameters
+        else:
+            parameters = self.parameters
+        if attr is None:
+            pvals = [np.asarray(p.get()).reshape((-1,)) for p in parameters]
+        else:
+            pshapes = [p.shape for p in parameters]
+            pvals = [np.array(getattr(p, attr)) for p in parameters]
+            out_vec = []
+            for p_idx in range(len(parameters)):
+                pshape = pshapes[p_idx]
+                pval = pvals[p_idx]
+                if pshape == tuple() or pval.shape != tuple():
+                    out_vec.append(pval)
+                else:
+                    out_vec.append(np.repeat(pval, flat_size(pshape)))
+        return np.hstack(pvals)
+    
+    def set_pvec(self, pvec, attr=None, free_only=True):
+        if free_only:
+            parameters = self.free_parameters
+        else:
+            parameters = self.parameters
         pshapes = [p.shape for p in parameters]
         nvals = [flat_size(pshape) for pshape in pshapes]
         break_idxs = np.cumsum(nvals)[:-1]
         flat_params = np.split(pvec, break_idxs)
-        for p_idx in range(len(parameters)):
-            param = parameters[p_idx]
-            pshape = pshapes[p_idx]
-            flat_val = flat_params[p_idx]
-            if pshape == tuple():
-                param.set(float(flat_val))
-            else:
-                param.set(flat_val.reshape(pshape))
-    
-    def check_pvec(self, pvec):
-        """
-        check if a proposed pvec violates any setting rules according
-        to the parameters associated to its entries.
-        
-        -1 : abs(pvec-current_pvec) < parameter.min_step 
-        0  : all is well
-        1  : value is below parameter.min
-        2  : value is above parameter.max
-        3  : abs(pvec-current_pvec) > parameter.max_step
-        
-        returns: numpy array
-        """
-        parameters = self.free_parameters
-        pshapes = [p.shape for p in parameters]
-        nvals = [flat_size(pshape) for pshape in pshapes]
-        break_idxs = np.cumsum(nvals)[:-1]
-        cur_pvecs = np.split(self.get_pvec(), break_idxs)
-        flat_params = np.split(pvec, break_idxs)
-        
-        #pvec_ok = np.zeros(pvec.shape, dtype=int)
-        checking_vecs = []
-        for p_idx in range(len(parameters)):
-            param = parameters[p_idx]
-            pshape = pshapes[p_idx]
-            flat_val = flat_params[p_idx]
-            pvec_ok = np.zeros(len(flat_val))
-            max_violated = flat_val > p.max
-            min_violated = flat_val < p.min
-            delta_mag = np.abs(flat_val-cur_pvecs[p_idx])
-            max_step_violated = delta_mag > p.max_step
-            min_step_violated = delta_mag < p.min_step
-            pvec_ok = np.where(min_step_violated, -1, pvec_ok)
-            pvec_ok = np.where(min_violated, 1, pvec_ok)
-            pvec_ok = np.where(max_violated, 2, pvec_ok)
-            pvec_ok = np.where(max_step_violated, 3, pvec_ok)
-            
-            checking_vecs.append(pvec_ok)
-            
-        return np.hstack(checking_vecs)
-    
-    def adjust_clamping(self, check_vec):
-        parameters = self.free_parameters
-        pshapes = [p.shape for p in parameters]
-        nvals = [flat_size(pshape) for pshape in pshapes]
-        break_idxs = np.cumsum(nvals)[:-1]
-        checks = np.split(check_vec, break_idxs)
-        for p_idx in range(len(parameters)):
-            sub_check = checks[p_idx]
-            old_damp = parameters[p_idx].damp
-            new_damp = np.ones(sub_check.shape)*old_damp
-            new_damp = np.where(sub_check < 0, new_damp*0.5, new_damp)
-            new_damp = np.where(sub_check > 0, new_damp*2.0, new_damp)
-            print "new_damp", new_damp
-            parameters[p_idx].damp = new_damp
+        if not attr is None:
+            for p_idx in range(len(parameters)):
+                param = parameters[p_idx]
+                pshape = pshapes[p_idx]
+                flat_val = flat_params[p_idx]
+                if pshape == tuple():
+                    param.set(float(flat_val))
+                else:
+                    param.set(flat_val.reshape(pshape))
+        elif isinstance(attr, basestring):
+            for p_idx in range(len(parameters)):
+                param = parameters[p_idx]
+                pshape = pshapes[p_idx]
+                flat_val = flat_params[p_idx]
+                if pshape == tuple():
+                    setattr(param, attr, float(flat_val))
+                else:
+                    setattr(param, attr, flat_val.reshape(pshape))
+        else:
+            raise ValueError("attr must be a string")
     
     def parameter_expansion(self, input_vec, **kwargs):
         parameters = self.free_parameters
@@ -291,7 +230,7 @@ class Model(object):
                     plus_d = self(input_vec, **kwargs)
                     deriv = (plus_d - minus_d)/(2.0*delta_vecs[vec_idx, vec_idx])
                     deriv_vecs.append(scipy.sparse.csc_matrix(deriv.reshape((-1, 1))))
-                    import pdb; pdb.set_trace()
+                    #import pdb; pdb.set_trace()
                 p.set(flat_pval.reshape(pshape))
         pexp_mat = scipy.sparse.hstack(deriv_vecs)
         return pexp_mat
@@ -299,43 +238,42 @@ class Model(object):
     def as_linear_op(self, input_vec, **kwargs):
         return IdentityPlaceHolder()
     
-    def parameter_damping(self, input_vec, **kwargs):
-        parameters = self.free_parameters
-        damp_vecs = []
-        for p in parameters:
-            damp_val = np.asarray(p.damp)
-            if damp_val.shape == tuple():
-                pshape = p.shape
-                if not pshape == tuple():
-                    damp_val = np.repeat(damp_val, flat_size(pshape))
-            damp_vecs.append(damp_val)
-        damp_weights = np.hstack(damp_vecs)
-        return np.zeros(damp_weights.shape), damp_weights
+    #def parameter_damping(self, input_vec, **kwargs):
+    #    parameters = self.free_parameters
+    #    damp_vecs = []
+    #    for p in parameters:
+    #        damp_val = np.asarray(p.damp)
+    #        if damp_val.shape == tuple():
+    #            pshape = p.shape
+    #            if not pshape == tuple():
+    #                damp_val = np.repeat(damp_val, flat_size(pshape))
+    #        damp_vecs.append(damp_val)
+    #    damp_weights = np.hstack(damp_vecs)
+    #    return np.zeros(damp_weights.shape), damp_weights
 
 class Parameter(object):
     
     def __init__(self, 
                  getter, 
-                 free, 
-                 start_damp, 
-                 min_step, 
-                 max_step, 
+                 free,
+                 scale,
                  min, 
                  max, 
                  epsilon,
+                 history_max,
                  ):
         self._getter=getter
         self.model=None
-        self.damp=start_damp
+        self.scale=scale
         self.epsilon=epsilon
         self.min = min
         self.max = max
-        self.max_step = max_step
-        self.min_step = min_step
         self._free=free
         self._dist=None
         self._setter = None
-        self._expander = None        
+        self._expander = None
+        
+        self.history = ValueHistory(self, history_max)   
     
     @property
     def dist(self):
@@ -392,6 +330,8 @@ class Parameter(object):
     def validate(self):
         if self.model is None:
             raise ModelingError("parameter.model is None")
+        if self._setter is None:
+            raise ModelingError("parameter has no setter")
     
     def weight(self, offset=None):
         return self.dist.weight(offset)
@@ -401,16 +341,13 @@ class IdentityPlaceHolder(object):
     def __mul__(self, other):
         return other
 
-class ModelChain(object):
+class DataRootedModelTree(object):
     
-    def __init__(self, models, target_data, target_inv_covar, first_input=None, kw_inputs=None, delay_execution=False):
+    def __init__(self, models, target_data, data_weight, first_input=None, kw_inputs=None, delay_execution=False):
         self.models = models
         self.n_models = len(models)
         self.target_data = target_data
-        if len(target_inv_covar.shape) == 1:
-            npts = len(target_inv_covar)
-            target_inv_covar = scipy.sparse.dia_matrix((target_inv_covar, 0), shape=(npts, npts))
-        self.target_inv_covar = target_inv_covar
+        self.data_weight = data_weight
         if kw_inputs is None:
             kw_inputs = [{} for i in range(self.n_models)]
         self.kw_inputs = kw_inputs
@@ -430,7 +367,7 @@ class ModelChain(object):
             further_lop = self.models[model_idx].as_linear_op(inp, **kw)
             lop = further_lop*lop
         return lop
-        
+    
     def model_index(self, model):
         for i in range(self.n_models):
             if model == self.models[i]:
@@ -452,10 +389,10 @@ class ModelChain(object):
         delta_matrix = model.parameter_expansion(inp, **kw)
         return after_matrix*delta_matrix
     
-    def parameter_damping(self, model):
-        md_idx = self.model_index(model)
-        inp, kw = self.get_model_inputs(md_idx)
-        return model.parameter_damping(inp, **kw)
+    #def parameter_damping(self, model):
+    #    md_idx = self.model_index(model)
+    #    inp, kw = self.get_model_inputs(md_idx)
+    #    return model.parameter_damping(inp, **kw)
     
     def __call__(self):
         for model_idx in range(self.n_models):
@@ -467,64 +404,45 @@ class ModelChain(object):
 
 class FitPolicy(object):
     
-    def __init__(self):
-        pass
+    def __init__(self, fit_states=None, max_iter=10):
+        if fit_states is None:
+            fit_states = [FitState()]
+        self.fit_states = set()
+        self.transition_map = {}
+        for fs_idx in range(len(fit_states)):
+            if isinstance(fit_states[fs_idx], FitState):
+                cur_state = fit_states[fs_idx]
+                if fs_idx == len(fit_states)-1:
+                    next_state = None
+                elif isinstance(fit_states[fs_idx+1], FitState):
+                    next_state = fit_states[fs_idx+1]
+                else:
+                    next_state = fit_states[fs_idx+1][1]
+            else:
+                cur_state, next_state = fit_states[fs_idx]
+            transition_list = self.transition_map.get(cur_state)
+            if transition_list is None:
+                transition_list = []
+            if not next_state is None:
+                transition_list.append(next_state)
+                self.fit_states.add(next_state)
+            self.transition_map[cur_state] = transition_list
+            self.fit_states.add(cur_state)
+        self.max_iter = max_iter
+        self.current_fit_state = self.fit_states[0] 
+    
+    def set_fit_state(self, fit_state):
+        self.current_fit_state = fit_state
+    
+    def iterate(self):
+        self.current_fit
 
 class FitState(object):
     
-    def __init__(self):
-        pass
-
-class FitTransitionPolicy(object):
-    
-    def __self__(self):
-        pass
-
-class Modeler(object):
-    
-    def __init__(self):
-        self.chains = []
-        self.model_to_chains = {}
-    
-    def add_chain(self, chain):
-        self.chains.append(chain)
-        for model in chain.models:
-            chain_res = self.model_to_chains.get(model)
-            if chain_res is None:
-                chain_res = []
-            self.model_to_chains[model] = chain_res
-            chain_res.append(chain)
-    
-    def stitched_fit_matrices(self, chains, model):
-        fit_mats = []
-        for chain in chains:
-            fit_mats.append([chain.fit_matrix(model)])
-        
-        #stitch together a target vector
-        targ_deltas = []
-        for chain in chains:
-            targ_dat = chain.target_data
-            mod_dat = chain()
-            deltas = targ_dat - mod_dat
-            targ_deltas.append(deltas)
-        
-        #build the data inverse variance matrix
-        inv_covars = []
-        for chain in chains:
-            inv_covars.append(chain.target_inv_covar)
-        
-        #add damping matrices
-        n_params = fit_mats[0][0].shape[1]
-        for chain in chains:
-            fit_mats.append([scipy.sparse.identity(n_params, dtype=float)])
-            damping_target, damping_weight = chain.parameter_damping(model)
-            targ_deltas.append(damping_target)
-            inv_covars.append(scipy.sparse.dia_matrix((damping_weight, 0), shape=(n_params, n_params)))
-        
-        fm = scipy.sparse.bmat(fit_mats)
-        td = np.hstack(targ_deltas)
-        ic = scipy.sparse.block_diag(inv_covars)
-        return fm, td, ic
+    def __init__(self, clamping_factor=10.0, alpha=2.0, beta=2.0):
+        self.clamping_factor=clamping_factor
+        self.alpha=alpha
+        self.beta=beta
     
     def iterate(self, models):
         delta_acceptable = False
@@ -537,7 +455,7 @@ class Modeler(object):
             lhs_list, rhs_list = [], []
             for model_idx in range(len(models)):
                 model = models[model_idx]
-                relevant_chains = self.model_to_chains.get(model)
+                relevant_chains = self.model_to_trees.get(model)
                 if relevant_chains is None:
                     raise Exception("model {} not part of this modeler's chain sequence".format(model))
                 fit_mat, target_vec, error_inv_covar = self.stitched_fit_matrices(relevant_chains, model)
@@ -585,3 +503,56 @@ class Modeler(object):
             new_pvec = old_pvec + fit_result[lb:ub]
             model.set_pvec(new_pvec)
             lb = ub
+        
+
+class DataModelNetwork(object):
+    
+    def __init__(self, fit_policy=None):
+        self.trees = []
+        self.model_to_trees = {}
+        
+    
+    def set_fit_policy(self, fit_policy):
+        self.fit_policy = fit_policy
+    
+    def add_tree(self, tree):
+        self.trees.append(tree)
+        for model in tree.models:
+            chain_res = self.model_to_trees.get(model)
+            if chain_res is None:
+                chain_res = []
+            self.model_to_trees[model] = chain_res
+            chain_res.append(tree)
+    
+    def stitched_fit_matrices(self, chains, model):
+        fit_mats = []
+        for chain in chains:
+            fit_mats.append([chain.fit_matrix(model)])
+        
+        #stitch together a target vector
+        targ_deltas = []
+        for chain in chains:
+            targ_dat = chain.target_data
+            mod_dat = chain()
+            deltas = targ_dat - mod_dat
+            targ_deltas.append(deltas)
+        
+        #build the data inverse variance matrix
+        inv_covars = []
+        for chain in chains:
+            inv_covars.append(chain.data_weight)
+        
+        #add damping matrices
+        n_params = fit_mats[0][0].shape[1]
+        for chain in chains:
+            fit_mats.append([scipy.sparse.identity(n_params, dtype=float)])
+            damping_target, damping_weight = chain.parameter_damping(model)
+            targ_deltas.append(damping_target)
+            inv_covars.append(scipy.sparse.dia_matrix((damping_weight, 0), shape=(n_params, n_params)))
+        
+        fm = scipy.sparse.bmat(fit_mats)
+        td = np.hstack(targ_deltas)
+        ic = scipy.sparse.block_diag(inv_covars)
+        return fm, td, ic
+    
+    def iterate(self, models):

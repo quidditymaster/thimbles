@@ -42,7 +42,7 @@ class LineFitTest(unittest.TestCase):
         self.slope=slope
         intercept = -2.71828
         self.intercept = intercept
-        noise_level = 0.1
+        noise_level = 0.55
         noise = np.random.normal(size=(npts,))*noise_level
         self.y_var = np.ones(npts, dtype=float)*noise_level**2
         y = slope*x + intercept + noise
@@ -61,9 +61,13 @@ class LineFitTest(unittest.TestCase):
     
     def test_line_fit(self):
         #import pdb; pdb.set_trace()
+        #import matplotlib.pyplot as plt
         for i in range(5):
             self.modeler.iterate([self.lmod])
             #print "slope {} , intercept {}".format(self.lmod.slope, self.lmod.intercept)
+            #plt.plot(self.x, self.y)
+            #plt.plot(self.x, self.lmod(None, x=self.x))
+            #plt.show()
         self.assertAlmostEqual(self.lmod.slope, self.slope, delta=0.1)
         self.assertAlmostEqual(self.lmod.intercept, self.intercept, delta=0.1)
 
@@ -71,8 +75,7 @@ class LineFitTest(unittest.TestCase):
 class TestParameterize(unittest.TestCase):
     
     def setUp(self):
-        
-    
+        pass
 
 if __name__ == "__main__":
     unittest.main()

@@ -14,7 +14,7 @@ class ModelingError(Exception):
 #"distribution":NormalDeltaDistribution,
 #}
 
-def parameter(free=False, scale=1.0, epsilon=0.001, min=-np.inf, max=np.inf, history_max=10):
+def parameter(free=False, scale=1.0, name=None, step_scale=1.0, derivative_scale=0.01, convergence_scale=0.01, min=-np.inf, max=np.inf, history_max=10):
     """a decorator to turn getter methods of Model class objects 
     into Parameter objects.
     """
@@ -22,10 +22,14 @@ def parameter(free=False, scale=1.0, epsilon=0.001, min=-np.inf, max=np.inf, his
         param=Parameter(
             func,
             free=free,
-            delta_scale=1.0,
-            epsilon=epsilon,
+            name=name,
+            scale=scale,
+            step_scale=step_scale,
+            derivative_scale=derivative_scale,
+            convergence_scale=convergence_scale,
             min=min,
-            max=max
+            max=max,
+            history_max=history_max,
         )
         return param
     return function_to_parameter
@@ -37,7 +41,7 @@ class DeltaDistribution(object):
     
     def set_parameter(self, parameter):
         self.parameter=parameter
-        
+    
     def set_variance(self, value):
         raise NotImplementedError("abstract class; implement for subclasses")
         
@@ -133,6 +137,8 @@ class Model(object):
                 #import pdb; pdb.set_trace()
                 val.set_model(self)
                 self._parameters.append(val)
+                if val.name is None:
+                    val.name = attrib
                 val.validate()
     
     @property
@@ -164,7 +170,19 @@ class Model(object):
                     out_vec.append(pval)
                 else:
                     out_vec.append(np.repeat(pval, flat_size(pshape)))
+            pvals = out_vec
         return np.hstack(pvals)
+    
+    def get_pdict(self, attr=None, free_only=True):
+        if free_only:
+            parameters = self.free_parameters
+        else:
+            parameters = self.parameters
+        if attr is None:
+            pdict = {p.name:p.get() for p in parameters}
+        else:
+            pdict = {p.name:getattr(p, attr) for p in parameters}
+        return pdict
     
     def set_pvec(self, pvec, attr=None, free_only=True):
         if free_only:
@@ -175,7 +193,7 @@ class Model(object):
         nvals = [flat_size(pshape) for pshape in pshapes]
         break_idxs = np.cumsum(nvals)[:-1]
         flat_params = np.split(pvec, break_idxs)
-        if not attr is None:
+        if attr is None:
             for p_idx in range(len(parameters)):
                 param = parameters[p_idx]
                 pshape = pshapes[p_idx]
@@ -194,7 +212,10 @@ class Model(object):
                 else:
                     setattr(param, attr, flat_val.reshape(pshape))
         else:
-            raise ValueError("attr must be a string")
+            raise ValueError("attr must be a string if set")
+    
+    def set_pdict(self, val_dict, attr=None):
+        raise NotImplementedError("getting to it!")
     
     def parameter_expansion(self, input_vec, **kwargs):
         parameters = self.free_parameters
@@ -205,13 +226,13 @@ class Model(object):
                 continue 
             pval = p.get()
             pshape = p.shape
-            #TODO: use the parameters own epsilon scale
+            #TODO: use the parameters own derivative_scale scale
             if pshape == tuple():
-                p.set(pval+p.epsilon)
+                p.set(pval+p.derivative_scale)
                 plus_d = self(input_vec, **kwargs)
-                p.set(pval-p.epsilon)
+                p.set(pval-p.derivative_scale)
                 minus_d = self(input_vec, **kwargs)
-                deriv = (plus_d-minus_d)/(2.0*p.epsilon)
+                deriv = (plus_d-minus_d)/(2.0*p.derivative_scale)
                 deriv_vecs.append(scipy.sparse.csc_matrix(deriv.reshape((-1, 1))))
                 #don't forget to reset the parameters back to the start
                 p.set(pval)
@@ -220,7 +241,7 @@ class Model(object):
                 cur_n_param =  len(flat_pval)
                 if cur_n_param > 50:
                     raise ValueError("""your parameter vector is large consider implementing your own expansion via the Parameter.expander decorator""".format(cur_n_param))
-                delta_vecs = np.eye(cur_n_param)*p.epsilon
+                delta_vecs = np.eye(cur_n_param)*p.derivative_scale
                 for vec_idx in range(cur_n_param):
                     minus_vec = flat_pval - delta_vecs[vec_idx]
                     p.set(minus_vec.reshape(pshape))
@@ -256,16 +277,22 @@ class Parameter(object):
     def __init__(self, 
                  getter, 
                  free,
+                 name,
                  scale,
+                 step_scale,
+                 derivative_scale,
+                 convergence_scale,
                  min, 
                  max, 
-                 epsilon,
                  history_max,
                  ):
         self._getter=getter
         self.model=None
+        self.name = name
         self.scale=scale
-        self.epsilon=epsilon
+        self.step_scale = step_scale
+        self.derivative_scale=derivative_scale
+        self.convergence_scale = convergence_scale
         self.min = min
         self.max = max
         self._free=free
@@ -274,6 +301,14 @@ class Parameter(object):
         self._expander = None
         
         self.history = ValueHistory(self, history_max)   
+    
+    def __repr__(self):
+        val = None
+        try:
+            val = self.get()
+        except:
+            pass
+        return "Parameter: {}={}".format(self.name, val)
     
     @property
     def dist(self):
@@ -404,10 +439,11 @@ class DataRootedModelTree(object):
 
 class FitPolicy(object):
     
-    def __init__(self, fit_states=None, max_iter=10):
+    def __init__(self, model_network, fit_states=None, max_state_iter=100, max_transitions=100):
+        self.max_state_iter = max_state_iter
+        self.max_transitions = 100
         if fit_states is None:
-            fit_states = [FitState()]
-        self.fit_states = set()
+            fit_states = [FitState(model_network)]
         self.transition_map = {}
         for fs_idx in range(len(fit_states)):
             if isinstance(fit_states[fs_idx], FitState):
@@ -427,90 +463,166 @@ class FitPolicy(object):
                 transition_list.append(next_state)
                 self.fit_states.add(next_state)
             self.transition_map[cur_state] = transition_list
-            self.fit_states.add(cur_state)
-        self.max_iter = max_iter
-        self.current_fit_state = self.fit_states[0] 
+        self.fit_states = self.transition_map.keys()
+        self.current_fit_state = fit_states[0] 
     
     def set_fit_state(self, fit_state):
         self.current_fit_state = fit_state
     
     def iterate(self):
-        self.current_fit
+        self.current_fit_state.iterate()
+    
+    def converge(self, model_network):
+        total_iter_num = 0
+        available_transitions = copy(self.transition_map)
+        all_done = False
+        for iter_num in range(self.max_transitions):
+            fs_converged = False
+            for iter_idx in range(self.max_state_iter):
+                fs_converged = self.current_fit_state.iterate(model_network)
+                total_iter_num += 1
+                if fs_converged:
+                    break
+            if not fs_converged:
+                print "warning max_iter exceded"
+            transition_options = available_transitions.get(self.current_fit_state, [])
+            if transition_options == []:
+                break
 
 class FitState(object):
     
-    def __init__(self, clamping_factor=10.0, alpha=2.0, beta=2.0):
+    def __init__(self, model_network, models=None, trees=None, clamping_factor=2.0, alpha=2.0, beta=2.0, max_iter=10):
+        self.model_network = model_network
+        if trees is None:
+            trees = model_network.trees
+        self.trees = trees
+        self.model_to_tree_idxs = {}
+        for tree_idx in range(len(self.trees)):
+            tree = self.trees[tree_idx]
+            for model in tree.models:
+                mod_list = self.model_to_tree_idxs.get(model, [])
+                mod_list.append(tree_idx)
+                self.model_to_tree_idxs[model] = mod_list
+        if models is None:
+            models = self.model_to_tree_idxs.keys()
+        self.models = models
+        self.models=models
+        
+        self.iter_num = 0
+        self.max_iter = max_iter
         self.clamping_factor=clamping_factor
         self.alpha=alpha
         self.beta=beta
     
-    def iterate(self, models):
-        delta_acceptable = False
-        max_clamping_iters = 2
-        #import pdb; pdb.set_trace()
-        for clamp_iter_idx in range(max_clamping_iters):
-            #innocent until proven guilty
-            delta_acceptable = True
-            #accumulate the linear fit expansions for all models
-            lhs_list, rhs_list = [], []
-            for model_idx in range(len(models)):
-                model = models[model_idx]
-                relevant_chains = self.model_to_trees.get(model)
-                if relevant_chains is None:
-                    raise Exception("model {} not part of this modeler's chain sequence".format(model))
-                fit_mat, target_vec, error_inv_covar = self.stitched_fit_matrices(relevant_chains, model)
-                #trans_mat = fit_mat.transpose()
-                rhs = error_inv_covar*target_vec
-                lhs = error_inv_covar*fit_mat
-                lhs_list.append(lhs)
-                rhs_list.append(rhs)
-            
-            #build the full fit and run it
-            full_lhs = scipy.sparse.block_diag(lhs_list)
-            full_rhs = np.hstack(rhs_list)
-            
-            #carry out the fit
-            fit_result = scipy.sparse.linalg.lsqr(full_lhs, full_rhs)[0]
-            
-            #break up the results by model and check for acceptability
-            lb = 0  
-            ub = 0
-            for model_idx in range(len(models)):
-                model = models[model_idx]
-                old_pvec = model.get_pvec()
-                n_params = len(old_pvec)
-                ub += n_params
-                proposed_pvec = model.get_pvec() + fit_result[lb:ub]
-                check_vec = model.check_pvec(proposed_pvec)
-                #adjust how tightly the parameter deltas are damped
-                model.adjust_clamping(check_vec)
-                print "check_vec", check_vec
-                lb = ub
-                if np.any(check_vec > 0):
-                    delta_acceptable = False
-                    print "bad delta refitting"
-                    #clamp the parameter down tighter
-            if delta_acceptable:
-                break
-        
-        lb=0
-        ub=0
-        for model_idx in range(len(models)):
-            model = models[model_idx]
-            old_pvec = model.get_pvec()
+    def get_pvec(self, attr=None, free_only=True):
+        """get a vectorized version of parameter.attr across the models fit by this
+        fit state.
+        """
+        vec_collection = []
+        for model in self.models:
+            cpvec = model.get_pvec(attr=attr, free_only=free_only)
+            vec_collection.append(cpvec)
+        return np.hstack(vec_collection)
+    
+    def set_pvec(self, value, attr=None, free_only=True, as_delta=False):
+        pvec_lb = 0
+        pvec_ub = 0
+        for model in self.models:
+            old_pvec = model.get_pvec(attr=attr, free_only=free_only)
             n_params = len(old_pvec)
-            ub += n_params
-            new_pvec = old_pvec + fit_result[lb:ub]
-            model.set_pvec(new_pvec)
-            lb = ub
+            pvec_ub += n_params
+            if as_delta:
+                new_pvec = old_pvec + value[pvec_lb:pvec_ub]
+            else:
+                new_pvec = value[pvec_lb:pvec_ub]
+            model.set_pvec(new_pvec, attr=attr, free_only=free_only)
+            pvec_lb = pvec_ub
+    
+    def get_pdict(self, attr=None, free_only=True):
+        pdict = {}
+        for model in self.models:
+            cpdict = model.get_pvec(attr=attr, free_only=free_only)
+            pdict[(model, attr)] = cpdict
+        return pdict
+    
+    def get_clamping_vector(self):
+        scale_vec = self.get_pvec(attr="scale")
+        step_scale = self.get_pvec(attr="step_scale")
+        return (self.clamping_factor/(step_scale*scale_vec))**2
+    
+    def get_expansions(self):
+        expansions = [[None for i in range(len(self.models))] for j in range(len(self.trees))]
+        for model_idx in range(len(self.models)):
+            model = self.models[model_idx]
+            relevant_tree_idxs = self.model_to_tree_idxs.get(model)
+            if relevant_tree_idxs is None:
+                raise Exception("model {} not part of this modeler's chain sequence".format(model))
+            for tree_idx in relevant_tree_idxs:
+                tree = self.trees[tree_idx]
+                expansions[tree_idx][model_idx] = tree.fit_matrix(model) 
+        return expansions
+    
+    def get_model_values(self):
+        model_values = []
+        for tree in self.trees:
+            model_values.append(tree())
+        return model_values
+    
+    def get_data_values(self):
+        data_values = []
+        for tree in self.trees:
+            data_values.append(tree.target_data)
+        return data_values
+    
+    def get_data_weights(self):
+        data_weights = []
+        for tree in self.trees:
+            data_weights.append(tree.data_weight)
+        return data_weights
         
+    def iterate(self, model_network):
+        #accumulate the linear fit expansions for all models
+        clamp = self.get_clamping_vector()
+        data_weights = np.hstack(self.get_data_weights())
+        data_values = np.hstack(self.get_data_values())
+        model_values = np.hstack(self.get_model_values())
+        
+        fit_matrix = scipy.sparse.bmat(self.get_expansions())
+        n_params = fit_matrix.shape[1]
+        
+        zero_vec = np.zeros(n_params)
+        target_vec = np.hstack([data_values-model_values, zero_vec])
+        param_ident_mat = scipy.sparse.identity(n_params, format="csr")
+        fit_and_damp = scipy.sparse.vstack([fit_matrix, param_ident_mat])
+        
+        #now generate the weighting matrices and weight both sides
+        joint_weight = np.hstack([data_weights, clamp])
+        n_full = len(joint_weight)
+        weighting_mat = scipy.sparse.dia_matrix((joint_weight, 0), (n_full, n_full))
+        
+        #carry out the fit
+        fit_result = scipy.sparse.linalg.lsqr(weighting_mat*fit_and_damp, weighting_mat*target_vec)[0]
+        
+        self.set_pvec(fit_result, as_delta=True)
+        
+        self.iter_num += 1
+        #print "iter num", self.iter_num
+        #print "fit result", fit_result
+        #print "param_vals", self.get_pvec()
+        if self.iter_num > self.max_iter:
+            return True
+        return False
 
 class DataModelNetwork(object):
     
-    def __init__(self, fit_policy=None):
+    def __init__(self, trees, fit_policy=None):
         self.trees = []
         self.model_to_trees = {}
-        
+        for tree in trees:
+            self.add_tree(tree)
+        if fit_policy is None:
+            fit_policy = FitPolicy(self)
+        self.set_fit_policy(fit_policy)
     
     def set_fit_policy(self, fit_policy):
         self.fit_policy = fit_policy
@@ -524,35 +636,9 @@ class DataModelNetwork(object):
             self.model_to_trees[model] = chain_res
             chain_res.append(tree)
     
-    def stitched_fit_matrices(self, chains, model):
-        fit_mats = []
-        for chain in chains:
-            fit_mats.append([chain.fit_matrix(model)])
-        
-        #stitch together a target vector
-        targ_deltas = []
-        for chain in chains:
-            targ_dat = chain.target_data
-            mod_dat = chain()
-            deltas = targ_dat - mod_dat
-            targ_deltas.append(deltas)
-        
-        #build the data inverse variance matrix
-        inv_covars = []
-        for chain in chains:
-            inv_covars.append(chain.data_weight)
-        
-        #add damping matrices
-        n_params = fit_mats[0][0].shape[1]
-        for chain in chains:
-            fit_mats.append([scipy.sparse.identity(n_params, dtype=float)])
-            damping_target, damping_weight = chain.parameter_damping(model)
-            targ_deltas.append(damping_target)
-            inv_covars.append(scipy.sparse.dia_matrix((damping_weight, 0), shape=(n_params, n_params)))
-        
-        fm = scipy.sparse.bmat(fit_mats)
-        td = np.hstack(targ_deltas)
-        ic = scipy.sparse.block_diag(inv_covars)
-        return fm, td, ic
+    def converge(self):
+        self.fit_policy.converge(self)
     
-    def iterate(self, models):
+    def iterate(self):
+        self.fit_policy.iterate(self)
+    

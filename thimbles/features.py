@@ -214,7 +214,7 @@ and float values.""".format(type(dof_thresholds))
         ret_val = 1.0 + self.cfm*self.exemplar_ews_p.get()
         return ret_val
     
-    @parameter(free=True, start_damp=0.5, min_step=0.0, max_step=np.inf, min=0.0001, max=1000.0)
+    @parameter(free=True, scale=0.1, min=0.0001, max=1000.0)
     def exemplar_ews_p(self, ):
         #TODO cache this value
         return scipy.sparse.linalg.lsqr(self.grouping_matrix, self.fdat["ew"].values)[0]
@@ -228,7 +228,7 @@ and float values.""".format(type(dof_thresholds))
     def expand_exemplar_effects(self, input_vec, **kwargs):
         return self.cfm
     
-    @parameter(free=True, start_damp=100.0, min=0.001, max=1.0, max_step=0.1, min_step=0.0001)
+    @parameter(free=True, min=0.005, max=1.0)
     def mean_gamma_ratio_p(self):
         return self.mean_gamma_ratio
     
@@ -538,39 +538,6 @@ and float values.""".format(type(dof_thresholds))
             self._recollapse_feature_matrix = False
         return cfm
     
-    
-    #def parameter_expansion(self, input, **kwargs):
-    #    theta_delta = 0.01
-    #    vmic_delta = 0.01
-    #    
-    #    ctheta = self.theta
-    #    self.theta = ctheta-theta_delta
-    #    theta_minus_vec = self(input, **kwargs)
-    #    self.theta = ctheta+theta_delta
-    #    theta_plus_vec = self(input, **kwargs)
-    #    theta_deriv = (theta_plus_vec-theta_minus_vec)/theta_delta
-    #    self.theta = ctheta
-    #    
-    #    cvmicro = self.vmicro
-    #    self.vmicro = cvmicro-vmic_delta
-    #    vmicro_minus_vec = self(input, **kwargs)
-    #    self.vmicro = cvmicro+vmic_delta
-    #    vmicro_plus_vec = self(input, **kwargs)
-    #    vmicro_deriv = (vmicro_plus_vec-vmicro_minus_vec)/vmic_delta
-    #    self.vmicro = cvmicro
-    #    
-    #    pexp_mat = scipy.sparse.hstack([theta_deriv.reshape((-1, 1)), vmicro_deriv.reshape((-1, 1)), self.cfm])
-    #    return pexp_mat
-    #
-    #def parameter_damping(self, input):
-    #    cur_pvec = self.get_pvec()
-    #    targ_damp = np.repeat(2.0, len(cur_pvec))
-    #    targ_damp[0]=1000#self.fit_damping_factors["theta"]
-    #    targ_damp[1]=100#self.fit_damping_factors["vmicro"]
-    #    targ_pdelta = np.zeros(len(cur_pvec))
-    #    targ_pdelta[1] = 2.0 - cur_pvec[1]
-    #    return targ_pdelta, targ_damp
-    
     @property
     def teff(self):
         return self._teff
@@ -597,7 +564,7 @@ and float values.""".format(type(dof_thresholds))
         self._recalc_grouping_matrix = True
         self._recollapse_feature_matrix = True
     
-    @parameter(free=True, start_damp=100, min=0.01, max=10.0, min_step=0.0, max_step=np.inf)
+    @parameter(free=True, min=0.01, max=10.0)
     def vmicro_p(self):
         return self.vmicro
     
@@ -613,7 +580,7 @@ and float values.""".format(type(dof_thresholds))
     def theta(self, value):
         self.teff = 5040.0/value
     
-    @parameter(free=True, min=0.2, max=3.0, start_damp=100, min_step=0.00, max_step=np.inf)
+    @parameter(free=True, min=0.2, max=3.0)
     def theta_p(self):
         return self.theta
     

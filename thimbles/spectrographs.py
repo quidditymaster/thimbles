@@ -50,7 +50,7 @@ class PiecewisePolynomialSpectrographEfficiencyModel(Model):
     def blaze(self):
         return np.dot(self._basis, self.coefficients)
     
-    @parameter(free=True, start_damp=0.05, min=-np.inf, max=np.inf, min_step=0.0, max_step=1000)
+    @parameter(free=True, scale=10.0, min=-np.inf, max=np.inf)
     def poly_coeffs_p(self):
         return self.coefficients
     

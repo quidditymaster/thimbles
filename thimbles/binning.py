@@ -20,15 +20,19 @@ class CoordinateBinning (object):
     and vice versa.
     """
     
-    def __init__(self, coordinates):
+    def __init__(self, coordinates, as_centers=True):
         """coordinates must be a monotonic function of index
         """
-        self.coordinates = coordinates
-        self.bins = centers_to_bins(coordinates)
+        if as_centers:
+            self.coordinates = coordinates
+            self.bins = centers_to_bins(coordinates)
+        else:
+            self.coordinates = bins_to_centers(coordinates)
+            self.bins = coordinates
         self._cached_prev_bin = (self.bins[0], self.bins[1])
         self._cached_prev_bin_idx = 0
-        self._start_dx = self.coordinates[1] - self.coordinates[0]
-        self._end_dx = self.coordinates[-1] - self.coordinates[-2]
+        self._start_dx = self.bins[1] - self.bins[0]
+        self._end_dx = self.bins[-1] - self.bins[-2]
     
     def __len__(self):
         return len(self.coordinates)

@@ -138,7 +138,7 @@ class SaturatedVoigtFeatureModel(Model):
         #    fit_damping_factors = {}
         #default_pdamp.update(fit_damping_factors)
         #self.fit_damping_factors = default_pdamp
-        self._check_initialize_column("ew", fill_value=0.0)
+        self._check_initialize_column("ew", fill_value=0.001)
         self._check_initialize_column("wv_offset", fill_value=0.0)
         self._check_initialize_column("sigma_offset", fill_value=0.0)
         self._check_initialize_column("gamma_offset", fill_value=0.0)
@@ -214,7 +214,7 @@ and float values.""".format(type(dof_thresholds))
         ret_val = 1.0 + self.cfm*self.exemplar_ews_p.get()
         return ret_val
     
-    @parameter(free=True, scale=0.1, min=0.0001, max=1000.0)
+    @parameter(free=True, scale=1.0, min=0.01, max=200.0, step_scale=1.0)
     def exemplar_ews_p(self, ):
         #TODO cache this value
         return scipy.sparse.linalg.lsqr(self.grouping_matrix, self.fdat["ew"].values)[0]
@@ -228,12 +228,13 @@ and float values.""".format(type(dof_thresholds))
     def expand_exemplar_effects(self, input_vec, **kwargs):
         return self.cfm
     
-    @parameter(free=True, min=0.005, max=1.0)
+    @parameter(free=True, min=0.005, max=1.0, step_scale=0.025)
     def mean_gamma_ratio_p(self):
         return self.mean_gamma_ratio
     
     @mean_gamma_ratio_p.setter
     def set_mean_gamma_ratio(self, value):
+        print "setting mean gamma ratio with value {}".format(value)
         self.mean_gamma_ratio = value
         self._recalc_cog = True
         self._recalc_cog_ews = True
@@ -564,7 +565,7 @@ and float values.""".format(type(dof_thresholds))
         self._recalc_grouping_matrix = True
         self._recollapse_feature_matrix = True
     
-    @parameter(free=True, min=0.01, max=10.0)
+    @parameter(free=True, min=0.01, max=10.0, step_scale=0.1)
     def vmicro_p(self):
         return self.vmicro
     
@@ -580,7 +581,7 @@ and float values.""".format(type(dof_thresholds))
     def theta(self, value):
         self.teff = 5040.0/value
     
-    @parameter(free=True, min=0.2, max=3.0)
+    @parameter(free=True, min=0.2, max=3.0, step_scale=0.1)
     def theta_p(self):
         return self.theta
     
@@ -629,6 +630,7 @@ and float values.""".format(type(dof_thresholds))
     def calc_cog(self):
         """calculate an approximate curve of growth and store its representation
         """
+        print "reintegrating effective cog"
         min_log_strength = -1.5
         max_log_strength = 4.5
         n_strength = 100

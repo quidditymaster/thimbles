@@ -436,12 +436,13 @@ class DataRootedModelTree(object):
             self._result_chain[model_idx] = output_value
         return self._result_chain[-1]
 
-
 class FitPolicy(object):
     
-    def __init__(self, model_network, fit_states=None, max_state_iter=100, max_transitions=100):
+    def __init__(self, model_network=None, fit_states=None, iteration_callback=None, transition_callback=None, max_state_iter=100, max_transitions=100):
         self.max_state_iter = max_state_iter
-        self.max_transitions = 100
+        self.max_transitions = max_transitions
+        self.iteration_callback=iteration_callback
+        self.transition_callback=transition_callback
         if fit_states is None:
             fit_states = [FitState(model_network)]
         self.transition_map = {}
@@ -456,63 +457,95 @@ class FitPolicy(object):
                     next_state = fit_states[fs_idx+1][1]
             else:
                 cur_state, next_state = fit_states[fs_idx]
-            transition_list = self.transition_map.get(cur_state)
-            if transition_list is None:
-                transition_list = []
+            transition_list = self.transition_map.get(cur_state, [])
             if not next_state is None:
                 transition_list.append(next_state)
-                self.fit_states.add(next_state)
             self.transition_map[cur_state] = transition_list
-        self.fit_states = self.transition_map.keys()
         self.current_fit_state = fit_states[0] 
+        self.fit_states = [self.current_fit_state]
+        for available_trans in self.transition_map.values():
+            self.fit_states.extend(available_trans)
+        self.set_model_network(model_network)
     
     def set_fit_state(self, fit_state):
         self.current_fit_state = fit_state
     
-    def iterate(self):
-        self.current_fit_state.iterate()
+    def set_model_network(self, model_network):
+        self.model_network = model_network
+        if self.model_network is None:
+            return
+        for fit_state in self.fit_states:
+            fit_state.set_model_network(model_network)
     
-    def converge(self, model_network):
+    def check_model_network(self):
+        if self.model_network is None:
+            raise ModelingError("model network not set")
+    
+    def iterate(self):
+        self.check_model_network()
+        iter_res =  self.current_fit_state.iterate()
+        if not self.iteration_callback is None:
+            self.iteration_callback(self.current_fit_state)
+        return iter_res
+    
+    def converge(self, callback=None):
+        self.check_model_network()
         total_iter_num = 0
         available_transitions = copy(self.transition_map)
-        all_done = False
-        for iter_num in range(self.max_transitions):
+        for trans_num in range(self.max_transitions):
             fs_converged = False
             for iter_idx in range(self.max_state_iter):
-                fs_converged = self.current_fit_state.iterate(model_network)
+                #import pdb; pdb.set_trace()
+                fs_converged = self.iterate()
+                if not callback is None:
+                    callback(self.current_fit_state) 
                 total_iter_num += 1
                 if fs_converged:
+                    print "fit state converged"
                     break
             if not fs_converged:
                 print "warning max_iter exceded"
+            if not self.transition_callback is None:
+                self.transition_callback(self.current_fit_state)
+            print "attempting transition to next fit state"
+            #import pdb;pdb.set_trace()
             transition_options = available_transitions.get(self.current_fit_state, [])
             if transition_options == []:
+                print "no next fit state found assuming completion"
+                raise Exception("a hook for pdb.pm")
                 break
+            else:
+                self.current_fit_state = transition_options.pop(0)
 
 class FitState(object):
     
-    def __init__(self, model_network, models=None, trees=None, clamping_factor=2.0, alpha=2.0, beta=2.0, max_iter=10):
-        self.model_network = model_network
-        if trees is None:
-            trees = model_network.trees
-        self.trees = trees
-        self.model_to_tree_idxs = {}
-        for tree_idx in range(len(self.trees)):
-            tree = self.trees[tree_idx]
-            for model in tree.models:
-                mod_list = self.model_to_tree_idxs.get(model, [])
-                mod_list.append(tree_idx)
-                self.model_to_tree_idxs[model] = mod_list
-        if models is None:
-            models = self.model_to_tree_idxs.keys()
+    def __init__(self, model_network=None, models=None, trees=None, clamping_factor=2.0, alpha=2.0, beta=2.0, max_iter=10, max_reweighting_iter=3):
         self.models = models
-        self.models=models
+        self.trees = trees
+        self.set_model_network(model_network)
         
         self.iter_num = 0
         self.max_iter = max_iter
+        self.max_reweighting_iter = max_reweighting_iter
         self.clamping_factor=clamping_factor
         self.alpha=alpha
         self.beta=beta
+    
+    def set_model_network(self, model_network):
+        self.model_network = model_network
+        if self.model_network is None:
+            return
+        if self.trees is None:
+            self.trees = model_network.trees
+            self.model_to_tree_idxs = {}
+            for tree_idx in range(len(self.trees)):
+                tree = self.trees[tree_idx]
+                for model in tree.models:
+                    mod_list = self.model_to_tree_idxs.get(model, [])
+                    mod_list.append(tree_idx)
+                    self.model_to_tree_idxs[model] = mod_list
+        if self.models is None:
+            models = self.model_to_tree_idxs.keys()
     
     def get_pvec(self, attr=None, free_only=True):
         """get a vectorized version of parameter.attr across the models fit by this
@@ -579,8 +612,8 @@ class FitState(object):
         for tree in self.trees:
             data_weights.append(tree.data_weight)
         return data_weights
-        
-    def iterate(self, model_network):
+    
+    def iterate(self):
         #accumulate the linear fit expansions for all models
         clamp = self.get_clamping_vector()
         data_weights = np.hstack(self.get_data_weights())
@@ -591,7 +624,8 @@ class FitState(object):
         n_params = fit_matrix.shape[1]
         
         zero_vec = np.zeros(n_params)
-        target_vec = np.hstack([data_values-model_values, zero_vec])
+        deltas = data_values-model_values
+        target_vec = np.hstack([deltas, zero_vec])
         param_ident_mat = scipy.sparse.identity(n_params, format="csr")
         fit_and_damp = scipy.sparse.vstack([fit_matrix, param_ident_mat])
         
@@ -600,11 +634,34 @@ class FitState(object):
         n_full = len(joint_weight)
         weighting_mat = scipy.sparse.dia_matrix((joint_weight, 0), (n_full, n_full))
         
-        #carry out the fit
-        fit_result = scipy.sparse.linalg.lsqr(weighting_mat*fit_and_damp, weighting_mat*target_vec)[0]
+        for reweighting_idx in range(self.max_reweighting_iter):
+            #carry out the fit
+            fit_result = scipy.sparse.linalg.lsqr(weighting_mat*fit_and_damp, weighting_mat*target_vec)[0]
+            
+            #check to make sure the new parameters are actually better
+            old_chi_sq = np.sum(deltas**2*data_weights)
+            new_model_values = self.get_model_values()
+            new_chi_sq = np.sum((data_values-new_model_values)**2*data_weights)
+            
+            if new_chi_sq < old_chi_sq:
+                print "new chi sq {: 10.3f}".format(new_chi_sq)
+                #end the reweighting search
+                break
+            else:
+                print "chi sq {} not an improvement over {} attempting to sparsify".format(new_chi_sq, old_chi_sq)
+                #increase the damping
+                scale_vec = self.get_pvec("scale")
+                step_scales = self.get_pvec("step_scale")
+                #sparse_clamp = clamp
+                #sparse_clamp *= np.power(1.15, reweighting_idx) #overall strengthening of damping
+                sparse_clamp = 1.0/(fit_result/(scale_vec*step_scales) + 0.01)
+                sparse_clamp /= np.sum(sparse_clamp)
+                sparse_clamp *= self.clamping_factor**2 #promote sparsity and penalize steps much beyond step_scale
+                print "new clamping weights {}".format(sparse_clamp)
+                weighting_mat = scipy.sparse.dia_matrix((np.hstack([data_weights, sparse_clamp]), 0), (n_full, n_full))
         
+        #set the best fit delta
         self.set_pvec(fit_result, as_delta=True)
-        
         self.iter_num += 1
         #print "iter num", self.iter_num
         #print "fit result", fit_result
@@ -626,6 +683,7 @@ class DataModelNetwork(object):
     
     def set_fit_policy(self, fit_policy):
         self.fit_policy = fit_policy
+        self.fit_policy.set_model_network(self)
     
     def add_tree(self, tree):
         self.trees.append(tree)
@@ -636,9 +694,9 @@ class DataModelNetwork(object):
             self.model_to_trees[model] = chain_res
             chain_res.append(tree)
     
-    def converge(self):
-        self.fit_policy.converge(self)
+    def converge(self, callback):
+        self.fit_policy.converge(callback)
     
     def iterate(self):
-        self.fit_policy.iterate(self)
+        self.fit_policy.iterate()
     

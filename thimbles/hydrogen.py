@@ -161,7 +161,7 @@ class HydrogenForegroundModel(Spectrum, Model):
         self._strength = np.clip(value, 0.01, np.inf)
         self.calc_transmission()
     
-    @parameter(free=True, start_damp=1000, min=0.01, max=8.0, min_step=0.0001, max_step=0.25)
+    @parameter(free=True, min=0.01, max=5.0, scale=1.0, step_scale=0.01)
     def strength_p(self):
         return self.strength
     
@@ -177,7 +177,7 @@ class HydrogenForegroundModel(Spectrum, Model):
     
     def __call__(self, input):
         return input*self.flux
-        
+    
     def parameter_expansion(self, input):
         delt_eps = 0.001
         start_strength = self.strength

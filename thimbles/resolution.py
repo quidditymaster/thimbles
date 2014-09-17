@@ -78,7 +78,7 @@ class DiracLSF(LineSpreadFunction):
     
     def __init__(self, wv_soln=None):
         self.wv_soln = None
-        self.epsilon = 1e-12
+        self.derivative_scale = 1e-12
     
     def get_integral(self, index, pix_coord):
         if pix_coord >= index:
@@ -87,7 +87,7 @@ class DiracLSF(LineSpreadFunction):
             return 0.0
     
     def get_coordinate_density_range(self, index):
-        return self.centers[index]-self.epsilon, self.centers[index]+self.epsilon
+        return self.centers[index]-self.derivative_scale, self.centers[index]+self.derivative_scale
     
     def get_rms_width(self, index):
         return 0.0

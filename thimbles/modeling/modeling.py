@@ -439,11 +439,12 @@ class DataRootedModelTree(object):
 
 class FitPolicy(object):
     
-    def __init__(self, model_network=None, fit_states=None, iteration_callback=None, transition_callback=None, max_state_iter=100, max_transitions=100):
+    def __init__(self, model_network=None, fit_states=None, iteration_callback=None, transition_callback=None, finish_callback=None, max_state_iter=100, max_transitions=100):
         self.max_state_iter = max_state_iter
         self.max_transitions = max_transitions
         self.iteration_callback=iteration_callback
         self.transition_callback=transition_callback
+        self.finish_callback=finish_callback
         if fit_states is None:
             fit_states = [FitState(model_network)]
         self.transition_map = {}
@@ -489,7 +490,7 @@ class FitPolicy(object):
             self.iteration_callback(self.current_fit_state)
         return iter_res
     
-    def converge(self, callback=None):
+    def converge(self):
         self.check_model_network()
         total_iter_num = 0
         available_transitions = copy(self.transition_map)
@@ -498,8 +499,6 @@ class FitPolicy(object):
             for iter_idx in range(self.max_state_iter):
                 #import pdb; pdb.set_trace()
                 fs_converged = self.iterate()
-                if not callback is None:
-                    callback(self.current_fit_state) 
                 total_iter_num += 1
                 if fs_converged:
                     print "fit state converged"
@@ -513,7 +512,8 @@ class FitPolicy(object):
             transition_options = available_transitions.get(self.current_fit_state, [])
             if transition_options == []:
                 print "no next fit state found assuming completion"
-                raise Exception("a hook for pdb.pm")
+                if not self.finish_callback is None:
+                    self.finish_callback(self.current_fit_state) 
                 break
             else:
                 self.current_fit_state = transition_options.pop(0)
@@ -531,6 +531,8 @@ class FitState(object):
         self.clamping_factor=clamping_factor
         self.alpha=alpha
         self.beta=beta
+        self.converged = False
+        self.log_likelihood = np.inf
     
     def set_model_network(self, model_network):
         self.model_network = model_network
@@ -655,12 +657,13 @@ class FitState(object):
                 step_scales = self.get_pvec("step_scale")
                 #sparse_clamp = clamp
                 #sparse_clamp *= np.power(1.15, reweighting_idx) #overall strengthening of damping
-                sparse_clamp = 1.0/(fit_result/(scale_vec*step_scales) + 0.01)
-                sparse_clamp /= np.sum(sparse_clamp)
-                sparse_clamp *= self.clamping_factor**2 #promote sparsity and penalize steps much beyond step_scale
+                sparse_clamp = 1.0/(fit_result/(scale_vec*step_scales) + 0.0001)
+                sparse_clamp /= np.max(sparse_clamp)
+                sparse_clamp *= self.clamping_factor*np.power(1.25, reweighting_idx)
                 print "new clamping weights {}".format(sparse_clamp)
                 weighting_mat = scipy.sparse.dia_matrix((np.hstack([data_weights, sparse_clamp]), 0), (n_full, n_full))
         
+        self.log_likelihood = -new_chi_sq
         #set the best fit delta
         self.set_pvec(fit_result, as_delta=True)
         self.iter_num += 1
@@ -668,6 +671,7 @@ class FitState(object):
         #print "fit result", fit_result
         #print "param_vals", self.get_pvec()
         if self.iter_num > self.max_iter:
+            self.converged = True
             return True
         return False
 
@@ -695,8 +699,8 @@ class DataModelNetwork(object):
             self.model_to_trees[model] = chain_res
             chain_res.append(tree)
     
-    def converge(self, callback):
-        self.fit_policy.converge(callback)
+    def converge(self):
+        self.fit_policy.converge()
     
     def iterate(self):
         return self.fit_policy.iterate()

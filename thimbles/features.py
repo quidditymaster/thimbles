@@ -228,7 +228,7 @@ and float values.""".format(type(dof_thresholds))
     def expand_exemplar_effects(self, input_vec, **kwargs):
         return self.cfm
     
-    @parameter(free=True, min=0.005, max=1.0, step_scale=0.025)
+    @parameter(free=True, min=0.001, max=1.0, step_scale=0.25)
     def mean_gamma_ratio_p(self):
         return self.mean_gamma_ratio
     

@@ -14,7 +14,7 @@ class ModelingError(Exception):
 #"distribution":NormalDeltaDistribution,
 #}
 
-def parameter(free=False, scale=1.0, epsilon=0.001, min=-np.inf, max=np.inf, history_max=10):
+def parameter(free=False, scale=1.0, epsilon=0.001, min=-np.inf, max=np.inf, history_max=10, **kwargs):
     """a decorator to turn getter methods of Model class objects 
     into Parameter objects.
     """
@@ -22,10 +22,11 @@ def parameter(free=False, scale=1.0, epsilon=0.001, min=-np.inf, max=np.inf, his
         param=Parameter(
             func,
             free=free,
-            delta_scale=1.0,
+            scale=scale,
             epsilon=epsilon,
             min=min,
-            max=max
+            max=max,
+            history_max=history_max,
         )
         return param
     return function_to_parameter
@@ -556,3 +557,4 @@ class DataModelNetwork(object):
         return fm, td, ic
     
     def iterate(self, models):
+        pass

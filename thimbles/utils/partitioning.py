@@ -295,11 +295,18 @@ def matrix_partition(
             cbreak = break_idxs[partition[-1]-1]
             partition.append(cbreak)
         partition.insert(0, n_blocks)
+        partition_coeffs = []
+        for pidx in range(len(partition)-1):
+            coeffs = opt_fit_params[partition[pidx]]
+            partition_coeffs.append(coeffs)
+        partition_coeffs.reverse()
         orig_space_partition = []
         for part_idx in partition:
             orig_space_partition.append(grouping_idxs[part_idx])
         orig_space_partition.reverse()
-        return orig_space_partition, opt_val
+        orig_space_partition = np.array(orig_space_partition)
+        partition_coeffs = np.array(partition_coeffs)
+        return orig_space_partition, partition_coeffs, opt_val
 
 
 def block_constant_partition( 

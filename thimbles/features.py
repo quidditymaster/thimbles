@@ -235,7 +235,6 @@ and float values.""".format(type(dof_thresholds))
     @mean_gamma_ratio_p.setter
     def set_mean_gamma_ratio(self, value):
         #import pdb; pdb.set_trace()
-        print "setting mean gamma ratio with value {}".format(value)
         self.mean_gamma_ratio = value
         self._recalc_cog = True
         self._recalc_cog_ews = True
@@ -622,7 +621,6 @@ and float values.""".format(type(dof_thresholds))
         self._recalc_x = False
     
     def calc_cog_ews(self):
-        print "calculating cog ews"
         lrws = self.cog(self.x_adj.values)
         self.fdat["cog_lrw_adj"] = lrws
         cog_lrw = lrws + self.doppler_lrw.values
@@ -633,7 +631,6 @@ and float values.""".format(type(dof_thresholds))
     def calc_cog(self):
         """calculate an approximate curve of growth and store its representation
         """
-        print "reintegrating effective cog"
         min_log_strength = -1.5
         max_log_strength = 4.5
         n_strength = 100

@@ -66,6 +66,17 @@ class ConstantMultiplierModel(object):
     def as_linear_op(self, input, **kwargs):
         return self._lin_op
 
+def freeze_params(fstate):
+    fstate.model_network.feature_mod.theta_p._free = False
+    fstate.model_network.feature_mod.mean_gamma_ratio_p._free = False
+    fstate.model_network.feature_mod.vmicro_p._free = False
+    
+def thaw_params(fstate):
+    fstate.model_network.feature_mod.theta_p._free = True
+    fstate.model_network.feature_mod.mean_gamma_ratio_p._free = True
+    fstate.model_network.feature_mod.vmicro_p._free = True
+    
+
 def iter_cleanup(fstate):
     mnet = fstate.model_network
     spec_idx = mnet.spectrum_id
@@ -103,9 +114,11 @@ def write_results(fstate):
     f.flush()
     f.close()
 
+
+
 class SpectralModeler(modeling.DataModelNetwork):
     
-    def __init__(self, target_spectra, lsf_models, ldat, species_grouper, max_iter, spectrum_id):
+    def __init__(self, target_spectra, lsf_models, ldat, species_grouper, max_iter, spectrum_id, start_teff):
         self.spectrum_id = spectrum_id
         self.hmasks = [get_H_mask(tspec.wv, args.H_mask_radius) for tspec in target_spectra]
         self.target_spectra = target_spectra
@@ -113,7 +126,7 @@ class SpectralModeler(modeling.DataModelNetwork):
             tspec.inv_var = np.where(self.hmasks[tspec_idx], tspec.inv_var, 0.0001)
         
         min_wv = np.min([np.min(spec.wv) for spec in target_spectra])
-        max_wv = np.max([np.max(spec.wv) for spec in target_spectra])    
+        max_wv = np.max([np.max(spec.wv) for spec in target_spectra])
         
         self.feature_mod = tmb.features.SaturatedVoigtFeatureModel(
             ldat, 
@@ -126,7 +139,7 @@ class SpectralModeler(modeling.DataModelNetwork):
             initial_x_offset=args.x_offset, 
             vmicro=args.vmicro,
             mean_gamma_ratio=0.3,
-            teff=args.teff,
+            teff=start_teff,#args.teff,
             model_resolution=args.model_resolution,
             species_grouper=species_grouper
         )
@@ -163,11 +176,11 @@ class SpectralModeler(modeling.DataModelNetwork):
         mstack1 = []
         #mstack1.extend(self.blaze_models)
         mstack1.append(self.feature_mod)
-        features_alone = modeling.FitState(models=mstack1, clamping_factor=1.0, max_iter=1)
+        features_alone = modeling.FitState(models=mstack1, clamping_factor=1.0, max_iter=1, cleanup_func=thaw_params, setup_func=freeze_params)
         together_models = []
         together_models.extend(self.blaze_models)
         together_models.append(self.feature_mod)
-        together = modeling.FitState(models =together_models, clamping_factor=10.0, max_iter=max_iter, max_reweighting_iter=10)
+        together = modeling.FitState(models =together_models, clamping_factor=20.0, max_iter=max_iter, max_reweighting_iter=3)
         fit_states = []
         for slosh_idx in range(5):
             fit_states.append(features_alone)
@@ -177,12 +190,15 @@ class SpectralModeler(modeling.DataModelNetwork):
         fit_policy = modeling.FitPolicy(self, fit_states=fit_states, finish_callback=write_results, iteration_callback=iter_cleanup)
         self.set_fit_policy(fit_policy)
 
-def fit_lowres_spectrum(spec_idx, plot=True, max_iter=15):
+def fit_lowres_spectrum(spec_idx, plot=True, max_iter=35):
     hf = h5py.File("globulars_all.h5", "r")
     spectrum_wvs = np.power(10.0, np.array(hf["log_wvs"]))
     spectrum_lsf = np.array(hf["resolution"])
     min_wv = spectrum_wvs[0]
     max_wv = spectrum_wvs[-1] 
+    
+    #load the sspp results
+    sspp_dict = json.load(open("sspp_model_files/spec_{}.json".format(spec_idx)))
     
     pre_grouped = False
     if not args.input_h5 is None:
@@ -203,7 +219,7 @@ def fit_lowres_spectrum(spec_idx, plot=True, max_iter=15):
     lsf_models =  [tmb.resolution.LineSpreadFunctionModel(model_wv, spectrum_wvs, spectrum_lsf)]
     
     spec = tmb.Spectrum(spectrum_wvs, np.array(hf["flux"][spec_idx]), np.array(hf["invvar"][spec_idx]))
-    smod = SpectralModeler(target_spectra=[spec], lsf_models=lsf_models, ldat=ldat, species_grouper=grouper, max_iter=max_iter, spectrum_id=spec_idx)
+    smod = SpectralModeler(target_spectra=[spec], lsf_models=lsf_models, ldat=ldat, species_grouper=grouper, max_iter=max_iter, spectrum_id=spec_idx, start_teff=sspp_dict["teff"])
     
     first_stime = time.time()
     #damping_schedule = {0:(1e5, 1e5), 3:(1e4, 1e4), 5:(1e3, 1e3), 7:(3e2, 3e2), 12:(1e2, 1e2), 18:(5.0, 5.0)}
@@ -220,5 +236,5 @@ if __name__ == "__main__":
     pool.map(fit_lowres_spectrum, range(1024))
     
     #import pdb; pdb.set_trace()
-    #fit_lowres_spectrum(14)
+    #fit_lowres_spectrum(15)
     

@@ -228,16 +228,19 @@ and float values.""".format(type(dof_thresholds))
     def expand_exemplar_effects(self, input_vec, **kwargs):
         return self.cfm
     
-    @parameter(free=True, min=0.001, max=1.0, step_scale=0.25)
+    @parameter(free=True, min=0.001, max=1.0, step_scale=0.1)
     def mean_gamma_ratio_p(self):
         return self.mean_gamma_ratio
     
     @mean_gamma_ratio_p.setter
     def set_mean_gamma_ratio(self, value):
+        #import pdb; pdb.set_trace()
         print "setting mean gamma ratio with value {}".format(value)
         self.mean_gamma_ratio = value
         self._recalc_cog = True
         self._recalc_cog_ews = True
+        self._recalc_grouping_matrix = True
+        self._recollapse_feature_matrix = True
     
     #def calc_ew_errors(self):
     #    self.fdat["ew_error"] = np.ones(len(self.fdat))
@@ -581,7 +584,7 @@ and float values.""".format(type(dof_thresholds))
     def theta(self, value):
         self.teff = 5040.0/value
     
-    @parameter(free=True, min=0.2, max=3.0, step_scale=0.1)
+    @parameter(free=False, min=0.2, max=3.0, step_scale=0.1)
     def theta_p(self):
         return self.theta
     
@@ -619,7 +622,7 @@ and float values.""".format(type(dof_thresholds))
         self._recalc_x = False
     
     def calc_cog_ews(self):
-        #print "calculating cog ews"
+        print "calculating cog ews"
         lrws = self.cog(self.x_adj.values)
         self.fdat["cog_lrw_adj"] = lrws
         cog_lrw = lrws + self.doppler_lrw.values

@@ -496,15 +496,19 @@ class FitPolicy(object):
         available_transitions = copy(self.transition_map)
         for trans_num in range(self.max_transitions):
             fs_converged = False
+            self.current_fit_state.setup()
             for iter_idx in range(self.max_state_iter):
                 #import pdb; pdb.set_trace()
+                self.current_fit_state.iter_setup()
                 fs_converged = self.iterate()
+                self.current_fit_state.iter_cleanup()
                 total_iter_num += 1
                 if fs_converged:
                     print "fit state converged"
                     break
             if not fs_converged:
                 print "warning max_iter exceded"
+            self.current_fit_state.cleanup()
             if not self.transition_callback is None:
                 self.transition_callback(self.current_fit_state)
             print "attempting transition to next fit state"
@@ -520,7 +524,7 @@ class FitPolicy(object):
 
 class FitState(object):
     
-    def __init__(self, model_network=None, models=None, trees=None, clamping_factor=2.0, alpha=2.0, beta=2.0, max_iter=10, max_reweighting_iter=3):
+    def __init__(self, model_network=None, models=None, trees=None, clamping_factor=2.0, alpha=2.0, beta=2.0, max_iter=10, max_reweighting_iter=3, setup_func=None, iter_setup_func=None, iter_cleanup_func=None, cleanup_func=None):
         self.models = models
         self.trees = trees
         self.set_model_network(model_network)
@@ -533,6 +537,26 @@ class FitState(object):
         self.beta=beta
         self.converged = False
         self.log_likelihood = np.inf
+        self.setup_func = setup_func
+        self.cleanup_func = cleanup_func
+        self.iter_setup_func = iter_setup_func
+        self.iter_cleanup_func = iter_cleanup_func
+    
+    def setup(self):
+        if not self.setup_func is None:
+            self.setup_func(self)
+    
+    def iter_setup(self):
+        if not self.iter_setup_func is None:    
+            self.iter_setup_func(self)
+    
+    def iter_cleanup(self):
+        if not self.iter_cleanup_func is None:
+            self.iter_cleanup_func(self)
+    
+    def cleanup(self):
+        if not self.cleanup_func is None:
+            self.cleanup_func(self)
     
     def set_model_network(self, model_network):
         self.model_network = model_network
@@ -639,7 +663,7 @@ class FitState(object):
         
         for reweighting_idx in range(self.max_reweighting_iter):
             #carry out the fit
-            fit_result = scipy.sparse.linalg.lsqr(weighting_mat*fit_and_damp, weighting_mat*target_vec)[0]
+            fit_result = scipy.sparse.linalg.lsqr(weighting_mat*fit_and_damp, weighting_mat*target_vec, atol=0, btol=0, conlim=0, iter_lim=1000)[0]
             
             #check to make sure the new parameters are actually better
             old_chi_sq = np.sum(deltas**2*data_weights)
@@ -657,7 +681,7 @@ class FitState(object):
                 step_scales = self.get_pvec("step_scale")
                 #sparse_clamp = clamp
                 #sparse_clamp *= np.power(1.15, reweighting_idx) #overall strengthening of damping
-                sparse_clamp = 1.0/(fit_result/(scale_vec*step_scales) + 0.0001)
+                sparse_clamp = 1.0/(fit_result/(scale_vec*step_scales) + 0.001)
                 sparse_clamp /= np.max(sparse_clamp)
                 sparse_clamp *= self.clamping_factor*np.power(1.25, reweighting_idx)
                 print "new clamping weights {}".format(sparse_clamp)

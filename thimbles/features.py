@@ -9,6 +9,7 @@ import scipy.sparse
 from flags import FeatureFlags
 from thimbles.stellar_atmospheres import solar_abundance as ptable
 from thimbles.profiles import voigt
+from thimbles import resource_dir
 from thimbles.modeling.modeling import parameter, Model
 from thimbles.utils.misc import smooth_ppol_fit
 import thimbles.utils.piecewise_polynomial as ppol
@@ -228,16 +229,18 @@ and float values.""".format(type(dof_thresholds))
     def expand_exemplar_effects(self, input_vec, **kwargs):
         return self.cfm
     
-    @parameter(free=True, min=0.005, max=1.0, step_scale=0.025)
+    @parameter(free=True, min=0.001, max=1.0, step_scale=0.1)
     def mean_gamma_ratio_p(self):
         return self.mean_gamma_ratio
     
     @mean_gamma_ratio_p.setter
     def set_mean_gamma_ratio(self, value):
-        print "setting mean gamma ratio with value {}".format(value)
+        #import pdb; pdb.set_trace()
         self.mean_gamma_ratio = value
         self._recalc_cog = True
         self._recalc_cog_ews = True
+        self._recalc_grouping_matrix = True
+        self._recollapse_feature_matrix = True
     
     #def calc_ew_errors(self):
     #    self.fdat["ew_error"] = np.ones(len(self.fdat))
@@ -581,7 +584,7 @@ and float values.""".format(type(dof_thresholds))
     def theta(self, value):
         self.teff = 5040.0/value
     
-    @parameter(free=True, min=0.2, max=3.0, step_scale=0.1)
+    @parameter(free=False, min=0.2, max=3.0, step_scale=0.1)
     def theta_p(self):
         return self.theta
     
@@ -619,7 +622,6 @@ and float values.""".format(type(dof_thresholds))
         self._recalc_x = False
     
     def calc_cog_ews(self):
-        #print "calculating cog ews"
         lrws = self.cog(self.x_adj.values)
         self.fdat["cog_lrw_adj"] = lrws
         cog_lrw = lrws + self.doppler_lrw.values
@@ -630,7 +632,6 @@ and float values.""".format(type(dof_thresholds))
     def calc_cog(self):
         """calculate an approximate curve of growth and store its representation
         """
-        print "reintegrating effective cog"
         min_log_strength = -1.5
         max_log_strength = 4.5
         n_strength = 100
@@ -724,6 +725,39 @@ and float values.""".format(type(dof_thresholds))
         ax.set_xlabel("adjusted relative strength")
         ax.set_ylabel("log(EW/doppler_width)")
 
+
+class SimpleMatrixOpacityModel(Model):
+    
+    def __init__(self, model_wvs, opac_matrix, opac_strength):
+        Model.__init__(self)
+        self.wv = model_wvs
+        self.opac_matrix = scipy.sparse.csr_matrix(opac_matrix)
+        assert len(opac_matrix)==len(model_wvs)
+        self.opac_strength = opac_strength
+    
+    @parameter(free=True, min=0.0)
+    def opac_strength_p(self):
+        return self.opac_strength
+    
+    @opac_strength_p.setter
+    def opac_strength(self, value):
+        self.opac_strength = value
+    
+    def __call__(self, input_vec):
+        return self.opac_matrix*self.opac_strength
+
+class OpacityToTransmission(Model):
+    
+    def __init__(self):
+        Model.__init__(self)
+    
+    def __call__(self, input_vec):
+        return np.exp(-input_vec)
+    
+    def as_linear_op(self, input_vec):
+        npts = len(input_vec)
+        return scipy.sparse.dia_matrix((-np.exp(-input_vec), 0), shape=(npts, npts))
+    
 
 class Feature(object):
     

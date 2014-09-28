@@ -2,6 +2,7 @@ import thimbles as tmb
 import time
 import h5py
 from thimbles.modeling import modeling
+from thimbles.hydrogen import get_H_mask
 import numpy as np
 import pandas as pd
 import scipy.sparse
@@ -11,6 +12,7 @@ import argparse
 import cPickle
 import multiprocessing
 from copy import copy
+import json
 
 parser = argparse.ArgumentParser("fit prototype")
 #parser.add_argument("fname")
@@ -26,13 +28,14 @@ parser.add_argument("--x-offset", type=float, default=7.0)
 parser.add_argument("--rv-file", default="vrad.txt")
 parser.add_argument("--teff", type=float, default=5000.0)
 parser.add_argument("--vmicro", type=float, default=2.0)
+parser.add_argument("--H_mask_radius", type=float, default=5.0)
 parser.add_argument("--model-resolution", type=float, default=1e5)
 parser.add_argument("--lsf-pkl")
 
 def get_max_resolution(spectra):
     reses = [np.median(scipy.gradient(spec.wv)/spec.wv) for spec in spectra]
     return np.max(reses)
-
+    
 def get_data_transforms(spectra, model_wv):
     print "generating data transforms"
     transforms = []
@@ -63,15 +66,73 @@ class ConstantMultiplierModel(object):
     def as_linear_op(self, input, **kwargs):
         return self._lin_op
 
+def freeze_params(fstate, teff=True, mean_gamma_ratio=True, vmicro=True):
+    if teff:
+        fstate.model_network.feature_mod.theta_p._free = False
+    if mean_gamma_ratio:
+        fstate.model_network.feature_mod.mean_gamma_ratio_p._free = False
+    if vmicro:
+        fstate.model_network.feature_mod.vmicro_p._free = False
 
+def thaw_params(fstate, teff=True, mean_gamma_ratio=True, vmicro=True):
+    if teff:
+        fstate.model_network.feature_mod.theta_p._free = True
+    if mean_gamma_ratio:
+        fstate.model_network.feature_mod.mean_gamma_ratio_p._free = True
+    if vmicro:
+        fstate.model_network.feature_mod.vmicro_p._free = True
 
-class SpectralModeler(object):
+def iter_cleanup(fstate):
+    print "in fstate {}".format(fstate)
+    mnet = fstate.model_network
+    spec_idx = mnet.spectrum_id
+    teff = mnet.feature_mod.teff
+    vmicro = mnet.feature_mod.vmicro
+    gamma_rat = mnet.feature_mod.mean_gamma_ratio
+    print "teff {:5.3f}  vmicro {:5.3f} gamma_ratio {:5.4f} ".format(teff, vmicro, gamma_rat)
     
-    def __init__(self, target_spectra, lsf_models, ldat, species_grouper, max_iter):
+    spec = mnet.target_spectra[0]
+    if False:
+        fig, axes = plt.subplots(2)
+        lwv = np.log10(spec.wv)
+        axes[0].cla()
+        model_values = mnet.trees[0]()
+        axes[0].plot(lwv, spec.flux, lwv, model_values)
+        axes[1].cla()
+        resid = model_values-spec.flux
+        axes[1].plot(lwv, np.sign(resid)*np.sqrt(resid**2*spec.inv_var))
+        axes[1].set_ylim(-12.0, 12.0)
+        fig.savefig("figures/spec_{}_cfit.png".format(spec_idx))
+    mnet.feature_mod.fit_offsets()
+    mnet.feature_mod.calc_grouping_matrix()
+    mnet.feature_mod.collapse_feature_matrix()
+
+def write_results(fstate):
+    mnet = fstate.model_network
+    spec_idx = mnet.spectrum_id
+    mnet.feature_mod.fdat.to_hdf("ew_files/spec_{}_ew.h5".format(spec_idx), "fdat")
+    #cPickle.dump(smod, open("model_files/spec_{}_mod.pkl", "w"))
+    f = open("model_files/spec_{}_params.txt".format(spec_idx), "w")
+    fmod = mnet.feature_mod
+    out_data_dict = dict(teff=fmod.teff, mean_gamma_ratio=fmod.mean_gamma_ratio, vmicro=fmod.vmicro, log_likelihood=fstate.log_likelihood)
+    #f.write("{}  {}  {}\n".format(smod.feature_mod.teff, smod.feature_mod.vmicro, smod.feature_mod.mean_gamma_ratio))
+    json.dump(out_data_dict, f)
+    f.flush()
+    f.close()
+
+
+
+class SpectralModeler(modeling.DataModelNetwork):
+    
+    def __init__(self, target_spectra, lsf_models, ldat, species_grouper, max_iter, spectrum_id, start_teff):
+        self.spectrum_id = spectrum_id
+        self.hmasks = [get_H_mask(tspec.wv, args.H_mask_radius) for tspec in target_spectra]
         self.target_spectra = target_spectra
+        for tspec_idx, tspec in enumerate(self.target_spectra):
+            tspec.inv_var = np.where(self.hmasks[tspec_idx], tspec.inv_var, 0.0001)
         
         min_wv = np.min([np.min(spec.wv) for spec in target_spectra])
-        max_wv = np.max([np.max(spec.wv) for spec in target_spectra])    
+        max_wv = np.max([np.max(spec.wv) for spec in target_spectra])
         
         self.feature_mod = tmb.features.SaturatedVoigtFeatureModel(
             ldat, 
@@ -83,7 +144,8 @@ class SpectralModeler(object):
             snr_target=args.snr_target,
             initial_x_offset=args.x_offset, 
             vmicro=args.vmicro,
-            teff=args.teff,
+            mean_gamma_ratio=0.3,
+            teff=start_teff,#args.teff,
             model_resolution=args.model_resolution,
             species_grouper=species_grouper
         )
@@ -97,9 +159,9 @@ class SpectralModeler(object):
         self.lsf_models = lsf_models
         print "blaze mods"
         #blaze_models = [ConstantMultiplierModel(spec.norm) for spec in spectra]
-        self.blaze_models = [tmb.spectrographs.PiecewisePolynomialSpectrographEfficiencyModel(spec.wv, n_max_part=1.5, degree=2) for spec in target_spectra]
+        self.blaze_models = [tmb.spectrographs.PiecewisePolynomialSpectrographEfficiencyModel(spec.wv, n_max_part=4.5, degree=2) for spec in target_spectra]
         
-        print "building modeler"
+        print "stitching models together"
         data_model_trees = []
         for spec_idx in range(len(target_spectra)):
             mods = [self.feature_mod]#, self.ctm_mod, self.hmod]
@@ -114,43 +176,64 @@ class SpectralModeler(object):
             blaze_mod.retrain(norm/np.where(blaze_input_res > 0.01, blaze_input_res, 0.5), np.ones(norm.shape))
         
         #import pdb; pdb.set_trace()
-        model_net = modeling.DataModelNetwork(data_model_trees)
         #set up the fit models
         mstack0 = copy(self.blaze_models)
-        blaze_alone = modeling.FitState(models=mstack0, clamping_factor=0.1, max_iter=1)
-        mstack1 = []
-        #mstack1.extend(self.blaze_models)
-        mstack1.append(self.feature_mod)
-        features_alone = modeling.FitState(models=mstack1, clamping_factor=1.0, max_iter=1)
-        together_models = []
-        together_models.extend(self.blaze_models)
-        together_models.append(self.feature_mod)
-        together = modeling.FitState(models =together_models, clamping_factor=10.0, max_iter=max_iter, max_reweighting_iter=10)
+        blaze_alone = modeling.FitState(models=mstack0, clamping_factor=10.1, max_iter=1)
+        features_alone = modeling.FitState(models=[self.feature_mod], clamping_factor=10.0, max_iter=1, cleanup_func=thaw_params, setup_func=freeze_params)
+        
+        teff_only = modeling.FitState(models=[self.feature_mod], 
+                                      clamping_factor=10.0, 
+                                      max_iter=5, 
+                                      cleanup_func=lambda x: thaw_params(x, teff=True), 
+                                      setup_func=lambda x: freeze_params(x, teff=False))
+        
+        vmicro_only = modeling.FitState(models=[self.feature_mod], 
+                                      clamping_factor=10.0, 
+                                      max_iter=5, 
+                                      cleanup_func=lambda x: thaw_params(x, vmicro=True), 
+                                      setup_func=lambda x: freeze_params(x, vmicro=False))
+        
+        gmr_only = modeling.FitState(models=[self.feature_mod], 
+                                      clamping_factor=10.0, 
+                                      max_iter=5, 
+                                      cleanup_func=lambda x: thaw_params(x, mean_gamma_ratio=True), 
+                                      setup_func=lambda x: freeze_params(x, mean_gamma_ratio=False))
+        
+        #together_models = []
+        #together_models.extend(self.blaze_models)
+        #together_models.append(self.feature_mod)
+        #all_together_now = modeling.FitState(models =together_models, clamping_factor=20.0, max_iter=max_iter, max_reweighting_iter=10)
+        
         fit_states = []
         for slosh_idx in range(5):
             fit_states.append(features_alone)
             fit_states.append(blaze_alone)
-        fit_states.append(together)
-        fit_policy = modeling.FitPolicy(model_net, fit_states=fit_states)
-        model_net.set_fit_policy(fit_policy)
-        self.model_net = model_net
-    
-    def iterate(self):
-        return self.model_net.iterate()
-        #if models is None:
-        #    models = [self.feature_mod]#, self.hmod]
-        #    models.extend(self.blaze_models)
-        #self.modeler.iterate(models)
-    
-    def converge(self, callback):
-        self.model_net.converge(callback)
+        for slosh_idx in range(5):
+            fit_states.append(teff_only)
+            fit_states.append(gmr_only)
+            #fit_states.append(vmicro_only)
+            fit_states.append(blaze_alone)
+            fit_states.append(features_alone)
+        for slosh_idx in range(20):
+            fit_states.append(teff_only)
+            fit_states.append(gmr_only)
+            fit_states.append(vmicro_only)
+            fit_states.append(blaze_alone)
+            fit_states.append(features_alone)
+        #fit_states.append(all_together_now)
+        super(SpectralModeler, self).__init__(data_model_trees)
+        fit_policy = modeling.FitPolicy(self, fit_states=fit_states, finish_callback=write_results, iteration_callback=iter_cleanup)
+        self.set_fit_policy(fit_policy)
 
-def fit_lowres_spectrum(spec_idx, plot=True, max_iter=50):
+def fit_lowres_spectrum(spec_idx, plot=True, max_iter=20):
     hf = h5py.File("globulars_all.h5", "r")
     spectrum_wvs = np.power(10.0, np.array(hf["log_wvs"]))
     spectrum_lsf = np.array(hf["resolution"])
     min_wv = spectrum_wvs[0]
     max_wv = spectrum_wvs[-1] 
+    
+    #load the sspp results
+    sspp_dict = json.load(open("sspp_model_files/spec_{}.json".format(spec_idx)))
     
     pre_grouped = False
     if not args.input_h5 is None:
@@ -170,57 +253,23 @@ def fit_lowres_spectrum(spec_idx, plot=True, max_iter=50):
     print "generating lsf model"
     lsf_models =  [tmb.resolution.LineSpreadFunctionModel(model_wv, spectrum_wvs, spectrum_lsf)]
     
-    if plot:
-        fig, axes = plt.subplots(2)
     spec = tmb.Spectrum(spectrum_wvs, np.array(hf["flux"][spec_idx]), np.array(hf["invvar"][spec_idx]))
-    smod = SpectralModeler(target_spectra=[spec], lsf_models=lsf_models, ldat=ldat, species_grouper=grouper, max_iter=max_iter)
+    smod = SpectralModeler(target_spectra=[spec], lsf_models=lsf_models, ldat=ldat, species_grouper=grouper, max_iter=max_iter, spectrum_id=spec_idx, start_teff=sspp_dict["teff"])
     
     first_stime = time.time()
     #damping_schedule = {0:(1e5, 1e5), 3:(1e4, 1e4), 5:(1e3, 1e3), 7:(3e2, 3e2), 12:(1e2, 1e2), 18:(5.0, 5.0)}
     
-    def iter_cleanup(fstate):
-        teff = smod.feature_mod.teff
-        vmicro = smod.feature_mod.vmicro
-        gamma_rat = smod.feature_mod.mean_gamma_ratio
-        print "teff {:5.3f}  vmicro {:5.3f} gamma_ratio {:5.4f} ".format(teff, vmicro, gamma_rat)
-        
-        if plot:
-            lwv = np.log10(spec.wv)
-            axes[0].cla()
-            model_values = smod.model_net.trees[0]()
-            axes[0].plot(lwv, spec.flux, lwv, model_values)
-            axes[1].cla()
-            resid = model_values-spec.flux
-            axes[1].plot(lwv, np.sign(resid)*np.sqrt(resid**2*spec.inv_var))
-            axes[1].set_ylim(-15.0, 15.0)
-            fig.savefig("figures/spec_{}_cfit.png".format(spec_idx))
-        
-        smod.feature_mod.fit_offsets()
-        smod.feature_mod.calc_grouping_matrix()
-        smod.feature_mod.collapse_feature_matrix()
-        
-        ctime = time.time()
-        total_duration = ctime-first_stime
-        print "iter {} finished,  {} seconds average".format(fstate.iter_num+1, total_duration/float(fstate.iter_num+1))
-    
     print "fit iterating"
     #import pdb; pdb.set_trace()
-    smod.converge(iter_cleanup)
-    
-    smod.feature_mod.fdat.to_hdf("ew_files/spec_{}_ew.h5".format(spec_idx), "fdat")
-    #cPickle.dump(smod, open("model_files/spec_{}_mod.pkl", "w"))
-    f = open("model_files/spec_{}_params.txt".format(spec_idx), "w")
-    f.write("{}  {}  {}\n".format(smod.feature_mod.teff, smod.feature_mod.vmicro, smod.feature_mod.mean_gamma_ratio))
-    f.flush()
-    f.close()
+    smod.converge()
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
     
-    #pool = multiprocessing.Pool(multiprocessing.cpu_count())
-    #pool.map(fit_lowres_spectrum, range(1024))
+    pool = multiprocessing.Pool(multiprocessing.cpu_count())
+    pool.map(fit_lowres_spectrum, range(1024))
     
     #import pdb; pdb.set_trace()
-    fit_lowres_spectrum(14)
+    #fit_lowres_spectrum(15)
     

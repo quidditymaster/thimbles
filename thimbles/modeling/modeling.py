@@ -14,7 +14,8 @@ class ModelingError(Exception):
 #"distribution":NormalDeltaDistribution,
 #}
 
-def parameter(free=False, scale=1.0, name=None, step_scale=1.0, derivative_scale=0.01, convergence_scale=0.01, min=-np.inf, max=np.inf, history_max=10):
+
+def parameter(free=False, scale=1.0, name=None, step_scale=1.0, derivative_scale=0.0001, convergence_scale=0.01, min=-np.inf, max=np.inf, history_max=10):
     """a decorator to turn getter methods of Model class objects 
     into Parameter objects.
     """
@@ -439,11 +440,12 @@ class DataRootedModelTree(object):
 
 class FitPolicy(object):
     
-    def __init__(self, model_network=None, fit_states=None, iteration_callback=None, transition_callback=None, max_state_iter=100, max_transitions=100):
+    def __init__(self, model_network=None, fit_states=None, iteration_callback=None, transition_callback=None, finish_callback=None, max_state_iter=100, max_transitions=100):
         self.max_state_iter = max_state_iter
         self.max_transitions = max_transitions
         self.iteration_callback=iteration_callback
         self.transition_callback=transition_callback
+        self.finish_callback=finish_callback
         if fit_states is None:
             fit_states = [FitState(model_network)]
         self.transition_map = {}
@@ -489,23 +491,25 @@ class FitPolicy(object):
             self.iteration_callback(self.current_fit_state)
         return iter_res
     
-    def converge(self, callback=None):
+    def converge(self):
         self.check_model_network()
         total_iter_num = 0
         available_transitions = copy(self.transition_map)
         for trans_num in range(self.max_transitions):
             fs_converged = False
+            self.current_fit_state.setup()
             for iter_idx in range(self.max_state_iter):
                 #import pdb; pdb.set_trace()
+                self.current_fit_state.iter_setup()
                 fs_converged = self.iterate()
-                if not callback is None:
-                    callback(self.current_fit_state) 
+                self.current_fit_state.iter_cleanup()
                 total_iter_num += 1
                 if fs_converged:
                     print "fit state converged"
                     break
             if not fs_converged:
                 print "warning max_iter exceded"
+            self.current_fit_state.cleanup()
             if not self.transition_callback is None:
                 self.transition_callback(self.current_fit_state)
             print "attempting transition to next fit state"
@@ -513,14 +517,15 @@ class FitPolicy(object):
             transition_options = available_transitions.get(self.current_fit_state, [])
             if transition_options == []:
                 print "no next fit state found assuming completion"
-                raise Exception("a hook for pdb.pm")
+                if not self.finish_callback is None:
+                    self.finish_callback(self.current_fit_state) 
                 break
             else:
                 self.current_fit_state = transition_options.pop(0)
 
 class FitState(object):
     
-    def __init__(self, model_network=None, models=None, trees=None, clamping_factor=2.0, alpha=2.0, beta=2.0, max_iter=10, max_reweighting_iter=3):
+    def __init__(self, model_network=None, models=None, trees=None, clamping_factor=5.0, clamping_nu=1.2, max_clamping=1000.0, alpha=2.0, beta=2.0, max_iter=10, max_reweighting_iter=10, setup_func=None, iter_setup_func=None, iter_cleanup_func=None, cleanup_func=None):
         self.models = models
         self.trees = trees
         self.set_model_network(model_network)
@@ -529,8 +534,33 @@ class FitState(object):
         self.max_iter = max_iter
         self.max_reweighting_iter = max_reweighting_iter
         self.clamping_factor=clamping_factor
+        self.clamping_nu = clamping_nu
+        assert self.clamping_nu > 1.0
+        self.max_clamping = max_clamping
         self.alpha=alpha
         self.beta=beta
+        self.converged = False
+        self.log_likelihood = np.inf
+        self.setup_func = setup_func
+        self.cleanup_func = cleanup_func
+        self.iter_setup_func = iter_setup_func
+        self.iter_cleanup_func = iter_cleanup_func
+    
+    def setup(self):
+        if not self.setup_func is None:
+            self.setup_func(self)
+    
+    def iter_setup(self):
+        if not self.iter_setup_func is None:    
+            self.iter_setup_func(self)
+    
+    def iter_cleanup(self):
+        if not self.iter_cleanup_func is None:
+            self.iter_cleanup_func(self)
+    
+    def cleanup(self):
+        if not self.cleanup_func is None:
+            self.cleanup_func(self)
     
     def set_model_network(self, model_network):
         self.model_network = model_network
@@ -579,10 +609,10 @@ class FitState(object):
             pdict[(model, attr)] = cpdict
         return pdict
     
-    def get_clamping_vector(self):
-        scale_vec = self.get_pvec(attr="scale")
-        step_scale = self.get_pvec(attr="step_scale")
-        return (self.clamping_factor/(step_scale*scale_vec))**2
+    #def get_clamping_vector(self):
+    #    scale_vec = self.get_pvec(attr="scale")
+    #    step_scale = self.get_pvec(attr="step_scale")
+    #    return self.clamping_factor/(step_scale*scale_vec)
     
     def get_expansions(self):
         expansions = [[None for i in range(len(self.models))] for j in range(len(self.trees))]
@@ -616,7 +646,7 @@ class FitState(object):
     
     def iterate(self):
         #accumulate the linear fit expansions for all models
-        clamp = self.get_clamping_vector()
+        #clamp = self.get_clamping_vector()
         data_weights = np.hstack(self.get_data_weights())
         data_values = np.hstack(self.get_data_values())
         model_values = np.hstack(self.get_model_values())
@@ -626,48 +656,52 @@ class FitState(object):
         
         zero_vec = np.zeros(n_params)
         deltas = data_values-model_values
-        target_vec = np.hstack([deltas, zero_vec])
+        old_chi_sq = np.sum(deltas**2*data_weights)
+        
+        #target_vec = np.hstack([deltas, zero_vec])
         param_ident_mat = scipy.sparse.identity(n_params, format="csr")
-        fit_and_damp = scipy.sparse.vstack([fit_matrix, param_ident_mat])
+        #fit_and_damp = scipy.sparse.vstack([fit_matrix, param_ident_mat])
         
-        #now generate the weighting matrices and weight both sides
-        joint_weight = np.hstack([data_weights, clamp])
-        n_full = len(joint_weight)
-        weighting_mat = scipy.sparse.dia_matrix((joint_weight, 0), (n_full, n_full))
+        ##now generate the weighting matrices and weight both sides
+        #double_weight = np.hstack([data_weights, data_weights])
+        #n_full = len(double_weight)
+        weighting_mat = scipy.sparse.dia_matrix((data_weights, 0), (len(data_weights), len(data_weights)))
         
-        for reweighting_idx in range(self.max_reweighting_iter):
-            #carry out the fit
-            fit_result = scipy.sparse.linalg.lsqr(weighting_mat*fit_and_damp, weighting_mat*target_vec)[0]
+        #relax the clamping
+        self.clamping_factor = max(1.0, self.clamping_factor/self.clamping_nu)
+        
+        #carry out the fit
+        param_direction = scipy.sparse.linalg.lsqr(weighting_mat*fit_matrix, weighting_mat*deltas, atol=0, btol=0, conlim=0, iter_lim=1000)[0]
+        
+        for reweighting_idx in range(self.max_reweighting_iter+1):
+            #set a delta on the basis of the current clamping factor
+            cur_delta = param_direction/self.clamping_factor
+            self.set_pvec(cur_delta, as_delta=True)
             
             #check to make sure the new parameters are actually better
-            old_chi_sq = np.sum(deltas**2*data_weights)
             new_model_values = self.get_model_values()
             new_chi_sq = np.sum((data_values-new_model_values)**2*data_weights)
             
             if new_chi_sq < old_chi_sq:
-                print "new chi sq {: 10.3f}".format(new_chi_sq)
                 #end the reweighting search
                 break
             else:
-                print "chi sq {} not an improvement over {} attempting to sparsify".format(new_chi_sq, old_chi_sq)
-                #increase the damping
-                scale_vec = self.get_pvec("scale")
-                step_scales = self.get_pvec("step_scale")
-                #sparse_clamp = clamp
-                #sparse_clamp *= np.power(1.15, reweighting_idx) #overall strengthening of damping
-                sparse_clamp = 1.0/(fit_result/(scale_vec*step_scales) + 0.01)
-                sparse_clamp /= np.sum(sparse_clamp)
-                sparse_clamp *= self.clamping_factor**2 #promote sparsity and penalize steps much beyond step_scale
-                print "new clamping weights {}".format(sparse_clamp)
-                weighting_mat = scipy.sparse.dia_matrix((np.hstack([data_weights, sparse_clamp]), 0), (n_full, n_full))
+                self.clamping_factor *= self.clamping_nu
+                if self.clamping_factor > self.max_clamping:
+                    self.clamping_factor = self.max_clamping
+                    break
         
+        print "clamping factor", self.clamping_factor
+        print "new chi sq {: 10.3f}".format(new_chi_sq)
+        self.log_likelihood = -new_chi_sq
         #set the best fit delta
-        self.set_pvec(fit_result, as_delta=True)
+        self.set_pvec(cur_delta, as_delta=True)
         self.iter_num += 1
         #print "iter num", self.iter_num
         #print "fit result", fit_result
         #print "param_vals", self.get_pvec()
         if self.iter_num > self.max_iter:
+            self.converged = True
             return True
         return False
 
@@ -695,9 +729,8 @@ class DataModelNetwork(object):
             self.model_to_trees[model] = chain_res
             chain_res.append(tree)
     
-    def converge(self, callback):
-        self.fit_policy.converge(callback)
+    def converge(self):
+        self.fit_policy.converge()
     
     def iterate(self):
-        self.fit_policy.iterate()
-    
+        return self.fit_policy.iterate()

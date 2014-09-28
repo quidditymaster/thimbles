@@ -282,6 +282,7 @@ class Parameter(object):
                  step_scale,
                  derivative_scale,
                  convergence_scale,
+                 fit_class=1,
                  min, 
                  max, 
                  history_max,

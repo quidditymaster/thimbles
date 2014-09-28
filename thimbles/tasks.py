@@ -18,8 +18,28 @@ import numpy as np
 import inspect
 from collections import OrderedDict
 from types import LambdaType
+import user_namespace
+import cPickle
 
 # ########################################################################### #
+
+task_registry = {}
+
+def task(name=None, category="misc", result_name="result", argstrings=None):
+    new_task = Task()
+    def task_maker(task_func):
+        name = name 
+        if name is None:
+            name = task_func.__name__
+        task_registry[name] = Task(task_func, argstrings=argstrings, result_name=result_name)
+        return task_func
+    return task_maker
+
+#def task(task_func):
+#    task_registry[task_func.__name__] = Task(task_func)
+
+def task_parser(task, task_args):
+    pass
 
 class EvalError (Exception):
 
@@ -53,7 +73,7 @@ def fprint (func,max_lines=100,exclude_docstring=True,show=True):
         print(to_print) 
     else:
         return to_print 
-   
+
 class Task (object):
     """ A task is based on some function
     
@@ -95,9 +115,9 @@ class Task (object):
     
       
     """ 
-    defaultNamespace = globals()
+    defaultNamespace = user_namespace.__dict__
     
-    def __init__ (self,target,argstrings=None):
+    def __init__ (self, target=None, argstrings=None, result_name="result"):
         """
         Parameters
         target : callable
@@ -112,16 +132,17 @@ class Task (object):
         
         """        
         # store target
-        if not callable(target):
-            raise TypeError("target function must be callable")
-        self.target = target 
+        #if not callable(target):
+        #    raise TypeError("target function must be callable")
+        self.target = target
         self._target_id = id(target)
+        self.result_name=result_name
         # initialize argstrings for target
         self.reset_argstrings(argstrings=argstrings)
         if self.star_args is not None:
             raise ValueError("can't accept *args right now")
         # update doc string with target
-                      
+    
     def reset_argstrings (self,argstrings=None):
         """ Creates argstrings for the target function.
         
@@ -137,13 +158,13 @@ class Task (object):
             keys with have the names of variables for the target function
             the values are strings which can be evaluated, i.e. eval(value)
                 
-        """    
+        """
         # get the argspec of target
         self.argspec = inspect.getargspec(self.target)
         argspec = self.argspec
         
         self.argstrings = OrderedDict()        
-                            
+        
         # define argstrings as an ordered dictionary
         nargs = len(self.argspec.args)
         if self.argspec.defaults is None:
@@ -170,13 +191,13 @@ class Task (object):
         
         # store variables            
         self._argnames = argnames
-        self._keynames = keynames                   
+        self._keynames = keynames           
         self.star_args = argspec.varargs
         self.star_kwargs = argspec.keywords
         
         if argstrings is not None:        
             self.update_argstrings(argstrings)
-                                  
+    
     def update_argstrings (self,argstrings=None,namespace=None):
         """ Update what value is evaluated
         
@@ -208,23 +229,22 @@ class Task (object):
                     raise TypeError("every value in argstrings must be a string which can be evaluated")
                 if key in self.argstrings:
                     self.argstrings[key] = argstrings[key]
-            
+    
     def get_repr (self,value):
-        """ Take a value to a representation which can be evaluates
+        """ Take a value to a representation which can be evaluated
                 
         rep = self.get_repr(obj_in)
         obj_out = eval(rep)
         obj_in == obj_out # True
-            
-        This function is used whenever argstrings are given to one of these methods
         
+        This function is used whenever argstrings are given to one of these methods
         Parameter
         value : obj
             If lambda function then the one line string evaluation is returned
             Else repr(obj) is returned. If you have a custom object you want to
             evaluate this way then please specify __repr__ for it
             Any function (callable) can't be given
-            
+        
         Raises
         EvalError : if value is a callable function then there is not a simple 
                     repr for it. 
@@ -232,14 +252,15 @@ class Task (object):
         """    
         if isinstance(value,(basestring,float,int,complex,list,dict)):
             return repr(value)
-
-        elif isinstance(value,LambdaType):
+        if isinstance(value,LambdaType):
             rep = inspect.getsource(hey).rstrip()
             return rep[rep.find("=")+1:]
-
-        elif callable(value):
-            # perhaps use the memory address to instanciate a python object
-            raise EvalError("Don't know how to turn function into a re-evaluatable thing")
+        else:
+            return cPickle.dumps(value)
+        
+        #elif callable(value):
+        #    # perhaps use the memory address to instanciate a python object
+        #    raise EvalError("Don't know how to turn function into a re-evaluatable thing")
     
         else:
             return repr(value)
@@ -359,7 +380,7 @@ class Task (object):
         # eval target with namespace
         args,kws = self.get_args(namespace,**kwargs)
         return self.target(*args,**kws)
-        
+    
     def help (self):
         """ Returns a help string """
         # could include a repr of self.argstrings for help
@@ -374,3 +395,7 @@ class Task (object):
         return fprint(self.target,max_lines=max_lines,
                       exclude_docstring=exclude_docstring,show=show)
         
+    
+    def run_task(self):
+        eval_result = self.eval()
+        self.defaultNamespace[self.result_name] = eval_result

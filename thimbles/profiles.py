@@ -2,8 +2,8 @@ import scipy.special
 import numpy as np
 import scipy.optimize
 import scipy.ndimage
+import scipy.fftpack as fftpack
 import thimbles as tmb
-
 sqrt2pi = np.sqrt(2*np.pi)
 
 profile_functions = {}
@@ -65,6 +65,14 @@ def rotational(wvs, center, vsini, limb_darkening = 0):
     return result
 
 profile_functions["rotational"] = rotational
+
+def radial_tangential_macroturbulence(wvs, center, eta_rt, n_comp=256):
+    fft_freqs = fftpack.fftfreq(n_comp, 1.0)
+    centering_phase = np.exp(-1j*np.pi*np.arange(n_comp))
+    to_trans = 1.0-np.exp(eta_rt*fft_freqs**2)
+    full_profile = fftpack.ifft(centering_phase*to_trans)
+    import pdb; pdb.set_trace()
+    
 
 #def voigt_rotational(wvs, center, g_width, l_width, vsini, limb_darkening): #this routine has edge problems with the convolution
 #    "generates a voigt profile convolved with a rotational broadening profile"

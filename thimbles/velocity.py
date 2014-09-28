@@ -11,6 +11,7 @@ from spectrum import Spectrum
 from utils.misc import cross_corr
 from utils.misc import local_gaussian_fit
 from spectrum import WavelengthSolution
+from thimbles.tasks import task
 # ########################################################################### #
 
 from thimbles import resource_dir
@@ -39,6 +40,7 @@ for i in range(3): #number of times to retry if load fails
 
 speed_of_light = 299792.458
 
+#@task()
 def template_rv_estimate(spectra, template=rv_standard, delta_max=500, pix_poly_width=2):
     """use a template spectrum to estimate a common rv shift for a collection
     of spectra.

@@ -9,6 +9,7 @@ import scipy.sparse
 from flags import FeatureFlags
 from thimbles.stellar_atmospheres import solar_abundance as ptable
 from thimbles.profiles import voigt
+from thimbles import resource_dir
 from thimbles.modeling.modeling import parameter, Model
 from thimbles.utils.misc import smooth_ppol_fit
 import thimbles.utils.piecewise_polynomial as ppol
@@ -724,6 +725,39 @@ and float values.""".format(type(dof_thresholds))
         ax.set_xlabel("adjusted relative strength")
         ax.set_ylabel("log(EW/doppler_width)")
 
+
+class SimpleMatrixOpacityModel(Model):
+    
+    def __init__(self, model_wvs, opac_matrix, opac_strength):
+        Model.__init__(self)
+        self.wv = model_wvs
+        self.opac_matrix = scipy.sparse.csr_matrix(opac_matrix)
+        assert len(opac_matrix)==len(model_wvs)
+        self.opac_strength = opac_strength
+    
+    @parameter(free=True, min=0.0)
+    def opac_strength_p(self):
+        return self.opac_strength
+    
+    @opac_strength_p.setter
+    def opac_strength(self, value):
+        self.opac_strength = value
+    
+    def __call__(self, input_vec):
+        return self.opac_matrix*self.opac_strength
+
+class OpacityToTransmission(Model):
+    
+    def __init__(self):
+        Model.__init__(self)
+    
+    def __call__(self, input_vec):
+        return np.exp(-input_vec)
+    
+    def as_linear_op(self, input_vec):
+        npts = len(input_vec)
+        return scipy.sparse.dia_matrix((-np.exp(-input_vec), 0), shape=(npts, npts))
+    
 
 class Feature(object):
     

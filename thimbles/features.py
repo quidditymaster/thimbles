@@ -16,6 +16,7 @@ import thimbles.utils.piecewise_polynomial as ppol
 from thimbles import verbosity
 from thimbles import hydrogen
 from latbin import matching
+from thimbles.utils.misc import saturated_voigt_cog
 
 def indicator_factory(indval, tolerance):
     return lambda x: np.abs(x-indval) < tolerance
@@ -86,9 +87,9 @@ class SaturatedVoigtFeatureModel(Model):
                  snr_target=100.0,
                  dof_thresholds=None,
                  teff=5000.0,
-                 mean_gamma_ratio=0.05, 
-                 vmicro=2.0, 
-                 vmacro=1.0, 
+                 gamma_ratio_5000=0.05, 
+                 vmicro=2.0,
+                 vmacro=1.0,
                  initial_x_offset=7.0,
                  dof_threshold=0.0,
                  log_ion_frac=-0.01,
@@ -115,7 +116,7 @@ class SaturatedVoigtFeatureModel(Model):
           microturbulent velocity in kilometers per second
         vmacro: float
           macroturbulent velocity in kilometers per second
-        mean_gamma_ratio: float
+        gamma_ratio_5000: float
           the ratio of the lorentz width to the thermal width at 5000 angstroms.
         """
         super(SaturatedVoigtFeatureModel, self).__init__()
@@ -134,11 +135,7 @@ class SaturatedVoigtFeatureModel(Model):
         self.H_mask_radius=H_mask_radius
         self.max_delta_wv = max_delta_wv
         self.max_delta_x = max_delta_x
-        #default_pdamp = {"theta":5000.0, "vmicro":100}
-        #if fit_damping_factors is None:
-        #    fit_damping_factors = {}
-        #default_pdamp.update(fit_damping_factors)
-        #self.fit_damping_factors = default_pdamp
+        
         self._check_initialize_column("ew", fill_value=0.001)
         self._check_initialize_column("wv_offset", fill_value=0.0)
         self._check_initialize_column("sigma_offset", fill_value=0.0)
@@ -156,22 +153,11 @@ class SaturatedVoigtFeatureModel(Model):
         
         #TODO: make the gamma ratio change as a function of wv
         #TODO: allow for individual gamma ratio's by interpolating cogs
-        self.mean_gamma_ratio = mean_gamma_ratio
+        self.gamma_ratio_5000 = gamma_ratio_5000
         self.model_resolution=model_resolution
         
         self.parameterize()
         self.calc_all()
-        
-        self.dof_thresholds = {"ew":1.5, "vel_offset":5.0, "sigma_offset":5.0, "gamma_offset":10.0}
-        if isinstance(dof_thresholds, dict):
-            self.dof_thresholds.update(dof_thresholds)
-        elif not dof_thresholds is None:
-            error_msg = """
-dof_thresholds of type {} type not understood. expected dictionary 
-with keys in the set 'ew', 'vel_offset', 'sigma_offset', 'gamma_offset'
-and float values.""".format(type(dof_thresholds))
-            raise ValueError(error_msg)
-        
         self.npts = int(np.log(self.max_wv/self.min_wv)*self.model_resolution)
         self.model_wv = np.exp(np.linspace(np.log(self.min_wv), np.log(self.max_wv), self.npts))
         self.model_wv_gradient = scipy.gradient(self.model_wv)
@@ -179,9 +165,9 @@ and float values.""".format(type(dof_thresholds))
         #a is defined as gamma*wv**2/(4*pi*c*doppler_width)
         
         self.calc_feature_matrix(overwrite=True)
-        self.calc_grouping_matrix(overwrite=True)
+        self.calc_relative_opac_matrix(overwrite=True)
         self.collapse_feature_matrix(overwrite=True)
-        
+    
     def _check_initialize_column(self, col_name, fill_value):
         """check if a column is defined and if it is not add it"""
         if not (col_name in self.fdat.columns):
@@ -197,49 +183,46 @@ and float values.""".format(type(dof_thresholds))
         self.calc_solar_ab()
         self.calc_doppler_widths()
         self.calc_x()
-        self.calc_cog_ews()
     
     def __call__(self, input, **kwargs):
         if self._recalc_doppler_widths:
             self.calc_doppler_widths()
-        if self._recalc_cog:
-            self.calc_cog()
         if self._recalc_x:
             self.calc_x()
-        if self._recalc_cog_ews:
-            self.calc_cog_ews()
-        if self._recalc_grouping_matrix:
-            self.calc_grouping_matrix()
+        if self._recalc_opac_matrix:
+            self.calc_relative_opac_matrix()
+        if self._recalc_feature_matrix:
+            self.calc_feature_matrix()
         if self._recollapse_feature_matrix:
             self.collapse_feature_matrix()
-        ret_val = 1.0 + self.cfm*self.exemplar_ews_p.get()
+        ret_val = self.cfm*self.exemplar_opac_p.get()
         return ret_val
     
-    @parameter(free=True, scale=1.0, min=0.01, max=200.0, step_scale=1.0)
-    def exemplar_ews_p(self, ):
-        #TODO cache this value
-        return scipy.sparse.linalg.lsqr(self.grouping_matrix, self.fdat["ew"].values)[0]
+    @parameter(free=True, scale=1.0, min=0.0001, max=1000.0, step_scale=1.0)
+    def exemplar_opac_p(self, ):
+        return self.exemplar_opac
     
-    @exemplar_ews_p.setter
-    def assign_exemplar_ews(self, exemplar_ews):            
-        ews = self.grouping_matrix*exemplar_ews
-        self.fdat['ew'] = ews
+    @exemplar_opac_p.setter
+    def set_exemplar_opac(self, exemplar_opacities):            
+        self.exemplar_opac = exemplar_opacities
+        per_feature_opacities = self.opac_matrix*exemplar_opacities
+        self.fdat["opac_strength"] = per_feature_opacities
+        self.calc_cog_ews()
     
-    @exemplar_ews_p.expander
+    @exemplar_opac_p.expander
     def expand_exemplar_effects(self, input_vec, **kwargs):
         return self.cfm
     
     @parameter(free=True, min=0.001, max=1.0, step_scale=0.1)
-    def mean_gamma_ratio_p(self):
-        return self.mean_gamma_ratio
+    def gamma_ratio_5000_p(self):
+        return self.gamma_ratio_5000
     
-    @mean_gamma_ratio_p.setter
-    def set_mean_gamma_ratio(self, value):
+    @gamma_ratio_5000_p.setter
+    def set_gamma_ratio_5000(self, value):
         #import pdb; pdb.set_trace()
-        self.mean_gamma_ratio = value
-        self._recalc_cog = True
-        self._recalc_cog_ews = True
-        self._recalc_grouping_matrix = True
+        self.gamma_ratio_5000 = value
+        self._recalc_opac_matrix = True
+        self._recalc_feature_matrix = True
         self._recollapse_feature_matrix = True
     
     #def calc_ew_errors(self):
@@ -268,14 +251,8 @@ and float values.""".format(type(dof_thresholds))
                 exemplar_idx = np.random.randint(len(species_ixs))
                 grp_exemplar = np.zeros(len(species_ixs), dtype=int)
                 grp_exemplar[exemplar_idx] = 1
-                self.fdat.ix[species_ixs, "group_exemplar"] = grp_exemplar 
-        #TODO
-        #generate a full feature matrix one column per feature
-        #generate a vector of max strengths
-        #(A^t * (F*diag(cog_ew))).max()
-        #relegate to background on the basis of the domination and total snr available
-        #chop the background vectors out of the big matrix and form a bk_vector 
-        #for each wavelength bound chop out a segment of spectrum
+                self.fdat.ix[species_ixs, "group_exemplar"] = grp_exemplar
+            self.exemplar_opac = 0.01*np.ones(len(species_groups))
     
     def optimize_fit_groups(self, spectra):
         transforms_to_model = []
@@ -320,7 +297,7 @@ and float values.""".format(type(dof_thresholds))
             max_idx = self.get_index(cent_wv*(1.0+window_delta), clip=True)
             sigma = ldata["doppler_width"]
             #TODO: replace the constant gamma with an appropriately varying one
-            gamma = self.mean_gamma_ratio*sigma
+            gamma = self.gamma_ratio_5000*sigma
             prof = voigt(self.model_wv[min_idx:max_idx+1], cent_wv, sigma, gamma)
             predicted_lrw = ldata["cog_lrw"]
             prof *= np.power(10.0, predicted_lrw)/np.max(prof)
@@ -385,7 +362,7 @@ and float values.""".format(type(dof_thresholds))
                     max_idx = self.get_index(cent_wv*(1.0+window_delta), clip=True)
                     sigma = max(ldata["doppler_width"], min_delta_wv[cent_idx])
                     #TODO: replace the constant gamma with an appropriately varying one
-                    gamma = self.mean_gamma_ratio*sigma
+                    gamma = self.gamma_ratio_5000*sigma
                     cog_lrw = ldata["cog_lrw"]
                     cog_ew = np.power(10.0, cog_lrw)*cent_wv
                     prof = cog_ew*voigt(self.model_wv[min_idx:max_idx+1], cent_wv, sigma, gamma)
@@ -436,52 +413,24 @@ and float values.""".format(type(dof_thresholds))
             idx = np.clip(idx, 0, self.npts-1)
         return idx
     
-    #def calc_bk_vec(self):
-    #    self.bk_vec = self.generate_bk_vec()
-    
-    def generate_bk_vec(self, bk_mask=None):
-        if bk_mask is None:
-            bk_mask = self.fdat.fit_group <=1    
-        bk_fdat = self.fdat[bk_mask]
-        bk_vec = np.zeros(self.npts)
-        for line_ix in bk_fdat.index:
-            ldat = bk_fdat.ix[line_ix]
-            ew = np.power(10.0, ldat["cog_lrw"])*ldat["wv"]
-            sigma = np.sqrt(ldat["doppler_width"]**2 +ldat["sigma_offset"]**2)
-            gamma = self.mean_gamma_ratio*sigma
-            
-            feat_wv = ldat["wv"]
-            wv_idx = self.get_index(feat_wv)
-            if wv_idx < 0:
-                continue
-            if wv_idx > self.npts-1:
-                continue
-            
-            lb = int(np.around(self.get_index(feat_wv-5.0*sigma, clip=True)))
-            ub = int(np.around(self.get_index(feat_wv+5.0*sigma, clip=True)))
-            profile = ew*voigt(self.model_wv[lb:ub+1], feat_wv, sigma, gamma)
-            profile = np.where(profile < 0.1, profile, 0.1)
-            bk_vec[lb:ub+1]=bk_vec[lb:ub+1] + profile
-        bk_vec = np.where(bk_vec < 0.5, bk_vec, 0.5)
-        self.bk_vec = bk_vec
-        return bk_vec
-    
-    #def calc_feature_matrix(self):
-    #    self.feature_matrix = self.generate_feature_matrix()
-    
     def calc_feature_matrix(self, overwrite=True):
         print "generating full feature matrix"
         indexes = [] #arrays of the row indexes belonging to each column
         profiles = []
         sig_offs = self.fdat["sigma_offset"]
-        target_widths = np.sqrt(np.clip(self.fdat["doppler_width"]**2 + np.sign(sig_offs)*sig_offs**2, 0, np.inf))
+        gam_offs = self.fdat["gamma_offset"]
+        wv_5000 = self.fdat["wv"]/5000.0
+        target_sigma_widths = np.clip(self.fdat["doppler_width"]+sig_offs, 0.0001, np.inf)
+        target_gamma_widths = np.clip(self.gamma_ratio_5000*target_sigma_widths*wv_5000+gam_offs, 0.0001, np.inf)
         for feat_idx in range(self.n_feat):
             column_idx = int(self.fdat["feature_num"].iloc[feat_idx])
             feat_wv = self.fdat["wv"].iloc[feat_idx]
-            target_width = target_widths.iloc[feat_idx]
-            lb = int(np.around(self.get_index(feat_wv-6.0*target_width, clip=True)))
-            ub = int(np.around(self.get_index(feat_wv+6.0*target_width, clip=True)))
-            prof = voigt(self.model_wv[lb:ub+1], feat_wv, target_width, 0.0)
+            target_sig_width = target_sigma_widths.iloc[feat_idx]
+            target_gam_width = target_gamma_widths.iloc[feat_idx]
+            window_size = max(target_gam_width*25, target_sig_width*5.0)
+            lb = int(np.around(self.get_index(feat_wv-window_size, clip=True)))
+            ub = int(np.around(self.get_index(feat_wv+window_size, clip=True)))
+            prof = voigt(self.model_wv[lb:ub+1], feat_wv, target_sig_width, target_gam_width)
             indexes.append(np.array([np.arange(lb, ub+1), np.repeat(column_idx, len(prof))])) 
             profiles.append(prof)
         indexes = np.hstack(indexes)
@@ -489,36 +438,35 @@ and float values.""".format(type(dof_thresholds))
         npts = len(self.model_wv)
         full_matrix = scipy.sparse.csc_matrix((profiles, indexes), shape=(npts, self.n_feat))
         if overwrite:
-            self.feature_matrix = full_matrix 
+            self.feature_matrix = full_matrix
+            self._recalc_feature_matrix = False 
         return full_matrix 
     
-    def calc_grouping_matrix(self, overwrite=True):
-        #print "generating grouping matrix"
+    def calc_relative_opac_matrix(self, overwrite=True):
         grouping = ["species_group", "fit_group"]
         group_gb = self.fdat.groupby(grouping)
-        group_ew_sum = group_gb["cog_ew"].sum()
         groups = group_gb.groups
         n_groups = len(groups)
         group_keys = sorted(groups.keys())
-        ew_frac = pd.Series(np.zeros(len(self.fdat)), index=np.array(self.fdat.index))
+        opac_frac = pd.Series(np.zeros(len(self.fdat)), index=np.array(self.fdat.index))
         matrix_idxs = {species:[] for species in self.species_id_set}
-        ew_frac_data = {species:[] for species in self.species_id_set}
+        opac_frac_data = {species:[] for species in self.species_id_set}
         col_max = {}
         for group_idx in range(n_groups):
             group_id = group_keys[group_idx]
             #TODO: remove background features by detecting negative fit groups
             group_ldf = self.fdat.ix[groups[group_id]]
-            relative_ews = group_ldf.cog_ew/group_ew_sum[group_id]
-            ew_frac.ix[groups[group_id]] = relative_ews
+            rel_opacs = np.exp(group_ldf["x"])
+            opac_frac.ix[groups[group_id]] = rel_opacs
             group_feat_nums = self.fdat.ix[groups[group_id], "feature_num"].values
             n_group_feats = len(group_feat_nums)
             grp_col = int(group_id[1])
             col_max[group_id[0]] = grp_col+1 #this will end up the max since we sort the keys
             midxs = np.array([group_feat_nums, np.repeat(grp_col, n_group_feats)])
             matrix_idxs[group_id[0]].append(midxs)
-            ew_frac_data[group_id[0]].append(relative_ews.values)
+            opac_frac_data[group_id[0]].append(rel_opacs.values)
         matrix_idxs = {species:np.hstack(matrix_idxs[species]) for species in self.species_id_set}
-        ew_frac_data = {species:np.hstack(ew_frac_data[species]) for species in self.species_id_set}
+        ew_frac_data = {species:np.hstack(opac_frac_data[species]) for species in self.species_id_set}
         grouping_matrices = []
         for species in self.species_id_set:
             n_sub_groups = col_max[species]
@@ -529,14 +477,14 @@ and float values.""".format(type(dof_thresholds))
             grouping_matrices.append(gmat)
         grouping_matrix = scipy.sparse.bmat([grouping_matrices]) 
         if overwrite:
-            self.grouping_matrix = grouping_matrix 
-            self._recalc_grouping_matrix=False
+            self.opac_matrix = grouping_matrix 
+            self._recalc_opac_matrix=False
             self._recollapse_feature_matrix=True
         return grouping_matrix
     
     def collapse_feature_matrix(self, overwrite=True):
         #print "collapsing to group feature matrices"
-        cfm = -1*self.feature_matrix*self.grouping_matrix
+        cfm = self.feature_matrix*self.opac_matrix
         if overwrite:
             self.cfm = cfm
             self._recollapse_feature_matrix = False
@@ -552,7 +500,8 @@ and float values.""".format(type(dof_thresholds))
         self._recalc_doppler_widths = True
         self._recalc_x = True
         self._recalc_cog_ews = True
-        self._recalc_grouping_matrix = True
+        self._recalc_opac_matrix = True
+        self._recalc_feature_matrix=True
         self._recollapse_feature_matrix = True
     
     @property
@@ -565,7 +514,8 @@ and float values.""".format(type(dof_thresholds))
         self._recalc_doppler_widths = True
         self._recalc_x = True
         self._recalc_cog_ews = True
-        self._recalc_grouping_matrix = True
+        self._recalc_opac_matrix = True
+        self._recalc_feature_matrix=True
         self._recollapse_feature_matrix = True
     
     @parameter(free=True, min=0.01, max=10.0, step_scale=0.1)
@@ -618,81 +568,57 @@ and float values.""".format(type(dof_thresholds))
         neutral_delt_x = np.log10(1.0 - np.power(10.0, self.log_ion_frac))
         ionization_delta = np.where(self.fdat.ion == 1, self.log_ion_frac, neutral_delt_x)
         #TODO: include some sort of basic adjustment of ionization fraction on the basis of element ionization energy.
-        self.fdat["x"] = self.fdat.solar_ab + self.fdat.loggf - self.fdat.ep*self.theta - self.doppler_lrw + ionization_delta
+        self.fdat["x"] = self.fdat.solar_ab + self.fdat.loggf - self.fdat.ep*self.theta + ionization_delta
         self._recalc_x = False
     
-    def calc_cog_ews(self):
-        lrws = self.cog(self.x_adj.values)
-        self.fdat["cog_lrw_adj"] = lrws
-        cog_lrw = lrws + self.doppler_lrw.values
-        self.fdat["cog_lrw"] = cog_lrw
-        self.fdat["cog_ew"] = np.power(10.0, cog_lrw)*self.fdat.wv
-        self._recalc_cog_ews = False
+    #def calc_cog_ews(self):
+    #    lrws = self.cog(self.x_adj.values)
+    #    self.fdat["cog_lrw_adj"] = lrws
+    #    cog_lrw = lrws + self.doppler_lrw.values
+    #    self.fdat["cog_lrw"] = cog_lrw
+    #    self.fdat["cog_ew"] = np.power(10.0, cog_lrw)*self.fdat.wv
+    #    self._recalc_cog_ews = False
     
     def calc_cog(self):
-        """calculate an approximate curve of growth and store its representation
+        """calculate approximate curves of growth to convert from opacity to EW
         """
-        min_log_strength = -1.5
-        max_log_strength = 4.5
-        n_strength = 100
-        log_strengths = np.linspace(min_log_strength, max_log_strength, n_strength)
-        strengths = np.power(10, log_strengths)
-        npts = 1000
-        dx = np.zeros(npts)
-        extra_ends = [55, 65, 75, 100, 150, 300, 500, 1000]
-        n_ends = len(extra_ends)
-        dx[n_ends:-n_ends] = np.linspace(-50, 50, npts-2*n_ends)
-        for end_idx in range(n_ends):
-            dx[end_idx] = -extra_ends[-(end_idx+1)]
-            dx[-(end_idx+1)] = extra_ends[-(end_idx+1)]
-        
-        opac_profile = voigt(dx, 0.0, 1.0, self.mean_gamma_ratio)        
-        log_rews = np.zeros(n_strength)
-        for strength_idx in range(n_strength):
-            flux_deltas = 1.0-np.exp(-strengths[strength_idx]*opac_profile)
-            cur_rew = integrate.trapz(flux_deltas, x=dx)
-            log_rews[strength_idx] = np.log10(cur_rew)
-        
-        cog_slope = scipy.gradient(log_rews)/scipy.gradient(log_strengths)
-        
-        n_extend = 2
-        low_strengths = min_log_strength - np.linspace(0.2, 0.1, n_extend)
-        high_strengths = max_log_strength + np.linspace(0.1, 0.2, n_extend)
-        extended_log_strengths = np.hstack((low_strengths, log_strengths, high_strengths))
-        extended_slopes = np.hstack((np.ones(n_extend), cog_slope, 0.5*np.ones(n_extend)))
-        
-        cpoints = np.linspace(min_log_strength, max_log_strength, 10)
-        #constrained_ppol = ppol.RCPPB(poly_order=1, control_points=cpoints)
-        #linear_basis = constrained_ppol.get_basis(extended_log_strengths)
-        linear_ppol = ppol.fit_piecewise_polynomial(extended_log_strengths, extended_slopes, order=1, control_points=cpoints)
-        
-        fit_quad = linear_ppol.integ()
-        #set the integration constant and redo the integration
-        zero_cross_idx = np.argmin(np.abs(log_rews))
-        zero_cross_lstr = log_strengths[zero_cross_idx]
-        new_offset = fit_quad([zero_cross_lstr])[0]
-        fit_quad = linear_ppol.integ(-new_offset)
-        
-        #fit_quad = smooth_ppol_fit(log_strengths, log_rews, y_inv=10.0*np.ones(n_strength), order=2)
-        self.cog = ppol.InvertiblePiecewiseQuadratic(fit_quad.coefficients, fit_quad.control_points, centers=fit_quad.centers, scales=fit_quad.scales)
-        self._recalc_cog = False
+        self._log_cog_gamma_ratios = np.linspace(-5.0, 0.5, 31)
+        self._cogs = [saturated_voigt_cog(gamma_ratio=10**grat) for grat in self._log_cog_gamma_ratios]
+        self._min_log_cog = self._log_cog_gamma_ratios[0]
+        self._delta_log_cog = self._log_cog_gamma_ratios[1]-self._min_log_cog
     
-    def fit_offsets(self):
-        #import pdb; pdb.set_trace()
-        species_gb = self.fdat.groupby("species_group")
-        groups = species_gb.groups
-        #order the species keys so we do the species with the most exemplars first
-        #num_exemplars = sorted([(len(groups[k]), k) for k in groups.keys()], reverse=True)
-        fallback_offset = 10.0 #totally arbitrary
-        for species_key in range(len(groups)):
-            species_df = self.fdat.ix[groups[species_key]]
-            exemplars = species_df[species_df.group_exemplar > 0]
-            delta_rews = np.log10(exemplars.ew/exemplars.doppler_width)
-            x_deltas = exemplars.x.values - self.cog.inverse(delta_rews.values)
-            offset = np.sum(x_deltas)
-            if np.isnan(offset):
-                offset = fallback_offset
-            self.fdat.ix[groups[species_key], "x_offset"] = offset
+    def calc_cog_ews(self):
+        sig_offs = self.fdat["sigma_offset"]
+        gam_offs = self.fdat["gamma_offset"]
+        opac_strength = self.fdat["opac_strength"]
+        wv_5000 = self.fdat["wv"]/5000.0
+        sigma_widths = np.clip(self.fdat["doppler_width"]+sig_offs, 0.0001, np.inf)
+        gamma_widths = np.clip(self.gamma_ratio_5000*sigma_widths*wv_5000+gam_offs, 0.0001, np.inf)
+        log_gamma_ratios = np.log10(gamma_widths/sigma_widths)
+        cog_idxs = np.array((log_gamma_ratios - self._min_log_cog)/self._delta_log_cog, dtype=int)
+        log_rews_out = np.zeros(len(self.fdat))
+        for cur_cog_idx in range(len(self._cogs)):
+            select_idxs = np.where(cog_idxs == cur_cog_idx)[0]
+            if len(select_idxs) > 0:
+                log_rews_out[select_idxs] = self._cogs[cur_cog_idx](opac_strength[select_idxs])
+        ews = sigma_widths*np.power(10.0, log_rews_out)
+    
+    #def fit_offsets(self):
+    #    #import pdb; pdb.set_trace()
+    #    species_gb = self.fdat.groupby("species_group")
+    #    groups = species_gb.groups
+    #    #order the species keys so we do the species with the most exemplars first
+    #    #num_exemplars = sorted([(len(groups[k]), k) for k in groups.keys()], reverse=True)
+    #    fallback_offset = 10.0 #totally arbitrary
+    #    for species_key in range(len(groups)):
+    #        species_df = self.fdat.ix[groups[species_key]]
+    #        exemplars = species_df[species_df.group_exemplar > 0]
+    #        delta_rews = np.log10(exemplars.ew/exemplars.doppler_width)
+    #        x_deltas = exemplars.x.values - self.cog.inverse(delta_rews.values)
+    #        offset = np.sum(x_deltas)
+    #        if np.isnan(offset):
+    #            offset = fallback_offset
+    #        self.fdat.ix[groups[species_key], "x_offset"] = offset
     
     @property
     def doppler_lrw(self):
@@ -702,16 +628,16 @@ and float values.""".format(type(dof_thresholds))
     def lrw(self):
         return np.log10(self.fdat["ew"]/self.fdat["wv"])
     
-    @property
-    def x_adj(self):
-        return self.fdat.x - self.fdat.x_offset
-    
-    @property
-    def sigma(self):
-        sig = np.sqrt(self.fdat["vmicro_width"]**2 
-                + self.fdat["thermal_width"]**2 
-                + (self.fdat["wv"]*self.vmacro/299792.458)**2) 
-        return sig + self.fdat["sigma_off"]
+    #@property
+    #def x_adj(self):
+    #    return self.fdat.x - self.fdat.x_offset
+    #
+    #@property
+    #def sigma(self):
+    #    sig = np.sqrt(self.fdat["vmicro_width"]**2 
+    #            + self.fdat["thermal_width"]**2 
+    #            + (self.fdat["wv"]*self.vmacro/299792.458)**2) 
+    #    return sig + self.fdat["sigma_off"]
     
     @property
     def lrw_adj(self):
@@ -757,7 +683,6 @@ class OpacityToTransmission(Model):
     def as_linear_op(self, input_vec):
         npts = len(input_vec)
         return scipy.sparse.dia_matrix((-np.exp(-input_vec), 0), shape=(npts, npts))
-    
 
 class Feature(object):
     

@@ -66,19 +66,19 @@ class ConstantMultiplierModel(object):
     def as_linear_op(self, input, **kwargs):
         return self._lin_op
 
-def freeze_params(fstate, teff=True, mean_gamma_ratio=True, vmicro=True):
+def freeze_params(fstate, teff=True, gamma_ratio_5000=True, vmicro=True):
     if teff:
         fstate.model_network.feature_mod.theta_p._free = False
-    if mean_gamma_ratio:
-        fstate.model_network.feature_mod.mean_gamma_ratio_p._free = False
+    if gamma_ratio_5000:
+        fstate.model_network.feature_mod.gamma_ratio_5000_p._free = False
     if vmicro:
         fstate.model_network.feature_mod.vmicro_p._free = False
 
-def thaw_params(fstate, teff=True, mean_gamma_ratio=True, vmicro=True):
+def thaw_params(fstate, teff=True, gamma_ratio_5000=True, vmicro=True):
     if teff:
         fstate.model_network.feature_mod.theta_p._free = True
-    if mean_gamma_ratio:
-        fstate.model_network.feature_mod.mean_gamma_ratio_p._free = True
+    if gamma_ratio_5000:
+        fstate.model_network.feature_mod.gamma_ratio_5000_p._free = True
     if vmicro:
         fstate.model_network.feature_mod.vmicro_p._free = True
 
@@ -88,11 +88,11 @@ def iter_cleanup(fstate):
     spec_idx = mnet.spectrum_id
     teff = mnet.feature_mod.teff
     vmicro = mnet.feature_mod.vmicro
-    gamma_rat = mnet.feature_mod.mean_gamma_ratio
+    gamma_rat = mnet.feature_mod.gamma_ratio_5000
     print "teff {:5.3f}  vmicro {:5.3f} gamma_ratio {:5.4f} ".format(teff, vmicro, gamma_rat)
     
     spec = mnet.target_spectra[0]
-    if False:
+    if True:
         fig, axes = plt.subplots(2)
         lwv = np.log10(spec.wv)
         axes[0].cla()
@@ -103,9 +103,6 @@ def iter_cleanup(fstate):
         axes[1].plot(lwv, np.sign(resid)*np.sqrt(resid**2*spec.inv_var))
         axes[1].set_ylim(-12.0, 12.0)
         fig.savefig("figures/spec_{}_cfit.png".format(spec_idx))
-    mnet.feature_mod.fit_offsets()
-    mnet.feature_mod.calc_grouping_matrix()
-    mnet.feature_mod.collapse_feature_matrix()
 
 def write_results(fstate):
     mnet = fstate.model_network
@@ -114,13 +111,18 @@ def write_results(fstate):
     #cPickle.dump(smod, open("model_files/spec_{}_mod.pkl", "w"))
     f = open("model_files/spec_{}_params.txt".format(spec_idx), "w")
     fmod = mnet.feature_mod
-    out_data_dict = dict(teff=fmod.teff, mean_gamma_ratio=fmod.mean_gamma_ratio, vmicro=fmod.vmicro, log_likelihood=fstate.log_likelihood)
-    #f.write("{}  {}  {}\n".format(smod.feature_mod.teff, smod.feature_mod.vmicro, smod.feature_mod.mean_gamma_ratio))
+    out_data_dict = dict(teff=fmod.teff, mean_gamma_ratio=fmod.gamma_ratio_5000, vmicro=fmod.vmicro, log_likelihood=fstate.log_likelihood)
     json.dump(out_data_dict, f)
     f.flush()
     f.close()
 
-
+class GridSearch(modeling.FitState):
+    
+    def __init__(self):
+        pass
+    
+    def iterate(self):
+        return True
 
 class SpectralModeler(modeling.DataModelNetwork):
     
@@ -144,14 +146,16 @@ class SpectralModeler(modeling.DataModelNetwork):
             snr_target=args.snr_target,
             initial_x_offset=args.x_offset, 
             vmicro=args.vmicro,
-            mean_gamma_ratio=0.3,
+            gamma_ratio_5000=0.3,
             teff=start_teff,#args.teff,
             model_resolution=args.model_resolution,
             species_grouper=species_grouper
         )
         
+        
         print "generating model components"
         model_wv = self.feature_mod.model_wv
+        self.exp_mod = tmb.features.OpacityToTransmission()
         #print "ctm model"
         #self.ctm_mod = tmb.continuum.BlackBodyContinuumModel(model_wv, args.teff)
         #print "hmod"
@@ -164,7 +168,7 @@ class SpectralModeler(modeling.DataModelNetwork):
         print "stitching models together"
         data_model_trees = []
         for spec_idx in range(len(target_spectra)):
-            mods = [self.feature_mod]#, self.ctm_mod, self.hmod]
+            mods = [self.feature_mod, self.exp_mod]#, self.ctm_mod, self.hmod]
             mods.append(self.lsf_models[spec_idx])
             mods.append(self.blaze_models[spec_idx])
             dr_tree = modeling.DataRootedModelTree(mods, target_spectra[spec_idx].flux, target_spectra[spec_idx].inv_var)
@@ -183,21 +187,21 @@ class SpectralModeler(modeling.DataModelNetwork):
         
         teff_only = modeling.FitState(models=[self.feature_mod], 
                                       clamping_factor=10.0, 
-                                      max_iter=5, 
+                                      max_iter=3, 
                                       cleanup_func=lambda x: thaw_params(x, teff=True), 
                                       setup_func=lambda x: freeze_params(x, teff=False))
         
         vmicro_only = modeling.FitState(models=[self.feature_mod], 
                                       clamping_factor=10.0, 
-                                      max_iter=5, 
+                                      max_iter=3, 
                                       cleanup_func=lambda x: thaw_params(x, vmicro=True), 
                                       setup_func=lambda x: freeze_params(x, vmicro=False))
         
         gmr_only = modeling.FitState(models=[self.feature_mod], 
                                       clamping_factor=10.0, 
-                                      max_iter=5, 
-                                      cleanup_func=lambda x: thaw_params(x, mean_gamma_ratio=True), 
-                                      setup_func=lambda x: freeze_params(x, mean_gamma_ratio=False))
+                                      max_iter=3, 
+                                      cleanup_func=lambda x: thaw_params(x, gamma_ratio_5000=True), 
+                                      setup_func=lambda x: freeze_params(x, gamma_ratio_5000=False))
         
         #together_models = []
         #together_models.extend(self.blaze_models)
@@ -233,7 +237,10 @@ def fit_lowres_spectrum(spec_idx, plot=True, max_iter=20):
     max_wv = spectrum_wvs[-1] 
     
     #load the sspp results
-    sspp_dict = json.load(open("sspp_model_files/spec_{}.json".format(spec_idx)))
+    try:
+        sspp_dict = json.load(open("sspp_model_files/spec_{}.json".format(spec_idx)))
+    except IOError:
+        sspp_dict = {"teff":5000.0}
     
     pre_grouped = False
     if not args.input_h5 is None:
@@ -267,9 +274,9 @@ def fit_lowres_spectrum(spec_idx, plot=True, max_iter=20):
 if __name__ == "__main__":
     args = parser.parse_args()
     
-    pool = multiprocessing.Pool(multiprocessing.cpu_count())
-    pool.map(fit_lowres_spectrum, range(1024))
+    #pool = multiprocessing.Pool(multiprocessing.cpu_count())
+    #pool.map(fit_lowres_spectrum, range(1024))
     
     #import pdb; pdb.set_trace()
-    #fit_lowres_spectrum(15)
+    fit_lowres_spectrum(15)
     

@@ -254,14 +254,10 @@ class Task (object):
             return repr(value)
         if isinstance(value,LambdaType):
             rep = inspect.getsource(hey).rstrip()
-            return rep[rep.find("=")+1:]
-        else:
-            return cPickle.dumps(value)
-        
-        #elif callable(value):
-        #    # perhaps use the memory address to instanciate a python object
-        #    raise EvalError("Don't know how to turn function into a re-evaluatable thing")
-    
+            return rep[rep.find("=")+1:]        
+        elif callable(value):
+            # perhaps use the memory address to instanciate a python object
+            raise EvalError("Don't know how to turn function into a re-evaluatable thing")
         else:
             return repr(value)
      

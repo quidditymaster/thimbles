@@ -35,28 +35,28 @@ def parameter(free=False, scale=1.0, name=None, step_scale=1.0, derivative_scale
         return param
     return function_to_parameter
 
-class DeltaDistribution(object):
+class ParameterDistribution(object):
     
     def __init__(self, parameter=None):
-        self.set_parameter(parameter)
+        self.parameter = parameter
     
-    def set_parameter(self, parameter):
-        self.parameter=parameter
+    def log_likelihood(self, value):
+        raise NotImplementedError
     
-    def set_variance(self, value):
-        raise NotImplementedError("abstract class; implement for subclasses")
-        
-    def realize(self):
-        """return an offset sampled from this distribution
-        """
-        raise NotImplementedError("abstract class; implement for subclasses")
-    
-    def weight(self, offset):
-        """returns a weight for use in iterated 
-        """
-        raise NotImplementedError("abstract class; implement for subclasses")
+    #def set_variance(self, value):
+    #    raise NotImplementedError("abstract class; implement for subclasses")
+    #
+    #def realize(self):
+    #    """return an offset sampled from this distribution
+    #    """
+    #    raise NotImplementedError("abstract class; implement for subclasses")
+    #
+    #def weight(self, offset):
+    #    """returns a weight for use in iterated 
+    #    """
+    #    raise NotImplementedError("abstract class; implement for subclasses")
 
-class NormalDeltaDistribution(DeltaDistribution):
+class NormalDeltaDistribution(ParameterDistribution):
     
     def __init__(self, variance=None, parameter=None):
         super(NormalDeltaDistribution, self).__init__(parameter)
@@ -122,25 +122,10 @@ def flat_size(shape_tup):
         return 1
     return reduce(mult_func, shape_tup)
 
-class Model(object):
+class ParameterGroup(object):
     
-    def __init__(self):
-        self.attach_parameters()
-    
-    def attach_parameters(self):
-        self._parameters = []
-        for attrib in dir(self):
-            try:
-                val = getattr(self, attrib)
-            except Exception:
-                continue
-            if isinstance(val, Parameter):
-                #import pdb; pdb.set_trace()
-                val.set_model(self)
-                self._parameters.append(val)
-                if val.name is None:
-                    val.name = attrib
-                val.validate()
+    def __init__(self, parameters):
+        self._parameters = parameters
     
     @property
     def parameters(self):
@@ -174,18 +159,7 @@ class Model(object):
             pvals = out_vec
         return np.hstack(pvals)
     
-    def get_pdict(self, attr=None, free_only=True):
-        if free_only:
-            parameters = self.free_parameters
-        else:
-            parameters = self.parameters
-        if attr is None:
-            pdict = {p.name:p.get() for p in parameters}
-        else:
-            pdict = {p.name:getattr(p, attr) for p in parameters}
-        return pdict
-    
-    def set_pvec(self, pvec, attr=None, free_only=True):
+    def set_pvec(self, pvec, attr=None, free_only=True, as_delta=False):
         if free_only:
             parameters = self.free_parameters
         else:
@@ -193,6 +167,8 @@ class Model(object):
         pshapes = [p.shape for p in parameters]
         nvals = [flat_size(pshape) for pshape in pshapes]
         break_idxs = np.cumsum(nvals)[:-1]
+        if as_delta:
+            pvec = pvec + self.get_pvec()
         flat_params = np.split(pvec, break_idxs)
         if attr is None:
             for p_idx in range(len(parameters)):
@@ -200,9 +176,10 @@ class Model(object):
                 pshape = pshapes[p_idx]
                 flat_val = flat_params[p_idx]
                 if pshape == tuple():
-                    param.set(float(flat_val))
+                    to_set = float(flat_val)
                 else:
-                    param.set(flat_val.reshape(pshape))
+                    to_set = flat_val.reshape(pshape)
+                param.set(to_set)
         elif isinstance(attr, basestring):
             for p_idx in range(len(parameters)):
                 param = parameters[p_idx]
@@ -215,9 +192,50 @@ class Model(object):
         else:
             raise ValueError("attr must be a string if set")
     
-    def set_pdict(self, val_dict, attr=None):
-        raise NotImplementedError("getting to it!")
+    def get_pdict(self, attr=None, free_only=True, name_as_key=False):
+        if free_only:
+            parameters = self.free_parameters
+        else:
+            parameters = self.parameters
+        if name_as_key:
+            keys = [p.name for p in parameters]
+        else:
+            keys = parameters
+        if attr is None:
+            values = [p.get() for p in parameters]
+        else:
+            values = [getattr(p, attr) for p in parameters]
+        pdict = dict(zip(keys, values)) 
+        return pdict
     
+    def set_pdict(self, val_dict, attr=None):
+        for p in val_dict:
+            if attr is None:
+                p.set(val_dict[p])
+            else:
+                setattr(p, attr, val_dict[p])
+
+
+class Model(ParameterGroup):
+    
+    def __init__(self):
+        self.attach_parameters()
+    
+    def attach_parameters(self):
+        self._parameters = []
+        for attrib in dir(self):
+            try:
+                val = getattr(self, attrib)
+            except Exception:
+                continue
+            if isinstance(val, Parameter):
+                #import pdb; pdb.set_trace()
+                val.set_model(self)
+                self._parameters.append(val)
+                if val.name is None:
+                    val.name = attrib
+                val.validate()
+        
     def parameter_expansion(self, input_vec, **kwargs):
         parameters = self.free_parameters
         deriv_vecs = []
@@ -256,22 +274,15 @@ class Model(object):
                 p.set(flat_pval.reshape(pshape))
         pexp_mat = scipy.sparse.hstack(deriv_vecs)
         return pexp_mat
-    
+        
     def as_linear_op(self, input_vec, **kwargs):
-        return IdentityPlaceHolder()
+        return IdentityPlaceHolder() #implicitly allowing additive model passthrough
+
+class ParameterPrior(ParameterGroup, ParameterDistribution):
     
-    #def parameter_damping(self, input_vec, **kwargs):
-    #    parameters = self.free_parameters
-    #    damp_vecs = []
-    #    for p in parameters:
-    #        damp_val = np.asarray(p.damp)
-    #        if damp_val.shape == tuple():
-    #            pshape = p.shape
-    #            if not pshape == tuple():
-    #                damp_val = np.repeat(damp_val, flat_size(pshape))
-    #        damp_vecs.append(damp_val)
-    #    damp_weights = np.hstack(damp_vecs)
-    #    return np.zeros(damp_weights.shape), damp_weights
+    def __init__(self, parameters):
+        pass
+    
 
 class Parameter(object):
     
@@ -283,7 +294,6 @@ class Parameter(object):
                  step_scale,
                  derivative_scale,
                  convergence_scale,
-                 fit_class=1,
                  min, 
                  max, 
                  history_max,
@@ -523,9 +533,9 @@ class FitPolicy(object):
             else:
                 self.current_fit_state = transition_options.pop(0)
 
-class FitState(object):
+class FitState(ParameterGroup):
     
-    def __init__(self, model_network=None, models=None, trees=None, clamping_factor=5.0, clamping_nu=1.2, max_clamping=1000.0, alpha=2.0, beta=2.0, max_iter=10, max_reweighting_iter=10, setup_func=None, iter_setup_func=None, iter_cleanup_func=None, cleanup_func=None):
+    def __init__(self, model_network=None, models=None, trees=None, clamping_factor=5.0, clamping_nu=1.4, max_clamping=1000.0, alpha=2.0, beta=2.0, max_iter=10, max_reweighting_iter=10, setup_func=None, iter_setup_func=None, iter_cleanup_func=None, cleanup_func=None):
         self.models = models
         self.trees = trees
         self.set_model_network(model_network)
@@ -577,42 +587,44 @@ class FitState(object):
                     self.model_to_tree_idxs[model] = mod_list
         if self.models is None:
             models = self.model_to_tree_idxs.keys()
+        self.update_grouped_parameters()
     
-    def get_pvec(self, attr=None, free_only=True):
-        """get a vectorized version of parameter.attr across the models fit by this
-        fit state.
-        """
-        vec_collection = []
-        for model in self.models:
-            cpvec = model.get_pvec(attr=attr, free_only=free_only)
-            vec_collection.append(cpvec)
-        return np.hstack(vec_collection)
+    def update_grouped_parameters(self):
+        self._parameters = []
+        if not self.models is None:
+            for model in self.models:
+                self._parameters.extend(model.parameters)
     
-    def set_pvec(self, value, attr=None, free_only=True, as_delta=False):
-        pvec_lb = 0
-        pvec_ub = 0
-        for model in self.models:
-            old_pvec = model.get_pvec(attr=attr, free_only=free_only)
-            n_params = len(old_pvec)
-            pvec_ub += n_params
-            if as_delta:
-                new_pvec = old_pvec + value[pvec_lb:pvec_ub]
-            else:
-                new_pvec = value[pvec_lb:pvec_ub]
-            model.set_pvec(new_pvec, attr=attr, free_only=free_only)
-            pvec_lb = pvec_ub
-    
-    def get_pdict(self, attr=None, free_only=True):
-        pdict = {}
-        for model in self.models:
-            cpdict = model.get_pvec(attr=attr, free_only=free_only)
-            pdict[(model, attr)] = cpdict
-        return pdict
-    
-    #def get_clamping_vector(self):
-    #    scale_vec = self.get_pvec(attr="scale")
-    #    step_scale = self.get_pvec(attr="step_scale")
-    #    return self.clamping_factor/(step_scale*scale_vec)
+    #def get_pvec(self, attr=None, free_only=True):
+    #    """get a vectorized version of parameter.attr across the models fit by this
+    #    fit state.
+    #    """
+    #    vec_collection = []
+    #    for model in self.models:
+    #        cpvec = model.get_pvec(attr=attr, free_only=free_only)
+    #        vec_collection.append(cpvec)
+    #    return np.hstack(vec_collection)
+    #
+    #def set_pvec(self, value, attr=None, free_only=True, as_delta=False):
+    #    pvec_lb = 0
+    #    pvec_ub = 0
+    #    for model in self.models:
+    #        old_pvec = model.get_pvec(attr=attr, free_only=free_only)
+    #        n_params = len(old_pvec)
+    #        pvec_ub += n_params
+    #        if as_delta:
+    #            new_pvec = old_pvec + value[pvec_lb:pvec_ub]
+    #        else:
+    #            new_pvec = value[pvec_lb:pvec_ub]
+    #        model.set_pvec(new_pvec, attr=attr, free_only=free_only)
+    #        pvec_lb = pvec_ub
+    # 
+    #def get_pdict(self, attr=None, free_only=True):
+    #    pdict = {}
+    #    for model in self.models:
+    #        cpdict = model.get_pvec(attr=attr, free_only=free_only)
+    #        pdict[(model, attr)] = cpdict
+    #    return pdict
     
     def get_expansions(self):
         expansions = [[None for i in range(len(self.models))] for j in range(len(self.trees))]

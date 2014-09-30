@@ -30,6 +30,9 @@ from thimbles import hydrogen
 from . import resampling
 from . import partitioning
 from . import piecewise_polynomial
+from thimbles.profiles import voigt
+from scipy import integrate
+from thimbles.utils import piecewise_polynomial as ppol
 
 # ########################################################################### #
 
@@ -1084,3 +1087,51 @@ def fit_blackbody_phirls(spectrum, start_teff=5000.0, gamma_frac=3.0):
     start_norm = np.sum(flux*start_bbod*ivar)/np.sum(start_bbod**2*ivar)
     x0 = np.array([start_norm, start_teff])
     return scipy.optimize.leastsq(get_resids, x0)
+
+
+def saturated_voigt_cog(gamma_ratio=0.1):
+    min_log_strength = -1.5
+    max_log_strength = 5.0
+    n_strength = 105
+    log_strengths = np.linspace(min_log_strength, max_log_strength, n_strength)
+    strengths = np.power(10, log_strengths)
+    npts = 1000
+    
+    dx = np.exp(np.linspace(-10, 10, 1000))
+    opac_profile = voigt(dx, 0.0, 1.0, gamma_ratio)        
+    log_rews = np.zeros(n_strength)
+    for strength_idx in range(n_strength):
+        flux_deltas = 1.0-np.exp(-strengths[strength_idx]*opac_profile)
+        cur_rew = 2.0*integrate.trapz(flux_deltas, x=dx)
+        log_rews[strength_idx] = np.log10(cur_rew)
+    
+    cog_slope = scipy.gradient(log_rews)/scipy.gradient(log_strengths)
+    
+    n_extend = 3
+    low_strengths = min_log_strength - np.linspace(0.2, 0.1, n_extend)
+    high_strengths = max_log_strength + np.linspace(0.1, 0.2, n_extend)
+    extended_log_strengths = np.hstack((low_strengths, log_strengths, high_strengths))
+    extended_slopes = np.hstack((np.ones(n_extend), cog_slope, 0.5*np.ones(n_extend)))
+    
+    cpoints = np.linspace(min_log_strength, max_log_strength, 10)
+    constrained_ppol = ppol.RCPPB(poly_order=1, control_points=cpoints)
+    linear_basis = constrained_ppol.get_basis(extended_log_strengths)
+    n_polys = len(cpoints) + 1
+    n_coeffs = 2
+    out_coeffs = np.zeros((n_polys, n_coeffs))
+    fit_coeffs = np.linalg.lstsq(linear_basis.transpose(), extended_slopes)[0]
+    for basis_idx in xrange(constrained_ppol.n_basis):
+        c_coeffs = constrained_ppol.basis_coefficients[basis_idx].reshape((n_polys, n_coeffs))
+        out_coeffs += c_coeffs*fit_coeffs[basis_idx]
+    #linear_ppol = ppol.fit_piecewise_polynomial(extended_log_strengths, extended_slopes, order=1, control_points=cpoints)
+    linear_ppol = ppol.PiecewisePolynomial(out_coeffs, control_points=cpoints)
+    
+    fit_quad = linear_ppol.integ()
+    #set the integration constant and redo the integration
+    new_offset = fit_quad([min_log_strength])[0] - log_rews[0]
+    fit_quad = linear_ppol.integ(-new_offset)
+    
+    #fit_quad = smooth_ppol_fit(log_strengths, log_rews, y_inv=10.0*np.ones(n_strength), order=2)
+    cog= ppol.InvertiblePiecewiseQuadratic(fit_quad.coefficients, fit_quad.control_points, centers=fit_quad.centers, scales=fit_quad.scales)
+    #import pdb; pdb.set_trace()
+    return cog

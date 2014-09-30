@@ -547,7 +547,7 @@ class FitState(ParameterGroup):
                  alpha=2.0, 
                  beta=2.0, 
                  max_iter=10, 
-                 max_reweighting_iter=10, 
+                 max_reweighting_iter=5, 
                  setup_func=None, 
                  iter_setup_func=None, 
                  iter_cleanup_func=None, 
@@ -710,7 +710,9 @@ class FitState(ParameterGroup):
             new_model_values = self.get_model_values()
             new_chi_sq = np.sum((data_values-new_model_values)**2*data_weights)
             
+            chi_improved=False
             if new_chi_sq < old_chi_sq:
+                chi_improved = True
                 #end the reweighting search
                 break
             else:
@@ -721,6 +723,7 @@ class FitState(ParameterGroup):
         
         print "clamping factor", self.clamping_factor
         print "new chi sq {: 10.3f}".format(new_chi_sq)
+        
         self.log_likelihood = -new_chi_sq
         #set the best fit delta
         self.set_pvec(cur_delta, as_delta=True)

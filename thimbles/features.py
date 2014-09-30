@@ -207,13 +207,12 @@ class SaturatedVoigtFeatureModel(Model):
         self.exemplar_opac = exemplar_opacities
         per_feature_opacities = self.opac_matrix*exemplar_opacities
         self.fdat["opac_strength"] = per_feature_opacities
-        self.calc_cog_ews()
     
     @exemplar_opac_p.expander
     def expand_exemplar_effects(self, input_vec, **kwargs):
         return self.cfm
     
-    @parameter(free=True, min=0.001, max=1.0, step_scale=0.1)
+    @parameter(free=True, min=0.001, max=1.2, step_scale=0.1)
     def gamma_ratio_5000_p(self):
         return self.gamma_ratio_5000
     
@@ -579,7 +578,7 @@ class SaturatedVoigtFeatureModel(Model):
         self._min_log_cog = self._log_cog_gamma_ratios[0]
         self._delta_log_cog = self._log_cog_gamma_ratios[1]-self._min_log_cog
     
-    def calc_cog_ews(self):
+    def calc_ew(self):
         sig_offs = self.fdat["sigma_offset"]
         gam_offs = self.fdat["gamma_offset"]
         opac_strength = self.fdat["opac_strength"]
@@ -588,12 +587,14 @@ class SaturatedVoigtFeatureModel(Model):
         gamma_widths = np.clip(self.gamma_ratio_5000*sigma_widths*wv_5000+gam_offs, 0.0001, np.inf)
         log_gamma_ratios = np.log10(gamma_widths/sigma_widths)
         cog_idxs = np.array((log_gamma_ratios - self._min_log_cog)/self._delta_log_cog, dtype=int)
+        cog_idxs = np.clip(cog_idxs, 0, len(self._cogs)-1)
         log_rews_out = np.zeros(len(self.fdat))
         for cur_cog_idx in range(len(self._cogs)):
             select_idxs = np.where(cog_idxs == cur_cog_idx)[0]
             if len(select_idxs) > 0:
                 log_rews_out[select_idxs] = self._cogs[cur_cog_idx](opac_strength[select_idxs])
-        ews = sigma_widths*np.power(10.0, log_rews_out)
+        ews = sigma_widths*np.power(10.0, log_rews_out/np.log(10.0))
+        self.fdat["ew"] = ews
     
     #def fit_offsets(self):
     #    #import pdb; pdb.set_trace()

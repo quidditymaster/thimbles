@@ -96,7 +96,7 @@ def iter_cleanup(fstate):
     print "teff {:5.3f}  vmicro {:5.3f} gamma_ratio {:5.4f} ".format(teff, vmicro, gamma_rat)
     
     spec = mnet.target_spectra[0]
-    if True:
+    if False:
         fig, axes = plt.subplots(2)
         lwv = np.log10(spec.wv)
         axes[0].cla()
@@ -110,6 +110,8 @@ def iter_cleanup(fstate):
 
 def write_results(fstate):
     mnet = fstate.model_network
+    mnet.feature_mod.calc_ew()
+    #import pdb; pdb.set_trace()
     spec_idx = mnet.spectrum_id
     mnet.feature_mod.fdat.to_hdf("ew_files/spec_{}_ew.h5".format(spec_idx), "fdat")
     #cPickle.dump(smod, open("model_files/spec_{}_mod.pkl", "w"))
@@ -208,18 +210,21 @@ class SpectralModeler(modeling.DataModelNetwork):
         teff_only = modeling.FitState(models=[self.feature_mod], 
                                       clamping_factor=10.0, 
                                       max_iter=3, 
+                                      max_reweighting_iter=3,
                                       cleanup_func=lambda x: thaw_params(x, teff=True), 
                                       setup_func=lambda x: freeze_params(x, teff=False))
         
         vmicro_only = modeling.FitState(models=[self.feature_mod], 
                                       clamping_factor=10.0, 
                                       max_iter=3, 
+                                      max_reweighting_iter=3,
                                       cleanup_func=lambda x: thaw_params(x, vmicro=True), 
                                       setup_func=lambda x: freeze_params(x, vmicro=False))
         
         gmr_only = modeling.FitState(models=[self.feature_mod], 
                                       clamping_factor=10.0, 
                                       max_iter=3, 
+                                      max_reweighting_iter=3,
                                       cleanup_func=lambda x: thaw_params(x, gamma_ratio_5000=True), 
                                       setup_func=lambda x: freeze_params(x, gamma_ratio_5000=False))
         
@@ -227,7 +232,7 @@ class SpectralModeler(modeling.DataModelNetwork):
         together_models.extend(self.blaze_models)
         together_models.append(self.feature_mod)
         together_models.append(self.molec_mod)
-        all_together_now = modeling.FitState(models =together_models, clamping_factor=20.0, max_iter=max_iter, max_reweighting_iter=10)
+        all_together_now = modeling.FitState(models =together_models, clamping_factor=20.0, max_iter=5, max_reweighting_iter=3)
         
         fit_states = []
         for slosh_idx in range(10):
@@ -242,7 +247,7 @@ class SpectralModeler(modeling.DataModelNetwork):
             fit_states.append(molec_alone)
             fit_states.append(blaze_alone)
             fit_states.append(features_alone)
-        for slosh_idx in range(15):
+        for slosh_idx in range(5):
             fit_states.append(teff_only)
             fit_states.append(gmr_only)
             fit_states.append(vmicro_only)
@@ -299,8 +304,8 @@ def fit_lowres_spectrum(spec_idx, plot=True, max_iter=20):
 if __name__ == "__main__":
     args = parser.parse_args()
     
-    #pool = multiprocessing.Pool(multiprocessing.cpu_count())
-    #pool.map(fit_lowres_spectrum, range(1024))
+    pool = multiprocessing.Pool(multiprocessing.cpu_count())
+    pool.map(fit_lowres_spectrum, range(1024))
     
     #import pdb; pdb.set_trace()
     fit_lowres_spectrum(15)

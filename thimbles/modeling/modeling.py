@@ -276,7 +276,7 @@ class Model(ParameterGroup):
         return pexp_mat
         
     def as_linear_op(self, input_vec, **kwargs):
-        return IdentityPlaceHolder() #implicitly allowing additive model passthrough
+        return scipy.sparse.identity(len(input_vec))#implicitly allowing additive model passthrough
 
 class ParameterPrior(ParameterGroup, ParameterDistribution):
     
@@ -387,6 +387,9 @@ class IdentityPlaceHolder(object):
     
     def __mul__(self, other):
         return other
+    
+    def __rmul__(self, other):
+        return other
 
 class DataRootedModelTree(object):
     
@@ -450,7 +453,7 @@ class DataRootedModelTree(object):
 
 class FitPolicy(object):
     
-    def __init__(self, model_network=None, fit_states=None, iteration_callback=None, transition_callback=None, finish_callback=None, max_state_iter=100, max_transitions=100):
+    def __init__(self, model_network=None, fit_states=None, iteration_callback=None, transition_callback=None, finish_callback=None, max_state_iter=1000, max_transitions=1000):
         self.max_state_iter = max_state_iter
         self.max_transitions = max_transitions
         self.iteration_callback=iteration_callback
@@ -535,7 +538,20 @@ class FitPolicy(object):
 
 class FitState(ParameterGroup):
     
-    def __init__(self, model_network=None, models=None, trees=None, clamping_factor=5.0, clamping_nu=1.4, max_clamping=1000.0, alpha=2.0, beta=2.0, max_iter=10, max_reweighting_iter=10, setup_func=None, iter_setup_func=None, iter_cleanup_func=None, cleanup_func=None):
+    def __init__(self, 
+                 model_network=None, 
+                 models=None, trees=None, 
+                 clamping_factor=5.0, 
+                 clamping_nu=1.4, 
+                 max_clamping=1000.0, 
+                 alpha=2.0, 
+                 beta=2.0, 
+                 max_iter=10, 
+                 max_reweighting_iter=10, 
+                 setup_func=None, 
+                 iter_setup_func=None, 
+                 iter_cleanup_func=None, 
+                 cleanup_func=None):
         self.models = models
         self.trees = trees
         self.set_model_network(model_network)

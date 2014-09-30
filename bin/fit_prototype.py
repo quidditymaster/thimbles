@@ -1,3 +1,5 @@
+import os
+
 import thimbles as tmb
 import time
 import h5py
@@ -8,6 +10,8 @@ import pandas as pd
 import scipy.sparse
 import matplotlib.pyplot as plt
 from thimbles.velocity import template_rv_estimate
+from thimbles.features import SimpleMatrixOpacityModel
+from thimbles import resource_dir
 import argparse
 import cPickle
 import multiprocessing
@@ -155,6 +159,20 @@ class SpectralModeler(modeling.DataModelNetwork):
         
         print "generating model components"
         model_wv = self.feature_mod.model_wv
+        
+        print "generating molecular opacity model"
+        hf = h5py.File(os.path.join(resource_dir, "transition_data", "molecules", "effective_mean_opacities.h5"))
+        molec_wvs = np.array(hf["wvs"])
+        opac_vecs =[np.array(hf["molecules/{}".format(mol_str)]).reshape((-1,1)) for mol_str in "Mg:H C:H N:C Si:H C:C".split()]
+        
+        transform = tmb.utils.resampling.get_resampling_matrix(molec_wvs, model_wv, preserve_normalization=True)
+        opac_matrix = []
+        for opac_vec in opac_vecs:
+            opac_matrix.append((transform*opac_vec).reshape((-1,1)))
+        opac_matrix = -np.hstack(opac_matrix)
+        
+        self.molec_mod = SimpleMatrixOpacityModel(model_wv, opac_matrix, opac_strength=np.repeat(0.01, opac_matrix.shape[1]))
+        
         self.exp_mod = tmb.features.OpacityToTransmission()
         #print "ctm model"
         #self.ctm_mod = tmb.continuum.BlackBodyContinuumModel(model_wv, args.teff)
@@ -168,7 +186,7 @@ class SpectralModeler(modeling.DataModelNetwork):
         print "stitching models together"
         data_model_trees = []
         for spec_idx in range(len(target_spectra)):
-            mods = [self.feature_mod, self.exp_mod]#, self.ctm_mod, self.hmod]
+            mods = [self.feature_mod, self.molec_mod, self.exp_mod]#, self.ctm_mod, self.hmod]
             mods.append(self.lsf_models[spec_idx])
             mods.append(self.blaze_models[spec_idx])
             dr_tree = modeling.DataRootedModelTree(mods, target_spectra[spec_idx].flux, target_spectra[spec_idx].inv_var)
@@ -184,6 +202,8 @@ class SpectralModeler(modeling.DataModelNetwork):
         mstack0 = copy(self.blaze_models)
         blaze_alone = modeling.FitState(models=mstack0, clamping_factor=10.1, max_iter=1)
         features_alone = modeling.FitState(models=[self.feature_mod], clamping_factor=10.0, max_iter=1, cleanup_func=thaw_params, setup_func=freeze_params)
+        
+        molec_alone = modeling.FitState(models=[self.molec_mod], clamping_factor=10.0, max_iter=5)
         
         teff_only = modeling.FitState(models=[self.feature_mod], 
                                       clamping_factor=10.0, 
@@ -203,28 +223,33 @@ class SpectralModeler(modeling.DataModelNetwork):
                                       cleanup_func=lambda x: thaw_params(x, gamma_ratio_5000=True), 
                                       setup_func=lambda x: freeze_params(x, gamma_ratio_5000=False))
         
-        #together_models = []
-        #together_models.extend(self.blaze_models)
-        #together_models.append(self.feature_mod)
-        #all_together_now = modeling.FitState(models =together_models, clamping_factor=20.0, max_iter=max_iter, max_reweighting_iter=10)
+        together_models = []
+        together_models.extend(self.blaze_models)
+        together_models.append(self.feature_mod)
+        together_models.append(self.molec_mod)
+        all_together_now = modeling.FitState(models =together_models, clamping_factor=20.0, max_iter=max_iter, max_reweighting_iter=10)
         
         fit_states = []
-        for slosh_idx in range(5):
+        for slosh_idx in range(10):
+            #fit_states.append(molec_alone)
             fit_states.append(features_alone)
             fit_states.append(blaze_alone)
-        for slosh_idx in range(5):
-            fit_states.append(teff_only)
-            fit_states.append(gmr_only)
-            #fit_states.append(vmicro_only)
-            fit_states.append(blaze_alone)
-            fit_states.append(features_alone)
         for slosh_idx in range(20):
+            fit_states.append(blaze_alone)
+            #fit_states.append(features_alone)
+            fit_states.append(molec_alone)
+        for slosh_idx in range(20):
+            fit_states.append(molec_alone)
+            fit_states.append(blaze_alone)
+            fit_states.append(features_alone)
+        for slosh_idx in range(15):
             fit_states.append(teff_only)
             fit_states.append(gmr_only)
             fit_states.append(vmicro_only)
             fit_states.append(blaze_alone)
+            fit_states.append(molec_alone)
             fit_states.append(features_alone)
-        #fit_states.append(all_together_now)
+        fit_states.append(all_together_now)
         super(SpectralModeler, self).__init__(data_model_trees)
         fit_policy = modeling.FitPolicy(self, fit_states=fit_states, finish_callback=write_results, iteration_callback=iter_cleanup)
         self.set_fit_policy(fit_policy)

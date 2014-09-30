@@ -570,15 +570,7 @@ class SaturatedVoigtFeatureModel(Model):
         #TODO: include some sort of basic adjustment of ionization fraction on the basis of element ionization energy.
         self.fdat["x"] = self.fdat.solar_ab + self.fdat.loggf - self.fdat.ep*self.theta + ionization_delta
         self._recalc_x = False
-    
-    #def calc_cog_ews(self):
-    #    lrws = self.cog(self.x_adj.values)
-    #    self.fdat["cog_lrw_adj"] = lrws
-    #    cog_lrw = lrws + self.doppler_lrw.values
-    #    self.fdat["cog_lrw"] = cog_lrw
-    #    self.fdat["cog_ew"] = np.power(10.0, cog_lrw)*self.fdat.wv
-    #    self._recalc_cog_ews = False
-    
+        
     def calc_cog(self):
         """calculate approximate curves of growth to convert from opacity to EW
         """
@@ -661,7 +653,7 @@ class SimpleMatrixOpacityModel(Model):
         assert len(opac_matrix)==len(model_wvs)
         self.opac_strength = opac_strength
     
-    @parameter(free=True, min=0.0)
+    @parameter(free=True, min=0.0001)
     def opac_strength_p(self):
         return self.opac_strength
     
@@ -670,7 +662,7 @@ class SimpleMatrixOpacityModel(Model):
         self.opac_strength = value
     
     def __call__(self, input_vec):
-        return self.opac_matrix*self.opac_strength
+        return self.opac_matrix*self.opac_strength + input_vec
 
 class OpacityToTransmission(Model):
     

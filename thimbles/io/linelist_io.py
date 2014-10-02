@@ -107,7 +107,7 @@ def read_linelist(fname, file_type=None):
     return pd.DataFrame(data=ldat)
 
 
-def write_linelist(line_data, filename, file_type="moog", comment=None):
+def write_linelist(line_data, filename, file_type="moog", comment=None, ew_rescale=1000.0):
     """write out a linelist"""
     if file_type == "moog":
         out_file = open(filename,'w')
@@ -122,11 +122,22 @@ def write_linelist(line_data, filename, file_type="moog", comment=None):
             cline = line_data.iloc[line_idx]
             wv,species,ep,loggf = cline["wv"], cline["species"], cline["ep"], cline["loggf"]
             out_str = fmt_string % (wv, species, ep, loggf)
-            for v_str in "vwdamp d0 ew".split():
-                if cline[v_str] != np.nan:
+            for v_str in "moog_damp D0 ew".split():
+                bad_value = False
+                if not v_str in line_data.columns:
+                    bad_value = True
+                elif np.isnan(cline[v_str]):
+                    bad_value = True
+                if bad_value:
                     out_str += 10*" "
+                else:
+                    if v_str == "ew":
+                        val = cline[v_str]*ew_rescale
+                    else:
+                        val = cline[v_str]
+                    out_str +="{: 10.4f}".format(val)
             out_str += "\n"
-            out_file.write(out_str)    
+            out_file.write(out_str)
         out_file.close()
 
 def write_moog_from_features(filename, features):

@@ -14,7 +14,6 @@ class ModelingError(Exception):
 #"distribution":NormalDeltaDistribution,
 #}
 
-
 def parameter(free=False, scale=1.0, name=None, step_scale=1.0, derivative_scale=0.0001, convergence_scale=0.01, min=-np.inf, max=np.inf, history_max=10):
     """a decorator to turn getter methods of Model class objects 
     into Parameter objects.

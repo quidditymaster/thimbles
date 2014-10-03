@@ -35,6 +35,7 @@ class FeedbackForm (QtGui.QDialog):
         QtGui.QDialog.__init__(self)
         self.setWindowTitle('THIMBLES Feedback Form')
         self.initUI()
+        self.feedback_text.setFocus()                         
         self.is_accepted = False 
         self.setModal(True)
                         
@@ -55,8 +56,7 @@ class FeedbackForm (QtGui.QDialog):
                 username = finger_out[i:].strip().lower()
                 
         return username
-     
-     
+          
     def _init_feedback_type (self):        
         groupBox = QtGui.QGroupBox("Type of feedback")
 
@@ -87,20 +87,31 @@ class FeedbackForm (QtGui.QDialog):
         hb.addWidget(self.feedback_title)      
         vb.addLayout(hb)
         
-        # main feedback text box                                            
-        self.feedback_text = QtGui.QTextEdit()                    
-        vb.addWidget(self.feedback_text)
-        
         # message from developer about how to use text box
         label = QtGui.QLabel(("If this is an error please describe what you "
         "were doing and how to recreate error (if possible). Also, if you can, copy and paste "
             "the Python traceback. Thanks!"))
         label.setWordWrap(True)        
         vb.addWidget(label)
-                    
+        
+        # main feedback text box                                            
+        self.feedback_text = QtGui.QTextEdit() 
+        vb.addWidget(self.feedback_text)
+                            
         groupBox.setLayout(vb)
         return groupBox                
 
+    def add_error_message (self,error_msg):
+        if not len(error_msg):
+            return 
+        
+        delim = "**** CONTEXT ****"
+        msg = "\n\n{delim}\n\n{msg}\n\n{delim}".format(delim=delim,msg=error_msg)
+        text = self.feedback_text.toPlainText()+msg
+        self.feedback_text.setPlainText(text)
+        cursor = self.feedback_text.textCursor()
+        cursor.setPosition(cursor.Start)
+        
     def _init_priority_box (self):
         # what priority to give this
         groupBox = QtGui.QGroupBox("Priority Level")
@@ -143,7 +154,6 @@ class FeedbackForm (QtGui.QDialog):
               
         mainlayout.addWidget(buttonBox)      
         self.setLayout(mainlayout)
-
     
     def accept (self,*args,**kwargs):    
         self.is_accepted = True
@@ -151,9 +161,9 @@ class FeedbackForm (QtGui.QDialog):
     
     def get_results (self):
         """ Converts all information into a dictionary """
-        if not self.is_accepted:
-            raise Exception("You should accept ('ok') before trying to get the results")
         results = OrderedDict()
+        if not self.is_accepted:
+            return results
         results['name'] = self.username_text.text()
         results['timestamp'] = time.time()
         results['ctimestamp'] = time.ctime()        
@@ -216,24 +226,30 @@ Title : {title}
         # TODO: send email
         cmd = 'echo "{}" | mail -s "{}" {}'.format(body,subject,email)
         os.system(cmd)
- 
-def request_feedback (dirpath=None,emails=None):
+
+def request_feedback (error_msg="",error_title="",dirpath=None,emails=None):
     """ Create and handle dialog asking user for feedback """
     if dirpath is None:
         dirpath = FEEDBACK_DIRECTORY
     if emails is None:
         emails = FEEDBACK_EMAIL_LIST    
-    ff = FeedbackForm()
+    ff = FeedbackForm()    
+    # show and activate the window
     ff.show()
     ff.raise_()
     ff.activateWindow()
+    # add extra information
+    ff.add_error_message(error_msg)
+    ff.feedback_title.setText(error_title)
+    # exec
     if ff.exec_():
         if len(dirpath):        
             ff.save_to_file(dirpath)
-        # print(ff.get_feedback_message())
+        print(ff.get_feedback_message())
         for e in emails:
-            ff.email_feedback(e)
-    
+            ff.email_feedback(e)            
+    return ff 
+
 pass
 # ########################################################################### #
 # Test application: 
@@ -243,6 +259,6 @@ if __name__ == '__main__':
     try:
         app = QtGui.QApplication([])
     except RuntimeError:
-        app = QtGui.QApplication.instance()
-    request_feedback()
-
+        app = QtGui.QApplication.instance()        
+    results = request_feedback("you hit an error!","Error Title")
+    

@@ -158,7 +158,6 @@ class SpectralModeler(modeling.DataModelNetwork):
             species_grouper=species_grouper
         )
         
-        
         print "generating model components"
         model_wv = self.feature_mod.model_wv
         

@@ -107,27 +107,31 @@ def read_linelist(fname, file_type=None):
     return pd.DataFrame(data=ldat)
 
 
-def write_linelist(line_data, filename, file_type="moog", comment=None):
+def write_linelist(line_data, filename, file_type="moog", input_type="df", comment=None):
     """write out a linelist"""
-    if file_type == "moog":
-        out_file = open(filename,'w')
-        
-        # write the header line if desired
-        if comment is None:
-            comment = "#"+str(datetime.today())
-        out_file.write(str(comment).rstrip()+"\n")
-        
-        fmt_string = "% 10.3f% 10.5f% 10.2f% 10.2f"
-        for line_idx in range(len(line_data)):
-            cline = line_data.iloc[line_idx]
-            wv,species,ep,loggf = cline["wv"], cline["species"], cline["ep"], cline["loggf"]
-            out_str = fmt_string % (wv, species, ep, loggf)
-            for v_str in "vwdamp d0 ew".split():
-                if cline[v_str] != np.nan:
-                    out_str += 10*" "
-            out_str += "\n"
-            out_file.write(out_str)    
-        out_file.close()
+    if input_type == "df":
+        if file_type == "moog":
+            out_file = open(filename,'w')
+            
+            # write the header line if desired
+            if comment is None:
+                comment = "#"+str(datetime.today())
+            out_file.write(str(comment).rstrip()+"\n")
+            fmt_string = "% 10.3f% 10.5f% 10.2f% 10.2f"
+            for line_idx in range(len(line_data)):
+                cline = line_data.iloc[line_idx]
+                wv,species,ep,loggf = cline["wv"], cline["species"], cline["ep"], cline["loggf"]
+                out_str = fmt_string % (wv, species, ep, loggf)
+                for v_str in "moog_damp D0 ew".split():
+                    if cline[v_str] != np.nan:
+                        out_str += 10*" "
+                out_str += "\n"
+                out_file.write(out_str)    
+            out_file.close()
+        else:
+            raise ValueError("unrecognized file type")
+    else:
+        raise ValueError("unrecognized input type")
 
 def write_moog_from_features(filename, features):
     llout = tmb.stellar_atmospheres.utils.moog_utils.write_moog_lines_in(filename)

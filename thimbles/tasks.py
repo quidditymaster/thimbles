@@ -25,20 +25,35 @@ import cPickle
 
 task_registry = {}
 
-def task(name=None, category="misc", result_name="result", argstrings=None):
-    new_task = Task()
-    def task_maker(task_func):
-        name = name 
-        if name is None:
-            name = task_func.__name__
-        task_registry[name] = Task(task_func, argstrings=argstrings, result_name=result_name)
-        return task_func
-    return task_maker
+def register_task(task):
+    task_registry[task] = task
+
+def task(name=None, category="misc", result_name="return_value", aliases=None):
+    new_task = Task(name=name, category=category, result_name=result_name)
+    return new_task.set_func
 
 #def task(task_func):
 #    task_registry[task_func.__name__] = Task(task_func)
 
-def task_parser(task, task_args):
+class Task(object):
+    
+    def __init__(self, category, result_name, name, aliases=None, func=None):
+        self.name = name
+        self.result_name = result_name
+        if not func is None:
+            self.set_func(func)
+    
+    def set_func(self, func):
+        self.func = func
+        if not self.func is None:
+            if self.name is None:
+                self.name = self.func.__name__
+        return func
+    
+    def inspect_arguments(self):
+        pass
+
+class TaskArgument(object):
     pass
 
 class EvalError (Exception):
@@ -74,7 +89,7 @@ def fprint (func,max_lines=100,exclude_docstring=True,show=True):
     else:
         return to_print 
 
-class Task (object):
+class DylanTask (object):
     """ A task is based on some function
     
     This task : {target}

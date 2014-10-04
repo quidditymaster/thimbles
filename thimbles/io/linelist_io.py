@@ -106,7 +106,6 @@ def read_linelist(fname, file_type=None):
             ldat["D0"].append(np.nan)
     return pd.DataFrame(data=ldat)
 
-
 def write_linelist(line_data, filename, file_type="moog", comment=None, ew_rescale=1000.0):
     """write out a linelist"""
     if file_type == "moog":

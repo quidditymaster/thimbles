@@ -107,7 +107,7 @@ def read_linelist(fname, file_type=None):
     return pd.DataFrame(data=ldat)
 
 
-def write_linelist(line_data, filename, file_type="moog", input_type="df", comment=None):
+def write_linelist(line_data, filename, file_type="moog", input_type="df", comment=None, ew_rescale=1000.0):
     """write out a linelist"""
     if input_type == "df":
         if file_type == "moog":
@@ -117,21 +117,33 @@ def write_linelist(line_data, filename, file_type="moog", input_type="df", comme
             if comment is None:
                 comment = "#"+str(datetime.today())
             out_file.write(str(comment).rstrip()+"\n")
+            
             fmt_string = "% 10.3f% 10.5f% 10.2f% 10.2f"
             for line_idx in range(len(line_data)):
                 cline = line_data.iloc[line_idx]
                 wv,species,ep,loggf = cline["wv"], cline["species"], cline["ep"], cline["loggf"]
                 out_str = fmt_string % (wv, species, ep, loggf)
                 for v_str in "moog_damp D0 ew".split():
-                    if cline[v_str] != np.nan:
+                    bad_value = False
+                    if not v_str in line_data.columns:
+                        bad_value = True
+                    elif np.isnan(cline[v_str]):
+                        bad_value = True
+                    if bad_value:
                         out_str += 10*" "
+                    else:
+                        if v_str == "ew":
+                            val = cline[v_str]*ew_rescale
+                        else:
+                            val = cline[v_str]
+                        out_str +="{: 10.4f}".format(val)
                 out_str += "\n"
-                out_file.write(out_str)    
+                out_file.write(out_str)
             out_file.close()
         else:
-            raise ValueError("unrecognized file type")
+            raise ValueError("file_type not understood")
     else:
-        raise ValueError("unrecognized input type")
+        raise ValueError("input type not understood")
 
 def write_moog_from_features(filename, features):
     llout = tmb.stellar_atmospheres.utils.moog_utils.write_moog_lines_in(filename)

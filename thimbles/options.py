@@ -31,10 +31,14 @@ opts = OptionTree()
 
 class Option(object):
     
-    def __init__(self, name, parent, default,  aliases, help="no help string specified"):
+    def __init__(self, name, parent, default=None, converter=None, help="no help string specified"):
         self.default = default
         self.value = default
-        if not isinstance(self.name, basestring):
+        self.help = help
+        self.register_option(name, parent)
+    
+    def register_option(self, name, parent):
+        if not isinstance(name, basestring):
             raise ValueError("option name must be a string! not {}".format(type(name)))
         if parent is None:
             parent = opts
@@ -48,3 +52,5 @@ class Option(object):
     
     def __repr__(self):
         return repr(self.value)
+    
+    

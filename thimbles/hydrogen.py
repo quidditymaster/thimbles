@@ -82,7 +82,7 @@ class HydrogenLineOpacity(tmb.profiles.LineProfile):
         interped_profile += alpha_profile[np.clip(min_indexes+1, 0, len(alpha_profile)-1)]*mixing_ratio
         return np.exp(interped_profile)
 
-class HydrogenForegroundModel(Spectrum, Model):
+class HydrogenForegroundOpacityModel(Spectrum, Model):
     
     def __init__(self, wvs, strength, temperature, electron_density):
         Model.__init__(self)
@@ -105,7 +105,7 @@ class HydrogenForegroundModel(Spectrum, Model):
         self._strength = strength
         self.initialize_lines()
         self.calc_h_opac()
-        self.calc_transmission()
+        self.calc_opac()
     
     @property
     def electron_density(self):
@@ -115,7 +115,7 @@ class HydrogenForegroundModel(Spectrum, Model):
     def electron_density(self, value):
         self._electron_density = value
         self.calc_h_opac()
-        self.calc_transmission()
+        self.calc_opac()
     
     @property
     def temperature(self):
@@ -125,7 +125,6 @@ class HydrogenForegroundModel(Spectrum, Model):
     def temperature(self, value):
         self._temperature = value
         self.calc_h_opac()
-        self.calc_transmission()
     
     def initialize_lines(self):
         self.hprofiles = [[] for i in range(len(self.series_ids))]
@@ -159,7 +158,7 @@ class HydrogenForegroundModel(Spectrum, Model):
     @strength.setter 
     def strength(self, value):
         self._strength = np.clip(value, 0.01, np.inf)
-        self.calc_transmission()
+        self.calc_opac()
     
     @parameter(free=True, min=0.01, max=5.0, scale=1.0, step_scale=0.01)
     def strength_p(self):
@@ -169,27 +168,10 @@ class HydrogenForegroundModel(Spectrum, Model):
     def set_strength(self, value):
         self.strength = value
     
-    def calc_transmission(self):
-        self.flux = np.exp(-(self.opac_matrix*self.strength))
-    
-    def as_linear_op(self, input):
-        return scipy.sparse.dia_matrix((self.flux, 0), shape=(self.npts_model, self.npts_model))
+    @strength_p.expander
+    def strength_expansion(self, input):
+        return self.opac_matrix
     
     def __call__(self, input):
-        return input*self.flux
+        return input + self.opac_matrix*self.strength
     
-    def parameter_expansion(self, input):
-        delt_eps = 0.001
-        start_strength = self.strength
-        delta_matrix = np.eye(len(self.strength))*start_strength*delt_eps
-        deriv_vecs = [] 
-        for series_idx in range(len(self.strength)):
-            self.strength = start_strength - delta_matrix[series_idx]
-            low_vec = self(input)
-            self.strength = start_strength + delta_matrix[series_idx]
-            high_vec = self(input)
-            str_delta = 2.0*delt_eps*self.strength[series_idx]
-            dvec = (high_vec-low_vec)/str_delta
-            deriv_vecs.append(dvec)
-        pexp_mat = scipy.sparse.bmat(deriv_vecs).transpose()
-        return pexp_mat

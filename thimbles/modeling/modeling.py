@@ -72,11 +72,13 @@ class NormalDeltaDistribution(ParameterDistribution):
 
 class ValueHistory(object):
     
-    def __init__(self, parameter, max_length=10):
+    def __init__(self, parameter, max_length=50):
         self.set_parameter(parameter)
         self._vals = []
+        self._context = {}
         self.max_length = max_length
-        self.named_vals = {}
+        self._named_values = {}
+        self._named_contexts = {}
     
     def __len__(self):
         return len(self._vals)
@@ -84,18 +86,31 @@ class ValueHistory(object):
     def set_parameter(self, parameter):
         self.parameter = parameter
     
-    def remember(self, val_name=None):
-        current_val = copy(self.parameter.get())
-        if val_name is None:
-            self._vals.append(current_val)
+    def recontextualize(self):
+        self._vals = []
+        self._context = self.parameter.get(attr="context")
+    
+    def remember(self, value_id=None):
+        cur_val = copy(self.parameter.get())
+        if value_id is None:
+            self._vals.append(cur_val)
             if len(self._vals) > self.max_length:
                 self._vals.pop(0)
+                self._contexts.pop(0)
         else:
-            self.named_vals[val_name] = current_val
+            self._named_values[value_id] = cur_val
     
     @property
     def values(self):
         return self._vals
+    
+    @property
+    def named_values(self):
+        return self._named_values
+    
+    @property
+    def named_contexts(self):
+        return self._named_contexts
     
     @property
     def last(self):
@@ -104,15 +119,21 @@ class ValueHistory(object):
         else:
             return None
     
-    def revert(self, val_name=None, pop=False):
-        if val_name is None:
+    @property
+    def context(self):
+        return self._context
+    
+    def revert(self, value_id=None, pop=False):
+        if value_id is None:
+            context = self.context
             if pop:
-                last_val = self._vals.pop()
+                val = self._vals.pop()
             else:
-                last_val = self.last
-            self.parameter.set(last_val)
+                val = self.last
         else:
-            self.parameter.set(self.named_vals[val_name])
+            val = self._named_values[value_id]
+            context = self._named_contexts[value_id]
+        self.parameter.set(val, **context)
 
 
 mult_func = lambda x, y: x*y
@@ -228,13 +249,12 @@ class Model(ParameterGroup):
             except Exception:
                 continue
             if isinstance(val, Parameter):
-                #import pdb; pdb.set_trace()
                 val.set_model(self)
                 self._parameters.append(val)
                 if val.name is None:
                     val.name = attrib
                 val.validate()
-        
+    
     def parameter_expansion(self, input_vec, **kwargs):
         parameters = self.free_parameters
         deriv_vecs = []
@@ -281,7 +301,7 @@ class ParameterPrior(ParameterGroup, ParameterDistribution):
     
     def __init__(self, parameters):
         pass
-    
+
 
 class Parameter(object):
     
@@ -310,6 +330,8 @@ class Parameter(object):
         self._dist=None
         self._setter = None
         self._expander = None
+        self._parameterizer = None
+        self._contextualizer = None
         
         self.history = ValueHistory(self, history_max)   
     
@@ -327,7 +349,7 @@ class Parameter(object):
     
     @dist.setter
     def dist(self, value):
-        if isinstance(value, DeltaDistribution):
+        if isinstance(value, ParameterDistribution):
             self._dist=value
             self._dist.set_parameter(self)
         else:
@@ -344,9 +366,12 @@ class Parameter(object):
     def is_free(self):
         return self._free
     
-    def remember(self):
-        self.history.remember()
+    def remember(self, value_id=None):
+        self.history.remember(value_id=value_id)
     
+    def revert(self, value_id, pop=False):
+        self.history.revert(value_id=value_id, pop=pop)
+        
     def set_model(self, model):
         self.model = model
     
@@ -354,10 +379,10 @@ class Parameter(object):
         self._setter=setter
         return setter
     
-    def set(self, value):
+    def set(self, value, **kwargs):
         min_respected = np.atleast_1d(value) >= self.min
         max_respected = np.atleast_1d(value) <= self.max
-        self._setter(self.model, np.clip(value, self.min, self.max)) 
+        self._setter(self.model, np.clip(value, self.min, self.max), **kwargs) 
         if np.all(min_respected*max_respected):
             return True
         else:
@@ -369,6 +394,25 @@ class Parameter(object):
     
     def expand(self, input_vec, **kwargs):
         return self._expander(self.model, input_vec, **kwargs)
+    
+    def contextualizer(self, contextualizer):
+        self._contextualizer = contextualizer
+        return contextualizer
+    
+    @property
+    def context(self):
+        if self._contextualizer is None:
+            return {}
+        else:
+            return self._contextualizer(self.model)
+    
+    def parameterizer(self, parameterizer):
+        self._parameterizer = parameterizer
+        return parameterizer
+    
+    def reparameterize(self, fit_state):
+        self._parameterizer(self.model, fit_state=fit_state)
+        self.history.recontextualize()
     
     def get(self):
         return self._getter(self.model)
@@ -601,7 +645,7 @@ class FitState(ParameterGroup):
                     mod_list.append(tree_idx)
                     self.model_to_tree_idxs[model] = mod_list
         if self.models is None:
-            models = self.model_to_tree_idxs.keys()
+            self.models = self.model_to_tree_idxs.keys()
         self.update_grouped_parameters()
     
     def update_grouped_parameters(self):

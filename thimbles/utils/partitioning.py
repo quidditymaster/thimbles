@@ -325,12 +325,10 @@ def block_constant_partition(
         if transform_matrix is None:
             transform_matrix = scipy.sparse.identity(npts, dtype=float, format="csr")
         #assert len(model_matrix)== npts
-        #is_sorted = np.all(np.sort(partitioning_ordinal) == partitioning_ordinal)
-        #if not is_sorted:
-        #    raise ValueError("partitioning_ordinal must be sorted")
-        
         if partitioning_ordinal is None:
             partitioning_ordinal = np.arange(npts)
+        elif not np.all(np.sort(partitioning_ordinal) == partitioning_ordinal):
+            raise ValueError("partitioning_ordinal must be sorted")
         
         if min_delta is None:
             med_ord = np.median(partitioning_ordinal)

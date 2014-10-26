@@ -24,6 +24,15 @@ class OptionTree(object):
         self.option_path = ""
         self.options = {}
     
+    @property
+    def children(self):
+        children = {}
+        for poss_opt_key in self.__dict__:
+            poss_opt = getattr(self, poss_opt_key)
+            if isinstance(poss_opt, Option):
+                children[poss_opt.name] = poss_opt.value 
+        return children
+    
     def traverse_tree(self, index):
         if not isinstance(index, basestring):
             raise ValueError("option index should be a string not {}".format(type(index)))
@@ -54,13 +63,15 @@ class OptionTree(object):
                 self.options[opt_path].set_runtime_str(arg_dict[opt_path])
 
 opts = OptionTree()
+wds.opts = opts
 
 class Option(object):
     eval_ns = wds.__dict__
     
     def __init__(self, 
                  name, 
-                 parent=None,  
+                 parent=None,
+                 option_style=None,
                  envvar=None, 
                  runtime_str=None, 
                  help="no help string specified",
@@ -72,10 +83,12 @@ class Option(object):
         dynamically at runtime using a string read from a config file or 
         specified on the command line
         """
-        default = None
+        self.name = name
+        self.option_style = option_style
         self.default_specified = False
-        self.runtime_str = None
+        self.runtime_str = runtime_str
         self.use_cached = use_cached
+        default = None
         if "default" in kwargs:
             default = kwargs["default"]
             self.default_specified = True
@@ -89,8 +102,16 @@ class Option(object):
         self.try_load_envvar()
         self.help = help
         self.option_tree = option_tree
-        self.name = name
         self.register_option(name, parent)
+    
+    @property
+    def children(self):
+        children = {}
+        for poss_opt_key in self.__dict__:
+            poss_opt = getattr(self, poss_opt_key)
+            if isinstance(poss_opt, Option):
+                children[poss_opt.name] = poss_opt 
+        return children
     
     def try_load_envvar(self):
         if not self.envvar is None:
@@ -114,6 +135,9 @@ class Option(object):
     
     @property
     def value(self):
+        if self.option_style == "parent_dict":
+            children = self.children
+            return {k:children[k].value for k in children}
         if (not self._valuated) or (not self.use_cached):
             self.evaluate()
         return self._value
@@ -143,3 +167,17 @@ class Option(object):
     
     def __repr__(self):
         return "Option {}, value={}".format(self.option_path, repr(self.value))
+
+#general behavior options
+_help = "path to prepend to relative paths when searching for input data"
+data_dir = Option("data_dir", default=os.getcwd(), help=_help)
+
+_help = "path to prepend to relative paths when writing out files"
+output_dir = Option("output_dir", default=os.getcwd(), help=_help)
+
+#matplotlib options
+_help = "parent option for setting matplotlib style related options"
+mpl_style = Option("mpl_style", option_style="parent_dict", help=_help)
+lw = Option(name="line_width", default=1.5, parent=mpl_style, help="default line width")
+
+del _help

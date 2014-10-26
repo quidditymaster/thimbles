@@ -256,7 +256,7 @@ class TreeNode(object):
         self._children_explored = False
     
     @property
-    def children(self):
+    def options(self):
         if not self._children_explored:
             self.refresh_children()
             self._children_explored = True
@@ -278,7 +278,7 @@ class TreeNode(object):
         return "node:"+repr(self._obj)
     
     def __len__(self):
-        return len(self.children)
+        return len(self.options)
 
 
 class ObjectTree(QAbstractItemModel):
@@ -334,7 +334,7 @@ class ObjectTree(QAbstractItemModel):
         else:
             parent_item = parent.internalPointer()
         
-        child = parent_item.children[row]
+        child = parent_item.options[row]
         out_index = self.createIndex(row, column, child)
         return out_index
     
@@ -348,7 +348,7 @@ class ObjectTree(QAbstractItemModel):
         if parent == self.root_item:
             return QModelIndex()
         
-        return self.createIndex(parent.children.index(child), 0, parent)
+        return self.createIndex(parent.options.index(child), 0, parent)
     
     def rowCount(self, parent):
         internal_pointer = parent.internalPointer()

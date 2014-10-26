@@ -1,22 +1,23 @@
 import os
-
-import thimbles as tmb
 import time
-import h5py
-from thimbles.modeling import modeling
-from thimbles.hydrogen import get_H_mask
+
 import numpy as np
 import pandas as pd
 import scipy.sparse
 import matplotlib.pyplot as plt
-from thimbles.velocity import template_rv_estimate
-from thimbles.features import SimpleMatrixOpacityModel
-from thimbles import resource_dir
+import h5py
 import argparse
 import cPickle
 import multiprocessing
 from copy import copy
 import json
+
+import thimbles as tmb
+from thimbles.modeling import modeling
+from thimbles.hydrogen import get_H_mask
+from thimbles.velocity import template_rv_estimate
+from thimbles.features import SimpleMatrixOpacityModel
+from thimbles import resource_dir
 
 parser = argparse.ArgumentParser("fit prototype")
 #parser.add_argument("fname")

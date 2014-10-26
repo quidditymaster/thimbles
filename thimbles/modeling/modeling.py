@@ -341,7 +341,7 @@ class Parameter(object):
             val = self.get()
         except:
             pass
-        return "Parameter: {}={}".format(self.name, val)
+        return "Parameter: name={}, value={}".format(self.name, val)
     
     @property
     def dist(self):

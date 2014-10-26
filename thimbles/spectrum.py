@@ -404,8 +404,8 @@ class Spectrum(object):
         """
         #shift the wavelengths to the observed frame
         index_vals = self.get_index(wvs, frame=frame)
-        upper_index = np.ceil(index_vals)
-        lower_index = np.floor(index_vals)
+        upper_index = np.array(np.ceil(index_vals), dtype=int)
+        lower_index = np.array(np.floor(index_vals), dtype=int)
         alphas = index_vals - lower_index
         interp_vals =  self.flux[upper_index]*alphas
         interp_vals += self.flux[lower_index]*(1-alphas)

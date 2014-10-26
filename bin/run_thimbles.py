@@ -3,7 +3,11 @@ import os
 import sys
 import time
 
-from thimbles.tasks import task_registry, task_parser, task
+import thimbles as tmb
+from thimbles.tasks import task_registry, task
+
+from thimbles.options import opts
+opts.parse_options()
 
 #from PySide import QtCore,QtGui
 #from PySide.QtCore import *
@@ -48,14 +52,6 @@ from thimbles.tasks import task_registry, task_parser, task
 #    
 #    def on_quit (self):
 #        pass
-
-
-@task()
-def print_success():
-    print "hello, hooray!"
-    return 2
-
-from thimbles.tasks import task
 
 if __name__ == "__main__":
     arg_list = sys.argv[1:]

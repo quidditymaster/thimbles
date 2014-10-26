@@ -1,6 +1,8 @@
 import unittest
 import numpy as np
 import matplotlib.pyplot as plt
+from thimbles.utils.piecewise_polynomial import PiecewisePolynomial
+from timbles.utils import partitioning
 from thimbles.modeling.modeling import parameter
 from thimbles.modeling.modeling import Model, DataRootedModelTree, DataModelNetwork
 import scipy.sparse
@@ -30,6 +32,51 @@ class LineModel(Model):
     @intercept_p.setter
     def set_intercept(self, value):
         self.intercept = value    
+
+class PiecewiseConstantModel(Model):
+    
+    def __init__(self, constants, break_pts):
+        self.ppol = PiecewisePolynomial(self.constants, self._break_pts)
+    
+    @parameter(free=True)
+    def constants_p(self):
+        return self.ppol.constants
+    
+    @constants_p.setter
+    def set_constants(self, constants, break_pts=None):
+        constants = np.asarray(constants)
+        self.ppol.coefficients = constants.reshape((-1, 1))
+        if not break_pts is None:
+            self.ppol.set_break_pts(break_pts) 
+    
+    def __call__(self, input_vec):
+        return self.ppol(input_vec)
+    
+    @constants_p.contextualizer
+    def constants_context(self):
+        return {"break_pts":self.ppol.break_pts}
+    
+    @constants_p.parameterizer
+    def generate_break_pts(self, fit_state):
+        amat = fit_state.after_matrix(self) 
+        tvec = fit_state.target_vector
+        
+        
+
+class PiecewiseConstantTest(unittest.TestCase):
+    
+    def setUp(self):
+        self.npts = 200
+        self.noise_level = 0.01
+        self.brkpts = [0.5, 0.75, 0.85]
+        self.values = np.array([1.0, 0.5, -1.0, 1.5])
+        self.x = np.linspace(0, 1, self.npts)
+        self.ppol = PiecewisePolynomial(self.values.reshape((-1, 1)), self.brkpts)
+        self.y = self.ppol(self.x)
+        self.y_noisy = self.y + np.random.normal(size=self.y.shape)
+    
+    def test_parameterize(self):
+        pass
 
 
 class LineFitTest(unittest.TestCase):

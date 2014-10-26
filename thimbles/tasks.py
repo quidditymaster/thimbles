@@ -14,30 +14,32 @@ import os
 import sys 
 import re 
 import time
-import numpy as np 
 import inspect
 from collections import OrderedDict
 from types import LambdaType
-import user_namespace
+
 import cPickle
+import numpy as np 
+
+import workingdataspace as user_namespace
+from thimbles.options import Option, opts
 
 # ########################################################################### #
 
 task_registry = {}
-
 def register_task(task):
-    task_registry[task] = task
+    task_registry[task.name] = task
 
-def task(name=None, category="misc", result_name="return_value", aliases=None):
-    new_task = Task(name=name, category=category, result_name=result_name)
+def task(name=None, result_name="return_value", aliases=None):
+    new_task = Task(name=name, result_name=result_name)
     return new_task.set_func
 
 #def task(task_func):
 #    task_registry[task_func.__name__] = Task(task_func)
 
-class Task(object):
+class Task(Option):
     
-    def __init__(self, category, result_name, name, aliases=None, func=None):
+    def __init__(self, result_name, name, aliases=None, func=None):
         self.name = name
         self.result_name = result_name
         if not func is None:
@@ -52,9 +54,6 @@ class Task(object):
     
     def inspect_arguments(self):
         pass
-
-class TaskArgument(object):
-    pass
 
 class EvalError (Exception):
 
@@ -111,7 +110,7 @@ class DylanTask (object):
     
         # have some namespace
         namespace = dict(np=numpy,xpts=np.array([-0.3,0,0.3]),b=1.2)
-            
+        
         # by hand this is what's happening:
         result = target(x=eval(argstrings['x'],namespace), # x=array([0, 1, 2])
                         y=eval(argstrings['y'],namespace), # y=array([ 2.86600947,  3.        ,  2.86600947])
@@ -275,7 +274,7 @@ class DylanTask (object):
             raise EvalError("Don't know how to turn function into a re-evaluatable thing")
         else:
             return repr(value)
-     
+    
     def eval_argstring (self,key,namespace=None):
         """ return eval(self.input[key],namespace) 
         
@@ -294,18 +293,18 @@ class DylanTask (object):
         # if the name does not exist
         except NameError as e:
             raise EvalError(key,e.message)
-
+        
         # if you have a syntax error
         except SyntaxError as e:
             raise EvalError(key,e.message)            
-
+        
         # raise any other exception 
         except Exception as e:
             if isinstance(e,KeyError):
                 raise e
             else:
                 raise EvalError(key,e.message) 
-     
+    
     def _get_namespace (self,namespace=None,**kwargs):
         # ======================= get the namespace
         if namespace is None:            
@@ -323,7 +322,7 @@ class DylanTask (object):
                 if key not in ns:
                     ns[key] = kwargs[key]
         return ns     
-                
+            
     def get_args (self,namespace=None,**kwargs):
         """ Use the namespace and kwargs dicts to evaluate the self.argstrings
         and return arguments for the target function
@@ -392,6 +391,7 @@ class DylanTask (object):
         args,kws = self.get_args(namespace,**kwargs)
         return self.target(*args,**kws)
     
+    @property
     def help (self):
         """ Returns a help string """
         # could include a repr of self.argstrings for help

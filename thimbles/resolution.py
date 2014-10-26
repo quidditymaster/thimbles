@@ -5,6 +5,7 @@ import numpy as np
 import scipy
 from scipy.interpolate import interp1d
 import thimbles as tmb
+from thimbles.modeling.modeling import Model
 
 n_delts = 1024
 z_scores = np.linspace(-6, 6, n_delts)
@@ -92,14 +93,15 @@ class DiracLSF(LineSpreadFunction):
     def get_rms_width(self, index):
         return 0.0
 
-class LineSpreadFunctionModel(object):
+class LineSpreadFunctionModel(Model):
     
-    def __init__(self, model_wvs, target_wvs, target_sigmas):
+    def __init__(self, model_wvs, target_wvs, pixel_sigmas):
+        super(LineSpreadFunctionModel, self).__init__()
         self.wv = model_wvs
         self.target_wvs = target_wvs
-        self.target_sigmas = target_sigmas
+        self.target_sigmas = pixel_sigmas
         #TODO: use faster interpolation
-        interper = interp1d(target_wvs, target_sigmas*scipy.gradient(target_wvs), bounds_error=False, fill_value=1.0)
+        interper = interp1d(target_wvs, pixel_sigmas*scipy.gradient(target_wvs), bounds_error=False, fill_value=1.0)
         gdense = tmb.utils.resampling.GaussianDensity(model_wvs, interper(model_wvs))
         transform = tmb.utils.resampling.get_resampling_matrix(self.wv, self.target_wvs, preserve_normalization=True, pixel_density=gdense)    
         self._lin_op = transform

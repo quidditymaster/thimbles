@@ -104,4 +104,4 @@ if options.no_window:
 if options.batch_mode:
     options.no_window=True
     options.features_out=True
-    
+

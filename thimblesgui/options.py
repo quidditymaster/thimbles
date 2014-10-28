@@ -1,14 +1,18 @@
 #the parsing for runtime arguments.
-import argparse
-import thimbles as tmb
+#import argparse
+#import thimbles as tmb
+from thimbles.options import Option
 
-description = "a spectrum processing and analysis GUI"
-parser = argparse.ArgumentParser(description=description)
-
-file_help = "paths to spectra files or other files to read in"
-parser.add_argument("files", nargs="*", help=file_help)
-
-batchh="if set the positional arguments are assumed to contain a list of files to run serially this automatically sets --no-window"
+#description = "a spectrum processing and analysis GUI"
+#parser = argparse.ArgumentParser(description=description)
+#
+#file_help = "paths to spectra files or other files to read in"
+#parser.add_argument("files", nargs="*", help=file_help)
+#
+_help=\
+"""if set the positional arguments are assumed to contain 
+a list of files to run serially.
+setting this option also automatically sets --no-window"""
 parser.add_argument("--batch-mode", action="store_true")
 
 line_list_help = "the path to a line list file to load"

@@ -21,27 +21,53 @@ from types import LambdaType
 import cPickle
 import numpy as np 
 
-import workingdataspace as user_namespace
+import workingdataspace as wds
 from thimbles.options import Option, opts
 
 # ########################################################################### #
 
-task_registry = {}
-def register_task(task):
-    task_registry[task.name] = task
+class TaskRegistry(object):
+    
+    def __init__(self):
+        self.registry = []
+    
+    def register_task(self, task):
+        self.registry.append(task)
 
-def task(name=None, result_name="return_value", aliases=None):
+task_registry = TaskRegistry()
+
+def task(name=None, result_name="return_value"):
     new_task = Task(name=name, result_name=result_name)
+    task_registry.register_task(new_task)
     return new_task.set_func
 
 #def task(task_func):
 #    task_registry[task_func.__name__] = Task(task_func)
 
-class Task(Option):
+def argument_dict(func, filler_value=None, return_has_default=False):
+    argspec = inspect.getargspec(func)
+    n_args_total = len(argspec.args)
+    n_defaults = len(argspec.defaults)
+    defaults = [filler_value for i in range(n_args_total-n_defaults)]
+    defaults.extend(argspec.defaults)
+    arg_dict = OrderedDict(zip(argspec.args, defaults))
     
-    def __init__(self, result_name, name, aliases=None, func=None):
+    if return_has_default:
+        has_defaults = [False for i in range(n_args_total-n_defaults)]
+        has_defaults.extend([True for i in range(n_defaults)])
+        has_defaults_dict = OrderedDict(zip(argspec.args, has_defaults))
+        return arg_dict, has_defaults_dict
+    else:
+        return arg_dict 
+
+class Task(Option):
+    target_ns = wds.__dict__
+    
+    def __init__(self, result_name, name, func=None):
         self.name = name
         self.result_name = result_name
+        if not isinstance(self.result_name, basestring):
+            raise ValueError("result_name must be of type string not type {}".format(type(result_name))) 
         if not func is None:
             self.set_func(func)
     
@@ -50,10 +76,24 @@ class Task(Option):
         if not self.func is None:
             if self.name is None:
                 self.name = self.func.__name__
+            super(Task, self).__init__(name=self.name, default=self.func)
+            self.generate_child_options()
         return func
     
-    def inspect_arguments(self):
-        pass
+    def generate_child_options(self):
+        arg_dict, arg_has_default = argument_dict(self.func, return_has_default=True)
+        self.task_kwargs = arg_dict.keys()
+        for arg_key in arg_dict:
+            opt_kwargs = {}
+            if arg_has_default[arg_key]:
+                opt_kwargs["default"] = arg_dict[arg_key]
+            new_opt = Option(name=arg_key, parent=self, **opt_kwargs)
+    
+    def run_task(self):
+        task_kwargs = {kw:getattr(self, kw).value for kw in self.task_kwargs}
+        func_res = self.func(**task_kwargs)
+        self.target_ns[self.result_name] = func_res
+        return func_res
 
 class EvalError (Exception):
 
@@ -129,7 +169,7 @@ class DylanTask (object):
     
       
     """ 
-    defaultNamespace = user_namespace.__dict__
+    defaultNamespace = wds.__dict__
     
     def __init__ (self, target=None, argstrings=None, result_name="result"):
         """

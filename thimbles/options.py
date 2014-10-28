@@ -1,27 +1,18 @@
 import sys
-import pyparsing
 from thimbles import workingdataspace as wds
 import os
+from copy import copy
 
 class OptionSpecificationError(Exception):
     pass
 
 config_path = os.environ.get("THIMBLESCONFIGPATH", os.path.join(os.environ["HOME"], ".config", "thimbles", "config.txt"))
-config_strings = {}
-if os.path.isfile(config_path):
-    lines = open(config_path, "r").readlines()
-    for line in lines:
-        spl = line.split()
-        if spl[0][0] == "#":
-            continue
-        #TODO: instead of splitting on white space and rejoining just find first white space
-        config_strings[spl[0]] = " ".join(spl[1:])
 
 class OptionTree(object):
-    config_strings = config_strings
     
-    def __init__(self):
+    def __init__(self, config_path=config_path):
         self.option_path = ""
+        self.config_path=config_path
         self.options = {}
     
     @property
@@ -46,21 +37,69 @@ class OptionTree(object):
         return self.options[index].value
     
     def __setitem__(self, index, value):
-        self.options[index].value = value
+        self.options[index].value = value        
     
     def parse_options(self):
-        argv = sys.argv[1:] #first value is program name
-        arg_dict = {}
-        val_idx = 0
-        while val_idx < len(argv):
-            val = argv[val_idx]
-            if "--" == val[:2]:
-                arg_dict[val[2:]] = argv[val_idx+1]
-                val_idx +=1
-            val_idx += 1
-        for opt_path in self.options:
-            if opt_path in arg_dict:
-                self.options[opt_path].set_runtime_str(arg_dict[opt_path])
+        rt_str_dict = {}
+        #populate from environment variables
+        for option in self.options.values():
+            if not option.envvar is None:
+                if option.envvar in os.environ:
+                    rt_str_dict[option] = os.environ[option.envvar]
+        #parse the config file
+        parent_opt_path = None
+        sub_path = None
+        if os.path.isfile(self.config_path):
+            lines = open(config_path, "r").readlines()
+            for line in lines:
+                crun_str = None
+                spl = line.split("#")[0].split()
+                if len(spl) < 1:
+                    continue
+                elif spl[0][:2] == "--":
+                    parent_opt_path = spl.pop(0)[2:]
+                    sub_path = None
+                if len(spl) > 0 and spl[0][:1] == "-":
+                    sub_path = spl.pop(0)[1:]
+                if len(spl) > 0:
+                    crun_str = " ".join(spl)
+                
+                #figure out where we are in the option tree
+                if sub_path is None:
+                    cur_path = parent_opt_path
+                else:
+                    cur_path = "{}.{}".format(parent_opt_path, sub_path)
+                cur_opt = self.traverse_tree(cur_path)
+                if cur_opt.option_style == "flag":
+                    rt_str_dict[cur_opt] = "True"
+                elif not crun_str is None:
+                    rt_str_dict[cur_opt] = crun_str
+        #parse the command line arguments
+        argv = copy(sys.argv[1:]) #first value is program name
+        parent_opt_path = None
+        sub_path = None
+        while len(argv) > 0:
+            crun_str = None
+            if "--" == argv[0][:2]:
+                parent_opt_path = argv.pop(0)[2:]
+                sub_path = None
+            elif len(argv) > 0 and argv[0][0] == "-":
+                sub_path = argv.pop(0)[1:]
+            elif len(argv) > 0:
+                crun_str = argv.pop(0)
+            #figure out where we are in the option tree
+            if sub_path is None:
+                cur_path = parent_opt_path
+            else:
+                cur_path = "{}.{}".format(parent_opt_path, sub_path)
+            cur_opt = self.traverse_tree(cur_path)
+            if cur_opt.option_style == "flag":
+                rt_str_dict[cur_opt] = "True"
+            elif not crun_str is None:
+                rt_str_dict[cur_opt] = crun_str
+        #set the runtime values
+        for option in rt_str_dict:
+            option.set_runtime_str(rt_str_dict[option])
 
 opts = OptionTree()
 wds.opts = opts
@@ -86,6 +125,9 @@ class Option(object):
         self.name = name
         self.option_style = option_style
         self.default_specified = False
+        if self.option_style == "flag":
+            if not "default" in kwargs:
+                kwargs["default"] = True
         self.runtime_str = runtime_str
         self.use_cached = use_cached
         default = None
@@ -99,7 +141,6 @@ class Option(object):
             self._value = default
             self._valuated = True
         self.envvar = envvar
-        self.try_load_envvar()
         self.help = help
         self.option_tree = option_tree
         self.register_option(name, parent)
@@ -112,12 +153,7 @@ class Option(object):
             if isinstance(poss_opt, Option):
                 children[poss_opt.name] = poss_opt 
         return children
-    
-    def try_load_envvar(self):
-        if not self.envvar is None:
-            if self.envvar in os.environ:
-                self.set_runtime_str(os.environ[self.envvar])
-    
+        
     def set_runtime_str(self, value):
         if not isinstance(value, basestring):
             raise TypeError("runtime_str must be of type string not type {}".format(type(value)))

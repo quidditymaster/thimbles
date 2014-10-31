@@ -1094,10 +1094,10 @@ def saturated_voigt_cog(gamma_ratio=0.1):
     max_log_strength = 5.0
     n_strength = 105
     log_strengths = np.linspace(min_log_strength, max_log_strength, n_strength)
-    strengths = np.power(10, log_strengths)
-    npts = 1000
+    strengths = np.power(10.0, log_strengths)
+    npts = 1001
     
-    dx = np.exp(np.linspace(-10, 10, 1000))
+    dx = np.power(10.0, np.linspace(-8, 8, npts))
     opac_profile = voigt(dx, 0.0, 1.0, gamma_ratio)        
     log_rews = np.zeros(n_strength)
     for strength_idx in range(n_strength):

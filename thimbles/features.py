@@ -87,9 +87,8 @@ class SaturatedVoigtFeatureModel(Model):
                  snr_target=100.0,
                  dof_thresholds=None,
                  teff=5000.0,
-                 gamma_ratio_5000=0.05, 
+                 gamma=0.01, 
                  vmicro=2.0,
-                 vmacro=1.0,
                  initial_x_offset=7.0,
                  dof_threshold=0.0,
                  log_ion_frac=-0.01,
@@ -116,7 +115,7 @@ class SaturatedVoigtFeatureModel(Model):
           microturbulent velocity in kilometers per second
         vmacro: float
           macroturbulent velocity in kilometers per second
-        gamma_ratio_5000: float
+        gamma: float
           the ratio of the lorentz width to the thermal width at 5000 angstroms.
         """
         super(SaturatedVoigtFeatureModel, self).__init__()
@@ -128,7 +127,6 @@ class SaturatedVoigtFeatureModel(Model):
         self.snr_threshold = snr_threshold
         self.snr_target = snr_target
         self._vmicro = vmicro
-        self.vmacro = vmacro
         assert log_ion_frac < 0 #can't have an ion fraction greater than 1!
         self.log_ion_frac = log_ion_frac
         self.domination_ratio=domination_ratio
@@ -153,7 +151,7 @@ class SaturatedVoigtFeatureModel(Model):
         
         #TODO: make the gamma ratio change as a function of wv
         #TODO: allow for individual gamma ratio's by interpolating cogs
-        self.gamma_ratio_5000 = gamma_ratio_5000
+        self.gamma = gamma
         self.model_resolution=model_resolution
         
         self.parameterize()
@@ -213,13 +211,13 @@ class SaturatedVoigtFeatureModel(Model):
         return self.cfm
     
     @parameter(free=True, min=0.001, max=1.2, step_scale=0.1)
-    def gamma_ratio_5000_p(self):
-        return self.gamma_ratio_5000
+    def gamma_p(self):
+        return self.gamma
     
-    @gamma_ratio_5000_p.setter
-    def set_gamma_ratio_5000(self, value):
+    @gamma_p.setter
+    def set_gamma(self, value):
         #import pdb; pdb.set_trace()
-        self.gamma_ratio_5000 = value
+        self.gamma = value
         self._recalc_opac_matrix = True
         self._recalc_feature_matrix = True
         self._recollapse_feature_matrix = True
@@ -296,7 +294,7 @@ class SaturatedVoigtFeatureModel(Model):
             max_idx = self.get_index(cent_wv*(1.0+window_delta), clip=True)
             sigma = ldata["doppler_width"]
             #TODO: replace the constant gamma with an appropriately varying one
-            gamma = self.gamma_ratio_5000*sigma
+            gamma = self.gamma*sigma
             prof = voigt(self.model_wv[min_idx:max_idx+1], cent_wv, sigma, gamma)
             predicted_lrw = ldata["cog_lrw"]
             prof *= np.power(10.0, predicted_lrw)/np.max(prof)
@@ -361,7 +359,7 @@ class SaturatedVoigtFeatureModel(Model):
                     max_idx = self.get_index(cent_wv*(1.0+window_delta), clip=True)
                     sigma = max(ldata["doppler_width"], min_delta_wv[cent_idx])
                     #TODO: replace the constant gamma with an appropriately varying one
-                    gamma = self.gamma_ratio_5000*sigma
+                    gamma = self.gamma*sigma
                     cog_lrw = ldata["cog_lrw"]
                     cog_ew = np.power(10.0, cog_lrw)*cent_wv
                     prof = cog_ew*voigt(self.model_wv[min_idx:max_idx+1], cent_wv, sigma, gamma)
@@ -412,21 +410,26 @@ class SaturatedVoigtFeatureModel(Model):
             idx = np.clip(idx, 0, self.npts-1)
         return idx
     
+    def sigma_widths(self):
+        sig_offs= self.fdat["sigma_offset"]
+        return np.clip(self.fdat["doppler_width"]+sig_offs, 0.0001, np.inf)
+    
+    def gamma_widths(self):
+        gam_offs = self.fdat["gamma_offset"]
+        return np.clip(self.gamma*(self.fdat["wv"]/5000.0)**2+gam_offs, 0.0001, np.inf)
+    
     def calc_feature_matrix(self, overwrite=True):
         print "generating full feature matrix"
         indexes = [] #arrays of the row indexes belonging to each column
         profiles = []
-        sig_offs = self.fdat["sigma_offset"]
-        gam_offs = self.fdat["gamma_offset"]
-        wv_5000 = self.fdat["wv"]/5000.0
-        target_sigma_widths = np.clip(self.fdat["doppler_width"]+sig_offs, 0.0001, np.inf)
-        target_gamma_widths = np.clip(self.gamma_ratio_5000*target_sigma_widths*wv_5000+gam_offs, 0.0001, np.inf)
+        target_sigma_widths = self.sigma_widths()
+        target_gamma_widths = self.gamma_widths()
         for feat_idx in range(self.n_feat):
             column_idx = int(self.fdat["feature_num"].iloc[feat_idx])
             feat_wv = self.fdat["wv"].iloc[feat_idx]
             target_sig_width = target_sigma_widths.iloc[feat_idx]
             target_gam_width = target_gamma_widths.iloc[feat_idx]
-            window_size = max(target_gam_width*25, target_sig_width*5.0)
+            window_size = max(target_gam_width*35, np.sqrt(target_sig_width**2 + target_gam_width**2)*5.0)
             lb = int(np.around(self.get_index(feat_wv-window_size, clip=True)))
             ub = int(np.around(self.get_index(feat_wv+window_size, clip=True)))
             prof = voigt(self.model_wv[lb:ub+1], feat_wv, target_sig_width, target_gam_width)
@@ -579,21 +582,18 @@ class SaturatedVoigtFeatureModel(Model):
         self._delta_log_cog = self._log_cog_gamma_ratios[1]-self._min_log_cog
     
     def calc_ew(self):
-        sig_offs = self.fdat["sigma_offset"]
-        gam_offs = self.fdat["gamma_offset"]
-        opac_strength = self.fdat["opac_strength"]
-        wv_5000 = self.fdat["wv"]/5000.0
-        sigma_widths = np.clip(self.fdat["doppler_width"]+sig_offs, 0.0001, np.inf)
-        gamma_widths = np.clip(self.gamma_ratio_5000*sigma_widths*wv_5000+gam_offs, 0.0001, np.inf)
+        sigma_widths = self.sigma_widths()
+        gamma_widths = self.gamma_widths() 
         log_gamma_ratios = np.log10(gamma_widths/sigma_widths)
         cog_idxs = np.array((log_gamma_ratios - self._min_log_cog)/self._delta_log_cog, dtype=int)
         cog_idxs = np.clip(cog_idxs, 0, len(self._cogs)-1)
         log_rews_out = np.zeros(len(self.fdat))
+        opac_strength = self.fdat["opac_strength"].values
         for cur_cog_idx in range(len(self._cogs)):
             select_idxs = np.where(cog_idxs == cur_cog_idx)[0]
             if len(select_idxs) > 0:
-                log_rews_out[select_idxs] = self._cogs[cur_cog_idx](opac_strength[select_idxs])
-        ews = sigma_widths*np.power(10.0, log_rews_out/np.log(10.0))
+                log_rews_out[select_idxs] = self._cogs[cur_cog_idx](np.log10(opac_strength[select_idxs]))
+        ews = sigma_widths*np.power(10.0, log_rews_out)
         self.fdat["ew"] = ews
     
     #def fit_offsets(self):

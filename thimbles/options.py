@@ -73,6 +73,8 @@ class OptionTree(object):
                 if cur_opt.option_style == "flag":
                     rt_str_dict[cur_opt] = "True"
                 elif not crun_str is None:
+                    if cur_opt.option_style == "parent_dict":
+                        raise OptionSpecificationError("cannot assign runtime strings directly to options with option_style==parent_dict, attempted to assign value={} to option {}".format(crun_str, cur_opt.name))
                     rt_str_dict[cur_opt] = crun_str
         #parse the command line arguments
         argv = copy(sys.argv[1:]) #first value is program name
@@ -96,8 +98,10 @@ class OptionTree(object):
             if cur_opt.option_style == "flag":
                 rt_str_dict[cur_opt] = "True"
             elif not crun_str is None:
+                if cur_opt.option_style == "parent_dict":
+                    raise OptionSpecificationError("cannot assign runtime strings directly to options with option_style==parent_dict, attempted to assign value={} to option {}".format(crun_str, cur_opt.name))
                 rt_str_dict[cur_opt] = crun_str
-        #set the runtime values
+        #set the runtime values we have collected
         for option in rt_str_dict:
             option.set_runtime_str(rt_str_dict[option])
 
@@ -113,7 +117,7 @@ class Option(object):
                  option_style=None,
                  envvar=None, 
                  runtime_str=None, 
-                 help="no help string specified",
+                 help="",
                  use_cached=True, 
                  option_tree=opts,
                  **kwargs):
@@ -124,6 +128,10 @@ class Option(object):
         """
         self.name = name
         self.option_style = option_style
+        opt_style_poss = "parent_dict flag raw_string".split()
+        if not option_style is None:
+            if not option_style in opt_style_poss:
+                raise ValueError("option_sytle must be one of {} received {}".format(opt_style_poss, option_style))
         self.default_specified = False
         if self.option_style == "flag":
             if not "default" in kwargs:
@@ -162,7 +170,10 @@ class Option(object):
     
     def evaluate(self):
         if not self.runtime_str is None:
-            res = eval(self.runtime_str, self.eval_ns)
+            if self.option_style == "raw_string":
+                res = self.runtime_str
+            else:
+                res = eval(self.runtime_str, self.eval_ns)
             self._value = res
             self._valuated = True
         else:

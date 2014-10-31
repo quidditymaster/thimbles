@@ -3,6 +3,7 @@ import re
 import numpy as np
 import pandas as pd
 import thimbles as tmb
+from thimbles.tasks import task
 
 from thimbles.stellar_atmospheres import solar_abundance as ptable
 
@@ -12,20 +13,26 @@ def float_or_nan(val):
     except ValueError:
         return np.nan
 
-def read_linelist(fname, file_type=None):
+@task(result_name="line_data")
+def read_linelist(fname, file_type="detect"):
     """
     fname: string
       path to linelist file 
     file_type: string
-       None attempt to detect linelist type from extensions
+      'detect' attempt to detect linelist type from extensions
       'moog' moog type linelist
       'vald' vald long format
+      'hdf5' the efficient hdf5 format
     """
-    if file_type is None:
+    if file_type is "detect":
         if ".ln" in fname:
             file_type = "moog"
         elif ".vald" in fname:
             file_type = "vald"
+        elif ".h5" in fname:
+            file_type = "hdf5"
+    if file_type == "hdf5":
+        return pd.read_hdf(fname, "ldat")
     lines = open(fname).readlines()
     ldat = {"wv":[], "species":[], "Z":[], "ion":[], 
             "ep":[], "loggf":[], "ew":[],
@@ -106,19 +113,24 @@ def read_linelist(fname, file_type=None):
             ldat["D0"].append(np.nan)
     return pd.DataFrame(data=ldat)
 
-
-def write_linelist(line_data, filename, file_type="moog", input_type="df", comment=None, ew_rescale=1000.0):
+@task()
+def write_linelist(line_data, fname, file_type="moog", comment=None, a_to_ma=True):
     """write out a linelist"""
-    if input_type == "df":
-        if file_type == "moog":
-            out_file = open(filename,'w')
+    if isinstance(line_data, pd.DataFrame):
+        if file_type == "hdf5":
+            line_data.to_hdf(fname, "ldat")
+        elif file_type == "moog":
+            out_file = open(fname,'w')
             
             # write the header line if desired
             if comment is None:
-                comment = "#"+str(datetime.today())
+                comment = "#{}".format(datetime.today())
             out_file.write(str(comment).rstrip()+"\n")
             
             fmt_string = "% 10.3f% 10.5f% 10.2f% 10.2f"
+            ew_scale_factor = 1.0
+            if a_to_ma: # convert from anstroms to milli angstroms
+                ew_scale_factor = 1000.0
             for line_idx in range(len(line_data)):
                 cline = line_data.iloc[line_idx]
                 wv,species,ep,loggf = cline["wv"], cline["species"], cline["ep"], cline["loggf"]
@@ -133,7 +145,7 @@ def write_linelist(line_data, filename, file_type="moog", input_type="df", comme
                         out_str += 10*" "
                     else:
                         if v_str == "ew":
-                            val = cline[v_str]*ew_rescale
+                            val = cline[v_str]*ew_scale_factor
                         else:
                             val = cline[v_str]
                         out_str +="{: 10.4f}".format(val)
@@ -145,14 +157,3 @@ def write_linelist(line_data, filename, file_type="moog", input_type="df", comme
     else:
         raise ValueError("input type not understood")
 
-def write_moog_from_features(filename, features):
-    llout = tmb.stellar_atmospheres.utils.moog_utils.write_moog_lines_in(filename)
-    for feat in features:
-        wv=feat.wv
-        spe=feat.species
-        loggf = feat.loggf
-        ep = feat.ep
-        ew = 1000*feat.eq_width
-        if feat.flags["use"]:
-            llout.add_line(wv, spe, ep, loggf, ew=ew, comment=feat.note)
-    llout.close()

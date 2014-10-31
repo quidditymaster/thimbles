@@ -26,19 +26,21 @@ from thimbles.options import Option, opts
 
 # ########################################################################### #
 
-class TaskRegistry(object):
+class TaskRegister(object):
     
     def __init__(self):
-        self.registry = []
+        self.registry = {}
     
     def register_task(self, task):
-        self.registry.append(task)
+        self.registry[task.name] = task
+    
+    def __getitem__(self, index):
+        return self.registry[index]
 
-task_registry = TaskRegistry()
+task_registry = TaskRegister()
 
 def task(name=None, result_name="return_value"):
     new_task = Task(name=name, result_name=result_name)
-    task_registry.register_task(new_task)
     return new_task.set_func
 
 #def task(task_func):
@@ -78,6 +80,7 @@ class Task(Option):
                 self.name = self.func.__name__
             super(Task, self).__init__(name=self.name, default=self.func)
             self.generate_child_options()
+            task_registry.register_task(self)
         return func
     
     def generate_child_options(self):
@@ -87,7 +90,10 @@ class Task(Option):
             opt_kwargs = {}
             if arg_has_default[arg_key]:
                 opt_kwargs["default"] = arg_dict[arg_key]
-            new_opt = Option(name=arg_key, parent=self, **opt_kwargs)
+            Option(name=arg_key, parent=self, **opt_kwargs)
+        #add a special option for result_name
+        #new_opt = Option(name="result_name", parent=self, option_style="raw_string", default=self.result_name) 
+        Option(name="task_order", default=-1, parent=self)
     
     def run_task(self):
         task_kwargs = {kw:getattr(self, kw).value for kw in self.task_kwargs}
@@ -122,7 +128,7 @@ def fprint (func,max_lines=100,exclude_docstring=True,show=True):
     if exclude_docstring:
         msg = ' <docstring see help({})> '.format(func.__name__)
         to_print = to_print.replace(func.__doc__,msg)
-              
+    
     if show:
         print(to_print) 
     else:

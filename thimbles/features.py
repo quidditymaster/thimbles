@@ -13,7 +13,7 @@ from thimbles import resource_dir
 from thimbles.modeling.modeling import parameter, Model
 from thimbles.utils.misc import smooth_ppol_fit
 import thimbles.utils.piecewise_polynomial as ppol
-from thimbles import verbosity
+from thimbles import logger
 from thimbles import hydrogen
 from latbin import matching
 from thimbles.utils.misc import saturated_voigt_cog
@@ -259,7 +259,7 @@ class SaturatedVoigtFeatureModel(Model):
         snr2_available = np.zeros(npts_model)
         dof_available = np.zeros(npts_model)
         
-        verbosity("building spectra to model space transforms")
+        logger("building spectra to model space transforms")
         for spec in spectra:
             trans = tmb.utils.resampling.get_resampling_matrix(spec.wv, self.model_wv, preserve_normalization=False)
             transforms_to_model.append(trans)
@@ -282,7 +282,7 @@ class SaturatedVoigtFeatureModel(Model):
         #zero is the background group
         self.fdat["fit_group"] = np.zeros(len(self.fdat), dtype=int) 
         window_delta = 0.0001
-        verbosity("collecting max feature strengths per model pixel")
+        logger("collecting max feature strengths per model pixel")
         for line_idx in range(len(self.fdat)):
             ldata = self.fdat.iloc[line_idx]
             cent_wv = ldata["wv"]
@@ -301,7 +301,7 @@ class SaturatedVoigtFeatureModel(Model):
             mst_snippet = max_strengths[min_idx:max_idx+1]
             max_strengths[min_idx:max_idx+1] = np.where(mst_snippet > prof, mst_snippet, prof)
         
-        verbosity("relegating dominated features to a background model")
+        logger("relegating dominated features to a background model")
         #mask features close to the centers of Hydrogen lines
         hmask = hydrogen.get_H_mask(self.model_wv, self.H_mask_radius)
         for line_idx in range(len(self.fdat)):
@@ -319,7 +319,7 @@ class SaturatedVoigtFeatureModel(Model):
                 self.fdat["fit_group"].iloc[line_idx] = 1
         
         #print "beginning grouping"
-        verbosity("matching potential groups")
+        logger("matching potential groups")
         foreground_features = self.fdat[self.fdat.fit_group >= 1]
         
         species_gb = foreground_features.groupby(["Z", "ion"])

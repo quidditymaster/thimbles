@@ -7,7 +7,7 @@ import scipy.integrate as integrate
 import scipy.sparse
 from thimbles.utils.misc import smooth_ppol_fit
 import thimbles.utils.piecewise_polynomial as ppol
-from thimbles import verbosity
+from thimbles import logger
 from spectrum import Spectrum
 
 class BlackBodyContinuumModel(Spectrum):

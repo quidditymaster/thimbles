@@ -1,7 +1,6 @@
 
 import utils
-from verbosity import Verbosity
-verbosity = Verbosity(level='silent')
+from verbosity import logger
 
 import os
 resource_dir = os.path.join(os.path.dirname(__file__), "resources")

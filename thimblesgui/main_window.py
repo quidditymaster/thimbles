@@ -408,7 +408,7 @@ class AppForm(QMainWindow):
         if self.options.rv == "cc":
             #best_template = self.match_standard(spectra)
             #import pdb; pdb.set_trace()
-            rv = tmb.velocity.template_rv_estimate(spectra, delta_max=self.options.max_rv)
+            rv = tmb.velocity.template_cc_rv(spectra, max_velocity=self.options.max_rv)
         else:
             rv = float(self.options.rv)
         for spec in spectra:

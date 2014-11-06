@@ -21,7 +21,7 @@ class OptionTree(object):
         for poss_opt_key in self.__dict__:
             poss_opt = getattr(self, poss_opt_key)
             if isinstance(poss_opt, Option):
-                children[poss_opt.name] = poss_opt.value 
+                children[poss_opt.name] = poss_opt
         return children
     
     def traverse_tree(self, index):
@@ -38,7 +38,7 @@ class OptionTree(object):
     
     def __setitem__(self, index, value):
         self.options[index].value = value        
-    
+        
     def parse_options(self):
         rt_str_dict = {}
         #populate from environment variables
@@ -57,10 +57,10 @@ class OptionTree(object):
                 if len(spl) < 1:
                     continue
                 elif spl[0][:2] == "--":
-                    parent_opt_path = spl.pop(0)[2:]
+                    parent_opt_path = spl.pop(0)[2:].replace("-", "_")
                     sub_path = None
                 if len(spl) > 0 and spl[0][:1] == "-":
-                    sub_path = spl.pop(0)[1:]
+                    sub_path = spl.pop(0)[1:].replace("-", "_")
                 if len(spl) > 0:
                     crun_str = " ".join(spl)
                 
@@ -83,10 +83,10 @@ class OptionTree(object):
         while len(argv) > 0:
             crun_str = None
             if "--" == argv[0][:2]:
-                parent_opt_path = argv.pop(0)[2:]
+                parent_opt_path = argv.pop(0)[2:].replace("-", "_")
                 sub_path = None
             elif len(argv) > 0 and argv[0][0] == "-":
-                sub_path = argv.pop(0)[1:]
+                sub_path = argv.pop(0)[1:].replace("-", "_")
             elif len(argv) > 0:
                 crun_str = argv.pop(0)
             #figure out where we are in the option tree
@@ -104,6 +104,10 @@ class OptionTree(object):
         #set the runtime values we have collected
         for option in rt_str_dict:
             option.set_runtime_str(rt_str_dict[option])
+        
+        for option in rt_str_dict:
+            if not option.on_parse is None:
+                option.on_parse()
 
 opts = OptionTree()
 wds.opts = opts
@@ -115,9 +119,10 @@ class Option(object):
                  name, 
                  parent=None,
                  option_style=None,
-                 envvar=None, 
+                 on_parse=None,
+                 envvar=None,
                  runtime_str=None, 
-                 help="",
+                 help_="",
                  use_cached=True, 
                  option_tree=opts,
                  **kwargs):
@@ -127,6 +132,7 @@ class Option(object):
         specified on the command line
         """
         self.name = name
+        self.on_parse = on_parse
         self.option_style = option_style
         opt_style_poss = "parent_dict flag raw_string".split()
         if not option_style is None:
@@ -135,7 +141,7 @@ class Option(object):
         self.default_specified = False
         if self.option_style == "flag":
             if not "default" in kwargs:
-                kwargs["default"] = True
+                kwargs["default"] = False
         self.runtime_str = runtime_str
         self.use_cached = use_cached
         default = None
@@ -149,7 +155,7 @@ class Option(object):
             self._value = default
             self._valuated = True
         self.envvar = envvar
-        self.help = help
+        self.help = help_
         self.option_tree = option_tree
         self.register_option(name, parent)
     
@@ -161,7 +167,7 @@ class Option(object):
             if isinstance(poss_opt, Option):
                 children[poss_opt.name] = poss_opt 
         return children
-        
+    
     def set_runtime_str(self, value):
         if not isinstance(value, basestring):
             raise TypeError("runtime_str must be of type string not type {}".format(type(value)))
@@ -170,15 +176,20 @@ class Option(object):
     
     def evaluate(self):
         if not self.runtime_str is None:
-            if self.option_style == "raw_string":
-                res = self.runtime_str
-            else:
-                res = eval(self.runtime_str, self.eval_ns)
-            self._value = res
-            self._valuated = True
+            try:
+                if self.option_style == "raw_string":
+                    res = self.runtime_str
+                else:
+                    res = eval(self.runtime_str, self.eval_ns)
+                self._value = res
+                self._valuated = True
+                return res
+            except SyntaxError as e:
+                OptionSpecificationError("Evaluation of string:\n{}\nfailed with error {}".format(self.runtime_str, e))
+            except Exception as e:
+                OptionSpecificationError("Unknown valuation error {}".format(e))
         else:
-            raise OptionSpecificationError("runtime string not specified")
-        return res
+            raise OptionSpecificationError("runtime string is None")
     
     @property
     def value(self):
@@ -213,18 +224,77 @@ class Option(object):
             return "{}.{}".format(parent_path, self.name)
     
     def __repr__(self):
-        return "Option {}, value={}".format(self.option_path, repr(self.value))
+        val = "valuation failed"
+        try:
+            val = self.value
+        except OptionSpecificationError:
+            pass
+        return "Option {}, value={}".format(self.option_path, val)
 
 #general behavior options
 _help = "path to prepend to relative paths when searching for input data"
-data_dir = Option("data_dir", default=os.getcwd(), help=_help)
+data_dir = Option("data_dir", default=os.getcwd(), help_=_help)
 
 _help = "path to prepend to relative paths when writing out files"
-output_dir = Option("output_dir", default=os.getcwd(), help=_help)
+output_dir = Option("output_dir", default=os.getcwd(), help_=_help)
 
 #matplotlib options
 _help = "parent option for setting matplotlib style related options"
-mpl_style = Option("mpl_style", option_style="parent_dict", help=_help)
+mpl_style = Option("mpl_style", option_style="parent_dict", help_=_help)
 lw = Option(name="line_width", default=1.5, parent=mpl_style, help="default line width")
+
+#spectrum display related options
+_help=\
+"""options relating to how spectra will be displayed by default
+"""
+Option(name="spec_display", option_style="parent_dict", help_=_help)
+
+_help=\
+"""The logarithm of the ratio of default display window in angstroms
+to the central wavelength being displayed.
+"""
+Option(name="window_width", default=-4.5, parent="spec_display", help_=_help)
+
+
+thimbles_header_str =\
+"""
+THIMBLES:
+  Tools for            ##########
+  Handling            ############
+  Intricate          ##############
+  Measurements on    ############## 
+  Breathtakingly     ##############
+  Large              ##############
+  Ensembles of      ################
+  Spectra          ##################
+"""
+
+
+def print_option_help():
+    print thimbles_header_str
+    help_str = "{name}  :  {help}"#\n  value: {value}\n  runtime string:{run_str}" 
+    print "Top Level Options"
+    top_opts = opts.children
+    for op_name in top_opts:
+        help_ = top_opts[op_name].help
+        print help_str.format(name=op_name, help=help_)
+    #for op in opts.options.values():
+    #    try:
+    #        value = op.value
+    #    except OptionSpecificationError:
+    #        value = "no value"
+    #    if op.runtime_str is None:
+    #        run_str = "runtime string unspecified"
+    #    else:
+    #        run_str = op.runtime_str
+    #    print help_str.format(name=op.name, help=op.help)# value=value, run_str=run_str)
+
+_help=\
+"""print the help message
+"""
+Option(name="help", option_style="flag", help_=_help, on_parse=print_option_help)
+
+#TODO: set the on_parse function for the ThimblesLogger options.
+
 
 del _help

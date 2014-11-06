@@ -23,6 +23,8 @@ from thimbles.tasks import task_registry
 from thimbles import workingdataspace as wds
 
 import thimblesgui as tmbg
+from thimblesgui.views import ObjectTreeWidget
+from thimblesgui.task_widgets import task_runner_factory
 import thimbles as tmb
 import thimbles.io as io
 
@@ -41,22 +43,22 @@ class AppForm(QMainWindow):
         self.setCentralWidget(self.main_frame)
         
         #make working data space view 
-        self.wds_view = QTreeView()
-        self.wds_model = tmbg.models.ObjectTree(wds)
-        self.wds_view.setModel(self.wds_model)
-        self.layout.addWidget(self.wds_view, 0, 1, 1, 1)
+        self.wds_widget = ObjectTreeWidget(wds, parent=self)
+        self.layout.addWidget(self.wds_widget, 0, 1, 1, 1)
         
         #make the tasks launching buttons widget
         self.tasks_box = QGroupBox("Tasks Launcher")
         self.tasks_layout = QVBoxLayout()
         self.tasks_box.setLayout(self.tasks_layout)
+        self.task_scroll = QScrollArea(parent=self)
         task_buttons = []
-        for cur_task in task_registry.registry:
+        for cur_task in task_registry.registry.values():
             cbutton = QPushButton(cur_task.name)
             self.tasks_layout.addWidget(cbutton)
-            cbutton.clicked.connect(cur_task.run_task)
-        
-        self.layout.addWidget(self.tasks_box, 0, 2, 1, 1)
+            task_runner_func = task_runner_factory(cur_task)
+            cbutton.clicked.connect(task_runner_func)
+        self.task_scroll.setWidget(self.tasks_box)
+        self.layout.addWidget(self.task_scroll, 0, 2, 1, 1)
         #op_gb = self._init_operations_groups()
         #self.layout.addWidget(op_gb)
         

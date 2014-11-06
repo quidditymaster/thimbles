@@ -18,7 +18,7 @@ class BlackBodyContinuumModel(Spectrum):
         self.teff = teff
     
     def calc_bk_bod(self):
-        self._bk_bod = tmb.utils.misc.blackbody_spectrum(self.model_wvs, self.teff, normalize=True)
+        self._bk_bod = tmb.utils.misc.blackbody_flux(self.model_wvs, self.teff, normalize=True)
         self._lin_op = scipy.sparse.dia_matrix((self._bk_bod, 0), shape=(self.npts_model, self.npts_model))
     
     @property

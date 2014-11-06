@@ -16,10 +16,10 @@ class ThimblesLogger(object):
         self._log_created = False
         self.file = None
         Option(name="logger", option_style="parent_dict")
-        self._log_file = Option(name="log_file", parent="logger", help="file to write logging values to", default=None)
-        self._log_level = Option(name="log_level", parent="logger", help="threshold for writing to log", default=10)
-        self._print_level = Option(name="print_level", parent="logger", help="threshold for printing", default=5)
-        self._file_mode = Option(name="file_mode", parent="logger", help="threshold for printing", default="w")
+        self._log_file = Option(name="log_file", parent="logger", help_="file to write logging values to", default=None)
+        self._log_level = Option(name="log_level", parent="logger", help_="threshold for writing to log", default=10)
+        self._print_level = Option(name="print_level", parent="logger", help_="threshold for printing", default=5)
+        self._file_mode = Option(name="file_mode", parent="logger", help_="threshold for printing", default="w")
     
     @property
     def log_file(self):

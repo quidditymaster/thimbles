@@ -33,6 +33,7 @@ from . import piecewise_polynomial
 from thimbles.profiles import voigt
 from scipy import integrate
 from thimbles.utils import piecewise_polynomial as ppol
+from thimbles.tasks import task
 
 # ########################################################################### #
 
@@ -140,7 +141,9 @@ def reduce_output_shape (arr):
             new_shape += (shape[i],)
     return arr.reshape(new_shape)
 
+
 #TODO: write this cross correlator in cython
+@task()
 def cross_corr(arr1, arr2, offset_number, overlap_adj=False):
     """cross correlate two arrays of the same size.
     correlating over a range of pixel offsets from -offset_number to 
@@ -167,7 +170,7 @@ def cross_corr(arr1, arr2, offset_number, overlap_adj=False):
         cor_out[offset_idx] = cur_corr
     return cor_out
 
-
+@task()
 def local_gaussian_fit(yvalues, peak_idx=None, fit_width=2, xvalues=None):
     """fit a quadratic function taking pixels from 
     peak_idx - fit_width to peak_idx + fit_width, to the log of the yvalues
@@ -217,7 +220,7 @@ def local_gaussian_fit(yvalues, peak_idx=None, fit_width=2, xvalues=None):
     peak_y_value = np.dot(center_p_vec, poly_coeffs)
     return center, sigma, np.exp(peak_y_value)
 
-
+@task()
 def get_local_maxima(arr):
     # http://stackoverflow.com/questions/3684484/peak-detection-in-a-2d-asarray/3689710#3689710
     """
@@ -277,6 +280,7 @@ def wavelet_transform_fft(values, g_widths):
         out_dat[g_width_idx] = wvtrans[:n_pts].real
     return out_dat
 
+@task()
 def wavelet_transform(values, g_widths, mask):
     """create a grid of gaussian line profiles and perform a wavelet transform
     over the grid. (a.k.a. simply convolve the data with all line profiles
@@ -338,6 +342,7 @@ def trough_bounds(maxima, start_idx, bad_mask=None):
 class MinimaStatistics:
     pass
 
+@task()
 def minima_statistics(values, variance, last_delta_fraction=1.0, max_sm_radius=0.5):
     #import pdb; pdb.set_trace()
     n_pts = len(values)
@@ -388,6 +393,7 @@ def minima_statistics(values, variance, last_delta_fraction=1.0, max_sm_radius=0
     ms.n_c = n_cons
     return ms
 
+@task()
 def detect_features(values, 
                     variance, 
                     reject_fraction=0.5,
@@ -455,7 +461,7 @@ def detect_features(values,
         feature_mask[max(0, left_idx+mask_back_off):right_idx-mask_back_off+1] = False 
     return msres, feature_mask
 
-
+@task()
 def smoothed_mad_error(spectrum, 
                        smoothing_scale=3.0, 
                        error_scale = 200,
@@ -488,6 +494,7 @@ def smoothed_mad_error(spectrum,
         spectrum.inv_var = new_inv_var
     return new_inv_var
 
+@task()
 def min_delta_bins(x, min_delta, target_n=1, forced_breaks=None):
     """return a set of x values which partition x into bins.
     each bin must be at least min_delta wide and must contain at least target_n
@@ -569,6 +576,7 @@ def layered_median_mask(arr, n_layers=3, first_layer_width=31, last_layer_width=
         mask[mask] = masked_arr >= (filtered - rejection_sigma*1.4*local_mad)
     return mask
 
+@task()
 def smooth_ppol_fit(x, y, y_inv=None, order=3, mask=None, mult=None, partition="adaptive", partition_kwargs=None):
     if partition_kwargs == None:
         partition_kwargs = {}
@@ -606,7 +614,8 @@ def smooth_ppol_fit(x, y, y_inv=None, order=3, mask=None, mult=None, partition="
         out_coeffs += c_coeffs*fit_coeffs[basis_idx]
     out_ppol = piecewise_polynomial.PiecewisePolynomial(out_coeffs, partition, centers=pp_gen.centers, scales=pp_gen.scales, bounds=pp_gen.bounds)
     return out_ppol
- 
+
+
 def echelle_normalize(spectra, masks="layered median", partition="adaptive", mask_kwargs=None, partition_kwargs=None):
     """normalize in a way that shares normalization shape accross nearby
     orders"""
@@ -693,7 +702,7 @@ def echelle_normalize(spectra, masks="layered median", partition="adaptive", mas
         norms.append(nmod)
     return norms
 
-    
+@task()
 def approximate_normalization(spectrum,
                               partition_scale=500, 
                               poly_order=3,
@@ -868,6 +877,136 @@ def vec_sort_lad(e, u):
     opt_ratio = srat[usum_idx-1]
     return opt_ratio
 
+def pseudo_huber_irls_weights(resids, sigma, gamma=5.0):
+    z = np.clip(resids/sigma, 1e-5, np.inf)/gamma
+    return (np.sqrt(1.0 + z**2) - 1)/z**2
+
+def pseudo_residual(resids, sigma, gamma=5.0):
+    """a convenience function for use in conjunction with 
+    scipy.optimize.leastsq, instead of returning the true residuals
+    call this function on the residual vector to carry out a 
+    least pseudo-huber cost fit to the data instead of a least squares fit.
+    
+    parameters
+    
+    resids: ndarray
+      the residuals to be transformed
+    sigma: float or ndarray
+      the square root of the expected variance of resids
+    gamma: float or ndarray
+      the slope of the linear part of the pseudo huber cost function
+      you can also interpret it as the turnover from the linear to
+      the square root region of the residual function.
+    
+    for small residuals this function is linear but for larger residuals
+    it goes as the square root.
+    """
+    sigma = np.asarray(sigma)
+    z = resids/(sigma*gamma)
+    return np.sqrt(np.sqrt(1.0 + z**2) - 1)
+
+def pseudo_huber_cost(resids, sigma, gamma, sum_result=True):
+    z = resids/(sigma*gamma)
+    result = (np.sqrt(1.0+z**2) - 1)
+    if sum_result:
+        result =  np.sum(result)
+    return result
+
+@task()
+def irls(A,
+         b,
+         sigma,
+         reweighting_func=None, 
+         reweighting_kwargs=None,
+         start_x=None,
+         max_iter=100,
+         resid_delta_thresh=1e-8,
+         x_delta_thresh=1e-8
+         ):
+    """
+    perform iteratively reweighted least squares searching for a solution of
+    Ax ~ b
+    for a matrix A and vector of target values b solving for a solution
+    vector x.
+    
+    parameters
+    A: ndarray or scipy.sparse matrix
+      the model matrix
+    b: ndarray
+      the target vector
+    sigma: float or ndarray
+      the one sigma error bars of b
+    reweigthing_func: None or callable
+      a callable with signature(residuals, sigma, **reweighting_kwargs)
+      if None pseudo_huber_irls_weights is used and reweighting
+      see that functions doc string for more info.
+      args is set to {'gamma':5.0} if it is not also set explicitly.
+    reweighting_kwargs: None or dict
+      a dictionary of optional extra keyword arguments 
+      to pass to the reweighting function.
+    start_x: None or ndarray
+      a starting value to use for the solution vector if None
+      then start_x is a vector of zeros.
+    max_iter: int
+      the maximum number of reweigthing and solving iterations to
+      carry out. The iterations will stop if either max_iter is 
+      reached or the level of change in the residual and parameter
+      vectors falls below their convergence thresholds.
+    resid_delta_thresh: float
+      a convergence threshold for the residuals.
+      once the average squared residual difference between iterations
+      falls below this threshold the residuals are considered
+      to have converged.
+    x_delta_thresh: float
+      a convergence threshold for the solution vector values.
+      once the average squared difference between iterations of the 
+      solution vector falls below this threshold the solution
+      is considered to have converged.
+    """
+    A_issparse = scipy.sparse.issparse(A)
+    
+    if start_x is None:
+        start_x = np.zeros(A.shape[1])
+    last_x = start_x
+    
+    if reweighting_func is None:
+        reweighting_func = pseudo_huber_irls_weights
+        if reweighting_kwargs is None:
+            reweighting_kwargs = {"gamma":5.0}
+    
+    if reweighting_kwargs is None:
+        reweighting_kwargs = {}
+    
+    last_resids = None
+    cur_x = None
+    
+    if A_issparse:
+        solver = scipy.sparse.linalg.lsqr
+    else:
+        solver = np.linalg.lstsq
+    
+    for iter_idx in range(max_iter):
+        cur_resids = A*last_x - b
+        resids_converged = False
+        x_converged = False
+        if not last_resids is None:
+            if np.std(cur_resids - last_resids) < resid_delta_thresh:
+                resids_converged = True
+        if not cur_x is None:
+            if np.std(cur_x - last_x) < x_delta_thresh:
+                x_converged = True
+        if resids_converged and x_converged:
+            return cur_x
+        weights = reweighting_func(last_resids, sigma, **reweighting_kwargs)
+        diag_weights = scipy.sparse.dia_matrix((weights, 0), (len(weights), len(weights)))
+        A_reweighted = diag_weights*A
+        b_reweighted = weights*b
+        cur_x = solver(A_reweighted, b_reweighted)[0]
+        last_resids = cur_resids
+        last_x = cur_x  
+    return cur_x
+
+@task()
 def l1_factor(input_matrix, input_weights, rank=3, n_iter=3):
     rows_in, cols_in = input_matrix.shape
     w = np.random.random((rows_in, rank))-0.5
@@ -889,110 +1028,6 @@ def l1_factor(input_matrix, input_weights, rank=3, n_iter=3):
                 h[rank_idx, col_idx] = opt_h
     return w, h
 
-def pseudo_residual(resids, sigma, gamma_frac):
-    """a convenience function for use in conjunction with 
-    scipy.optimize.leastsq, instead of returning the true residuals
-    call this function on the residual vector to carry out a 
-    least pseudo-huber cost fit to the data instead of a least squares fit.
-    
-    for small residuals this function is linear but for larger residuals
-    it becomes square root.
-    """
-    sig4 = sigma**4
-    gamma = sigma*gamma_frac
-    gam4 = gamma**4 
-    rat4 = sig4/gam4
-    weights = 0.5/(gamma*np.sqrt(rat4 + resids**2))
-    result = np.sqrt(resids**2*weights)
-    result *= np.sign(resids)
-    return result
-
-def pseudo_huber_cost(resid_vec, sigma, gamma, sum_result=True):
-    sig4 = sigma**4
-    gam4 = gamma**4 
-    rat4 = sig4/gam4
-    weights = 0.5/(gamma*np.sqrt(rat4 + resid_vec**2))
-    result = resid_vec**2*weights
-    if sum_result:
-        result =  np.sum(resid_vec**2*weights)
-    return result
-
-def pseudo_huber_irls(A, b, sigma, gamma, max_iter=100, conv_thresh=1e-4):
-    """
-    fits for an optimal x such that
-    Ax ~ b
-    according to errors related to the pseudo-huber cost function
-    attempting to minimize the cost function
-    gamma*(sigma**4/gamma**4 + (Ax - b)**2)**(-1/2.0)
-    taylor expanding this around zero we find that for small
-    deltas this cost function reduces to the log probability for normal
-    errors with variance sigma**2.
-    For large errors where (Ax-b)**2 >> (sigma/gamma)**4
-    it is easy to see that the cost becomes linear in the magnitude of the
-    residual with cost |(Ax-b)|/gamma. This fit is carried out by 
-    Iteratively Reweighted Least Squares (IRLS). Whereby we originally
-    carry out the least squares fit and then iteratively reweight by a 
-    function of the residuals in the hope of approximating the optimum
-    of the desired cost function. 
-    
-    inputs
-    
-    A: numpy asarray or scipy.sparse matrix
-    the fit matrix the results b will be fit as linear combinations of the 
-    columns of A
-    
-    b: numpy asarray
-    the data to be fit to
-    
-    sigma: numpy asarray or number
-    the square root of the gaussian variance
-    
-    gamma: numpy asarray or number or None
-    the linear cost scale. If you have some estimate of what scale of
-    deviation is large enough to be a likely indicate an outlier use that.
-    
-    max_iter: integer
-    the maximum number of reweighting and solving iterations to carry out
-    before giving up on convergence and just returning the current solution.
-    
-    conv_thresh: float
-    the result is considered to have converged if the average of the absolute
-    value of the current residuals minus the previous iteration residuals 
-    is less than conv_thresh
-    """
-    sig4 = sigma**4
-    gam4 = gamma**4 
-    rat4 = sig4/gam4
-    
-    if scipy.sparse.issparse(A):
-        fit = scipy.sparse.linalg.lsqr(A, b)[0]
-        last_deltas = A*fit
-        
-        for iter_idx in range(max_iter):
-            mod = A*fit
-            deltas = mod-b
-            weights = 0.5/(gamma*np.sqrt(rat4 + deltas**2))
-            ata_inv = A.transpose()*(weights*A)
-            fit = scipy.sparse.linalg.lsqr(ata_inv, A.transpose()*(weights*b))[0]
-            if np.mean(np.abs(last_deltas-deltas)) < conv_thresh:
-                break
-            last_deltas = deltas
-    else:
-        fit = np.linalg.lstsq(A, b)[0]
-        last_deltas = np.dot(A, fit)
-    
-        for iter_idx in range(max_iter):
-            mod = np.dot(A, fit)
-            deltas = mod-b
-            weights = 0.5/(gamma*np.sqrt(rat4 + deltas**2))
-            ata_inv = np.dot(A.transpose()*weights, A)
-            pinv = np.linalg.pinv(ata_inv)
-            fit = np.dot(pinv, np.dot(A.transpose()*weights, b))
-            if np.mean(np.abs(last_deltas-deltas)) < conv_thresh:
-                break
-            last_deltas = deltas
-    return fit
-
 def cache_decorator (cache,key):
     def outer (func):
         def inner (*args,**kwargs):
@@ -1004,9 +1039,11 @@ def cache_decorator (cache,key):
         return inner
     return outer
 
+@task()
 def vac_to_air_sdss(vac_wvs):
     return vac_wvs/(1.0 + 2.735182e-4 + 131.4182 /vac_wvs**2 + 2.76249e8/vac_wvs**4)
 
+@task()
 def vac_to_air_apogee(vac_wvs, a=0.0, b1=5.792105e-2, b2=1.67917e-3, c1=238.0185, c2=57.362):
     """
     converts vaccuum wavelengths in angstroms to air wavelengths.
@@ -1021,6 +1058,7 @@ def vac_to_air_apogee(vac_wvs, a=0.0, b1=5.792105e-2, b2=1.67917e-3, c1=238.0185
     inv_sq_vac = micron_wvs**-2
     refractive_index = (1.0+a+b1/(c1-inv_sq_vac) + b2/(c2-inv_sq_vac))
     return vac_wvs/refractive_index
+
 
 def load_star_fits(fname):
     hdul = fits.open(fname)
@@ -1062,7 +1100,9 @@ def blam(wavelength, temperature):
 
 #wien_constant = 2.8977721(26)e-3 in units of M*K
 wien_constant = 2.897772126e7 #in units of Angstrom*Kelvin
-def blackbody_spectrum(sampling_wavelengths, temperature,  normalize = True):
+
+@task()
+def blackbody_flux(sampling_wavelengths, temperature,  normalize = True):
     dlam_dx = scipy.gradient(sampling_wavelengths)
     bbspec = blam(sampling_wavelengths, temperature)/dlam_dx
     if normalize:
@@ -1071,24 +1111,24 @@ def blackbody_spectrum(sampling_wavelengths, temperature,  normalize = True):
         bbspec /= peak_val
     return bbspec
 
-
+@task()
 def fit_blackbody_phirls(spectrum, start_teff=5000.0, gamma_frac=3.0):
     flux = spectrum.flux
     variance = spectrum.var
     wvs = spectrum.wv
     def get_resids(pvec):
         multiplier, teff = pvec
-        model_flux = multiplier*blackbody_spectrum(wvs, teff, normalize=True)
+        model_flux = multiplier*blackbody_flux(wvs, teff, normalize=True)
         resid = flux - model_flux
         return pseudo_residual(resid, variance, gamma_frac=gamma_frac)
     
-    start_bbod = blackbody_spectrum(wvs, start_teff, normalize=True)
+    start_bbod = blackbody_flux(wvs, start_teff, normalize=True)
     ivar = spectrum.inv_var
     start_norm = np.sum(flux*start_bbod*ivar)/np.sum(start_bbod**2*ivar)
     x0 = np.array([start_norm, start_teff])
     return scipy.optimize.leastsq(get_resids, x0)
 
-
+@task()
 def saturated_voigt_cog(gamma_ratio=0.1):
     min_log_strength = -1.5
     max_log_strength = 5.0

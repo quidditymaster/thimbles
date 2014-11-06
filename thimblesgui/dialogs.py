@@ -5,10 +5,9 @@ import matplotlib.pyplot as plt
 from PySide.QtGui import *
 from PySide.QtCore import *
 
-from options import options
 import thimblesgui as tmbg
-from thimblesgui import user_namespace
 import thimbles as tmb
+from thimbles.options import opts
 
 class SaveDialog(QDialog):
     

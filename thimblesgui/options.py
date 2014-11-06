@@ -1,5 +1,4 @@
-#the parsing for runtime arguments.
-#import argparse
+
 import thimbles as tmb
 from thimbles.options import Option, opts
 
@@ -11,10 +10,10 @@ a list of files to run serially.
 setting this option also automatically sets --no-window"""
 #Option(name="batch_mode", help=_help, option_style="flag")
 
-_help=\
-"""
-"""
-Option(name="")
+#_help=\
+#"""
+#"""
+#Option(name="")
 
 _help=\
 """don't display a GUI window just run tasks then quit.

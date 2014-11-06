@@ -49,9 +49,13 @@ def task(name=None, result_name="return_value"):
 def argument_dict(func, filler_value=None, return_has_default=False):
     argspec = inspect.getargspec(func)
     n_args_total = len(argspec.args)
-    n_defaults = len(argspec.defaults)
+    if argspec.defaults is None:
+        n_defaults = 0
+    else:
+        n_defaults = len(argspec.defaults)
     defaults = [filler_value for i in range(n_args_total-n_defaults)]
-    defaults.extend(argspec.defaults)
+    if not argspec.defaults is None:
+        defaults.extend(argspec.defaults)
     arg_dict = OrderedDict(zip(argspec.args, defaults))
     
     if return_has_default:
@@ -93,9 +97,9 @@ class Task(Option):
             Option(name=arg_key, parent=self, **opt_kwargs)
         #add a special option for result_name
         #new_opt = Option(name="result_name", parent=self, option_style="raw_string", default=self.result_name) 
-        Option(name="task_order", default=-1, parent=self)
+        #Option(name="task_order", default=-1, parent=self)
     
-    def run_task(self):
+    def run(self):
         task_kwargs = {kw:getattr(self, kw).value for kw in self.task_kwargs}
         func_res = self.func(**task_kwargs)
         self.target_ns[self.result_name] = func_res
@@ -106,7 +110,7 @@ class EvalError (Exception):
     def __init__ (self,argname,msg):
         self.argname = argname        
         Exception.__init__(self,self.argname,msg)
-        
+
 def fprint (func,max_lines=100,exclude_docstring=True,show=True):
     """ function print : Prints out the source code (from file) for a function
     

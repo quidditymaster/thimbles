@@ -30,9 +30,9 @@ import wavelength_extractors
 
 __all__ = ["read_spec","read_ascii","read_fits",
            "read_fits","read_fits_hdu","read_bintablehdu",
-           "read_many_fits"]
+           "read_many_fits", "read_hdf5"]
 
-def read_h5(filepath):
+def read_hdf5(filepath):
     hf = h5py.File(filepath, "r")
     spectra = []
     spec_keys = hf.keys()
@@ -50,7 +50,7 @@ def read_h5(filepath):
         spectra.append(new_spec)
     return spectra
 
-def write_h5(filepath, spectra):
+def write_hdf5(filepath, spectra):
     """writes a list of lists of spectra to a hdf5 file
     """
     hf = h5py.File(filepath, "w")
@@ -236,7 +236,6 @@ def read_bintablehdu (hdulist,which_hdu=1,wvcolname=None,fluxcolname=None,varcol
     fluxcolname : None or string
     varcolname : None or string
     
-    
     """
     metadata = MetaData()
     metadata['filepath'] = hdulist.filename()
@@ -380,7 +379,6 @@ def read_many_fits (filelist,relative_paths=False,are_orders=False):
         spectra = sort_spectra     
     return spectra
 
-
 def probably_file_list(filepath):
     if isinstance(filepath,basestring):
         # check if this is a file with a list of files
@@ -400,10 +398,13 @@ def read_spec_list(fname, file_type="detect"):
     lines = open(fname).readlines()
     spectra = []
     for line in lines:
-        cur_specl = read_spec(line.rstrip())
+        cur_fname = line.rstrip().split("#")[0]
+        if len(cur_fname) == 0:
+            continue
+        cur_specl = read_spec(line.rstrip(), file_type=file_type)
         spectra.extend(cur_specl)
     return spectra
-    
+
 def probably_fits_file(fname):
     """check to see if the file might be a fits file
     """
@@ -411,7 +412,7 @@ def probably_fits_file(fname):
     fits_rexp = re.compile("[SIMPLE  =,XTENSION=]"+"."*71+"BITPIX  =")
     with open(fname,'r') as f:
         file_header = f.read(300)
-    s = fits_rexp.match(file_header)
+    s = fits_rexp.search(file_header)
     if s is None:
         return False
     else:
@@ -473,7 +474,7 @@ def read_spec(fname, file_type="detect", extra_kwargs=None):
     if file_type == "fits":
         res =  read_fits(fname, **extra_kwargs)
     elif file_type == "hdf5":
-        res = read_h5(fname, **extra_kwargs)
+        res = read_hdf5(fname, **extra_kwargs)
     elif file_type == "file_list":
         res = read_spec_list(fname, **extra_kwargs)
     elif file_type == "ascii":

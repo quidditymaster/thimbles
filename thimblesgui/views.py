@@ -17,15 +17,19 @@ class NameTypeTableView(QtGui.QTableView):
     
     def __init__(self, parent):
         super(NameTypeTableView, self).__init__(parent)
-
+    
     def minimumSizeHint(self):
         return QtCore.QSize(500, 500)
 
-class ObjectTreeWidget(QtGui.QWidget):
+class RepresentationEngine(object):
     
+    def __init__(self):
+        pass
+
+class ObjectTreeWidget(QtGui.QWidget):
+        
     def __init__(self, obj, parent):
         super(ObjectTreeWidget, self).__init__(parent=parent)
-        self.representation_engine = 
         
         self.layout = QtGui.QGridLayout()
         self.setLayout(self.layout)

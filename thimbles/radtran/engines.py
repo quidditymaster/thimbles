@@ -11,15 +11,15 @@ class PhotosphereEngine(object):
     def _not_implemented(self):
         raise NotImplementedError("Not implemented for this engine type")
     
-    def make_photosphere(self, fname):
+    def make_photosphere(self, fname, stellar_params):
         self._not_implemented()
-
+    
 
 class RadiativeTransferEngine(object):
     """an abstract class specifying the API for wrapping radiative transfer
     codes.
     """
-
+    
     def __init__(self, photosphere_engine=None):
         self.photosphere_engine = photosphere_engine
         pass

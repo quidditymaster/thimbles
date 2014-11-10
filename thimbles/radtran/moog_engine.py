@@ -13,8 +13,9 @@ from __future__ import print_function, division, unicode_literals
 import os
 import sys
 import re
+from warnings import warn
 from subprocess import Popen,PIPE
-
+import numpy as np
 from thimbles.options import Option,opts
 
 moog = Option('moog',option_style="parent_dict")
@@ -35,6 +36,7 @@ lines         1
 flux/int      0
 damping       1
 plot          0
+{abundances}
 """
 
 def write_abfind_par (\
@@ -43,16 +45,189 @@ def write_abfind_par (\
     summary_out="sum.out",
     model_in="model_in",
     lines_in="lines_in",
+    abundances=None,
     ):
     """
 
     """
     pars = locals().copy()
+    pars['abundances'] = _moog_par_format_abundances(abundances)
     del pars['clobber']
     del pars['filename']
     return parfile_templates.format(**pars)
 
-def _write_moog_par (driver,filename=None,clobber=True,max_filename_length=80,**moogpars):
+def get_model_name (teff,logg,feh,vt,modtype=None):
+    """ Based on the input atmosphere parameters it returns a formatted string representation
+
+    Parameters 
+    teff : float 
+        Stellar effective temperature
+    logg : float 
+        Gravitational acceleration at the surface of the star
+    feh  : float 
+        Normalized solar metallicity [Fe/H]
+    vt   : float 
+        Stellar microturbulence
+    modtype : str
+        The type of model used, if None then no model type will be added
+
+    Returns 
+    model_name : str
+
+
+    Example
+    >>> model_representation = get_model_name(5000, 4.1, -2.13, 1.1, 'ODFNEW')
+    >>> print model_representation
+    "5000p410m213p110.ODFNEW"
+
+    """
+
+    feh_sign = feh/abs(feh)
+    if feh_sign < 0: 
+        sign = "m"
+    else: 
+        sign = 'p'
+    steff = str(int(teff))
+    slogg = format(logg,'03.2f').replace('.','')
+    sfeh = sign+format(abs(feh),'03.2f').replace('.','')
+    svt = format(vt,'03.2f').replace('.','')
+    
+    out = steff+"p"+slogg+sfeh+'v'+svt
+    if modtype is not None: 
+        out += "."+str(modtype)
+    return out
+
+# =========================================================================== #
+
+# all stuff for moog parameters file
+
+def _moog_par_format_fluxlimits (fluxlimits):
+    """
+    fluxlimits = [start, stop, step]
+
+    ```
+    fluxlimits 
+      5555.0 5600.0 10.0
+    ```
+    """
+    lines = [\
+        "fluxlimits",
+        (" {:10}"*3).format(*map(float,fluxlimits))
+        ]
+    return "\n".join(lines)
+
+def _moog_par_format_plot (driver,plot):
+    """
+    moogpars['plot']
+
+    ```
+    plot    1
+    ```
+
+    """
+    if plot is None:
+        return ""
+    val = str(plot)
+    if driver == 'synth' and val not in ('1','2'):
+        val = 0 # synth can have values 0,1,2
+    elif (driver in ('abfind','blends')) and val in ('1','2'):
+        val = 0 # abundance fit can have values 0,n
+    else:
+        val = 0 # everything else can only have 0, default
+    return "plot      {:<6}".format(val)
+
+def _moog_par_format_plotpars (plotpars):
+    """
+
+    moogpars['plotpars']
+
+    plotpars = [[leftedge,rightedge,loweredge,upperedge],
+                [rv,wlshift,vertadd,vertmult],
+                [smo_type,fwhm,vsini,limbdark,fwhm_micro,fwhm_lorentzian]]            
+
+    """
+    if plotpars is None:
+        return ""
+    assert len(plotpars[0])==4,"First row of 'plotpars':[[leftedge,rightedge,loweredge,upperedge],..]"
+    assert len(plotpars[1])==4,"Second row of 'plotpars':[..,[rv,wlshift,vertadd,vertmult],..]"
+    assert len(plotpars[2])==6, "Third row of 'plotpars':[...,[smo_type,fwhm,vsini,limbdark,fwhm_micro,fwhm_lorentzian]]"
+
+    lines = ['plotpars       1']
+    lines.append((" {:>.2f}"*4).format(*plotpars[0]))
+    lines.append((" {:>.2f}"*4).format(*plotpars[1]))
+    lines.append((" {:>5}"+" {:>.2f}"*5).format(*plotpars[2]))
+    return "\n".join(lines)
+
+def _moog_par_format_synlimits (synlimits):
+    """ 
+    moogpars['synlimits']
+
+    synlimits = [syn_start,syn_end,wl_step,opacity_width]
+
+    """
+    if synlimits is None:
+        return ""
+    lines = ["synlimits "]
+    # synstart,synend,wlstep,opacity_width
+    lines.append((" "+" {:<.2f}"*4).format(*map(float,synlimits)))
+    return "\n".join(lines)
+
+def _moog_par_format_abundances (abundances):
+    """ Abundances for MOOG parameter file 
+
+    abundances = [[el,offset1,offset2],[el,offset1,offset2],..] 
+    abundances = [[26.0,-9, -1.2, 0],
+                  [8.0, -9,   -1, 0],
+                  [6.0, -9,   -9, -9]]
+
+    """
+    if abundances is None:
+        return ""
+    errmsg = (\
+        "Abundances not include because not proper format "
+        "[[Z_1, offset1_1, offset2_1,...],[Z_2, offset1_2, offset2_2,..],...] "
+        "5 is maximum number of offsets")
+    if not len(abundances):
+        return ""
+    abunds = np.asarray(abundances,dtype=float)
+    nz,no = abunds.shape 
+    if no > 6 or no < 2:
+        raise ValueError(errmsg)
+
+    lines = ["abundances {:>5} {:>5}".format(nz-1,no-1)]
+    fmt = " {:>6.1f}"+" {:>7}"*(no-1)
+    for row in abunds:
+        z = row[0] # proton number
+        if not (0 < z < 100):
+            raise ValueError(errmsg)
+        lines.append(fmt.format(*row))
+    return "\n".join(lines)
+
+moog_max_pathlength = Option("moog_max_pathlength",parent="moog")
+
+def _check_moog_files (fp,mode='r',clobber=True,max_filename_length=None):
+    """ Takes a moog keyword and extracts from the moogpars """ 
+    # - - - - - - - - - - - - filepath 
+    if fp is None:
+        return 
+    # - - - - - - - - - - - - check file mode
+    if mode not in ('r','w'):
+        raise ValueError("mode must be 'r' or 'w'")
+    # - - - - - - - - - - - - check the maximum filelength
+    if max_filename_length is None:
+        max_filename_length = opts['moog.moog_max_pathlength']
+    if len(fp) > max_filename_length:
+        warn("Filepath '{}' is too long for MOOG (max {}) omitting".format(fp,max_filename_length))
+        return 
+    # - - - - - - - - - - - - check file
+    exists = os.path.isfile(fp)
+    if not exists and mode == 'r':
+        raise IOError("File does not exist '{}'".format(fp))
+    elif exists and mode == 'w' and not clobber:
+        raise IOError("File exist, not clobbering '{}'".format(fp))
+    return fp 
+
+def write_moog_par (driver,filename='batch.par',clobber=True,max_filename_length=80,**moogpars):
     """
     Writes a MOOG parameter file based on WRITEMOOG.ps
 
@@ -89,34 +264,39 @@ def _write_moog_par (driver,filename=None,clobber=True,max_filename_length=80,**
 
     -----------------   ---------------------------------------------------------------------------------------
 
-    _NOTE:_ The default value is given by *value*
+    _NOTE:_ The default value is given by [value]
 
-    atmosphere          (integer) see WRITEMOOG.ps, possible values are 0, *1*, 2
-    molecules           (integer) see WRITEMOOG.ps, possible values are *0*, 1, 2
-    trudamp             (integer) see WRITEMOOG.ps, possible values are 0, *1*
+    atmosphere          (integer) see WRITEMOOG.ps, possible values are 0, [1], 2
+    molecules           (integer) see WRITEMOOG.ps, possible values are [0], 1, 2
+    trudamp             (integer) see WRITEMOOG.ps, possible values are 0, [1]
 
-    lines               (integer) see WRITEMOOG.ps, possible values are 0, *1*, 2, 3, 4
-    flux/int            (integer) see WRITEMOOG.ps, possible values are *0*, 1
-    damping             (integer) see WRITEMOOG.ps, possible values are 0, *1*, 2
+    lines               (integer) see WRITEMOOG.ps, possible values are 0, [1], 2, 3, 4
+    flux/int            (integer) see WRITEMOOG.ps, possible values are [0], 1
+    damping             (integer) see WRITEMOOG.ps, possible values are 0, [1], 2
 
-    units               (integer) see WRITEMOOG.ps, possible values are *0*, 1, 2
-    obspectrum          (integer) see WRITEMOOG.ps, possible values are -1, *0*, 1, 3, 5
-    iraf                (integer) see WRITEMOOG.ps, possible values are *0*, 1
+    units               (integer) see WRITEMOOG.ps, possible values are [0], 1, 2
+    obspectrum          (integer) see WRITEMOOG.ps, possible values are -1, [0], 1, 3, 5
+    iraf                (integer) see WRITEMOOG.ps, possible values are [0], 1
 
-    freeform            (integer) see WRITEMOOG.ps, possible values are *0*, 1
-    strong              (integer) see WRITEMOOG.ps, possible values are *0*, 1
-    histogram           (integer) see WRITEMOOG.ps, possible values are *0*, 1
+    freeform            (integer) see WRITEMOOG.ps, possible values are [0], 1
+    strong              (integer) see WRITEMOOG.ps, possible values are [0], 1
+    histogram           (integer) see WRITEMOOG.ps, possible values are [0], 1
     gfstyle             (integer)  0 for straight gf values
-                                  *1* = base-10 logarithms of the gf values
+                                  [1] = base-10 logarithms of the gf values
     
     -----------------   ---------------------------------------------------------------------------------------
     
     abundances          (array) This gives the abundances to offset from the input model and 
                            the values to do so by
                            takes an array [[el,offset1,offset2],[el,offset1,offset2],..] 
-                                           = e.g. [[26.0,-9,-1,0],[8.0,-9,-1,0],[6.0,-9,-9,-9]]
+                                           = e.g. 
                            the max number of offsets to give is 1
-    
+                           Example:
+                           >>> abundances = [[26.0,-9, -1.2, 0],
+                                             [8.0, -9,   -1, 0],
+                                             [6.0, -9,   -9, -9]]
+                           >>> write_moog_par('abind',abundances=abundances)
+
     -----------------   ---------------------------------------------------------------------------------------                                             
     
     plotpars             (list) The plotting parameters for the data and syntheses
@@ -190,8 +370,7 @@ def _write_moog_par (driver,filename=None,clobber=True,max_filename_length=80,**
 
     # This value is given in the MOOG file Atmos.f
     # the limit is given here to prevent later undo problems 
-    
-    
+
     # these are the possible drivers, check
     moogdrivers = ['synplot','synth','cogsyn','blends','abfind','ewfind','cog','calmod',
                    'doflux','weedout','gridsyn','gridplo','binary','abpop','synpop']
@@ -207,326 +386,108 @@ def _write_moog_par (driver,filename=None,clobber=True,max_filename_length=80,**
     pass
     #######################################################################################################
     #######################################################################################################
-    # These are functions used to build the MOOG parameter file    
-    
-    def format_keyword (keyword):
-        return format(keyword,'<10')+" "
-      
-    def confirm_opts (keyword,pos_vals):
-        if keyword not in moogpars: return False
-        val = str(moogpars[keyword])
-        if val not in pos_vals: raise ValueError("Invalid value for MOOG keyword '"+str(keyword)+"', possible are: "+", ".join(pos_vals))
-        return True
-
-    def moog_keyword_values (keyword,opts,default,terminal=False):
-        if confirm_opts(keyword,opts): 
-            val = moogpars[keyword]
-            del moogpars[keyword]
-        else: val = opts[default]
-        if val is None: return
-        
-        # !! could avoid including if you don't want
-        if terminal: line = format_keyword(keyword)+"'"+str(val)+"'"
-        else: line = format_keyword(keyword)+format(val,'<6')
-        parlines.append(line)
-        pars[keyword] = val
-         
-    def moog_filename (keyword,which,clobber=True,default=None):
-        if keyword in moogpars: fname = str(moogpars[keyword])
-        else:
-            if default is not None: fname = default
-            else: return
-    
-        if fname is 'None': return
-        if len(fname) > max_filename_length: 
-            print "HeadsUp: File name is long (i.e. >"+str(max_filename_length)+") '"+fname+"'"
-            return
-        
-        line = format_keyword(keyword)+format("'"+fname+"'","<10")
-        if not os.path.exists(fname) and which == 'r': raise ValueError("File does not exist: "+line)
-        if os.path.exists(fname) and which == 'w' and not clobber: raise ValueError("File exists: "+line)
-        parlines.append(line)
-        pars[keyword] = fname
-        del moogpars[keyword]
-
-    pass
-    #====> The following functions use variables in the local space of this parent function
-    # namely pars, parlines, moogpars
-    
-    def do_plot ():
-        keyword = 'plot'
-        if keyword not in moogpars: val = '0'
-        else:
-            val = str(moogpars[keyword])
-            del moogpars[keyword]
-            if   (driver == 'synth') and (val not in ('1','2')): val = '0' # synth can have values 0,1,2
-            elif (driver in ('abfind','blends')) and (val in ('1','2')): val = '0' # abundance fit can have values 0,n
-            else: val = '0' # everything else can only have 0, default
-        
-        pars[keyword] = val
-        parlines.append(format_keyword(keyword)+format(val,'<6'))
-                
-    def do_abundances ():
-        keyword = 'abundances'
-        format_error = " Abundances not include because not proper format  [[Z_1, offset1_1, offset2_1,...],[Z_2, offset1_2, offset2_2,..],...]  5 is maximum number of offsets"
-        if keyword not in moogpars: return
-        
-        nope = False
-        abunds = moogpars['abundances']
-        
-        # !! could check what type abunds is given in and provide an option to give a dictionary
-        #
-        
-        if len(abunds) == 0: return
-        
-        try: abunds = np.array(abunds,dtype=float)
-        except: nope =True
-
-        try: NZ,NO = abunds.shape
-        except: nope=True
-
-        if NO > 6: nope = True
-         
-        if nope:
-            print "HeadsUp:"+format_error
-            return
-
-        pars[keyword] = abunds
-        parlines.append(format_keyword(keyword)+format(NZ,'<5')+" "+format(NO,'<5'))
-        given_z = {}
-        for ab in abunds:
-            Z = int(ab[0])
-            # check to make sure these are atomic transitions
-            if not (0<Z<100): 
-                print "Given Z value is out of range, "+str(Z)+" not in (0,100)"
-                continue
-            # check to see if the value was given more than once
-            if Z not in given_z: given_z[Z] = ab[0]
-            else: 
-                print "Given Z value twice, rounded to integer value val1,val2 = "+str((given_z[Z],ab[0]))
-                continue
-            
-            line = " "+format(Z,'>6.1f')
-            for val in ab[1:]: line += "  "+format(val,'>7')
-            parlines.append(line)
-        del moogpars[keyword]
-        
-    def do_plotpars ():
-        keyword = 'plotpars'
-        if keyword not in moogpars: return
-         
-        pars[keyword] = moogpars[keyword]
-        
-        arr = moogpars[keyword]
-        assert len(arr[0])==4,"First row of 'plotpars':[[leftedge,rightedge,loweredge,upperedge],..]"
-        assert len(arr[1])==4,"Second row of 'plotpars':[..,[rv,wlshift,vertadd,vertmult],..]"
-        assert len(arr[2])==6, "Third row of 'plotpars':[...,[smo_type,fwhm,vsini,limbdark,fwhm_micro,fwhm_lorentzian]]"
-
-        # !! check the smoothing type?
-        
-        parlines.append(format_keyword(keyword)+format(1,">5"))
-        def add_line (ind,val1='',srtind=0):
-            line = val1
-            for val in arr[ind][srtind:]:
-                try: line += " "+format(val,'>5.2f')
-                except: raise ValueError("Failed for:"+str(val))
-            parlines.append(line)
-
-
-        add_line(0,'')
-        add_line(1,'')
-        add_line(2," "+format(arr[2][0],'>5'),1)
-        del moogpars[keyword]
-         
-    def do_synlimits ():
-        keyword = 'synlimits'
-        if keyword not in moogpars: return
-        arr = moogpars[keyword]
-        pars[keyword] = arr
-        
-        try: synstart,synend,wlstep,neighbor_opacity = np.array(arr,dtype=float)
-        except: raise ValueError("Invalid synlimits entry")
-
-        line = [format(synstart,'<5.2f'),
-                format(synend,'<5.2f'),
-                format(wlstep,'<5.2f'),
-                format(neighbor_opacity,'<5.2f')]
-        
-        parlines.append(format_keyword(keyword))
-        parlines.append(" ".join(line))
-        del moogpars[keyword]          
-
-    def do_isotopes ():
-        raise NotImplementedError("Deprecated MOOG2011+")
-        keyword = 'isotopes'
-        if keyword not in moogpars: return
-        
-        isotope_matrix = moogpars[keyword]
-        
-        format_error = "isotopes must be given in moogpars as [[isotope_num, ratio1, ratio2,...],[isotope_num, ratio1, ratio2,...],...]]\n all values must be floating points, the where the number of ratios given equals the number of synthesis done"
-        try: isotope_matrix = np.asarray(isotope_matrix,dtype=float)
-        except: raise ValueError(format_error)
-        
-        if isotope_matrix.ndim == 1: isotope_matrix = isotope_matrix.reshape((1,len(isotope_matrix)))
-        elif isotope_matrix.ndim > 2:  raise ValueError("Dimension error: "+format_error)
-                    
-        num_isotopes = isotope_matrix.shape[0]
-        num_syntheses = isotope_matrix.shape[1]-1
-
-        if num_syntheses == 0: raise ValueError("No ratios given for isotopes: "+format_error)
-
-        pars[keyword] = isotope_matrix
-        # isotopes    #iso   #syn
-        parlines.append(format_keyword(keyword)+format(num_isotopes,"<5")+"  "+format(num_syntheses,'<5'))
-        
-        # write out the pairs 
-        for i in xrange(len(isotope_matrix)):
-            iso = isotope_matrix[i]
-            line = "  "+format(iso[0],'<10.5f')
-            for ratio in iso[1:]: line += "  "+format(ratio,'>10')
-            parlines.append(line)
-        del moogpars[keyword]
-            
-    def do_fluxlimits ():
-        keyword = 'fluxlimits'
-        if keyword not in moogpars: return
-        
-        fluxlimits = moogpars['fluxlimits']
-
-        format_error = "fluxlimits must be given as a floating point array, [start,stop,step]"
-        try: fluxlimits = np.asarray(fluxlimits,dtype=float)
-        except: 
-            print "Fluxlimits not included: "+format_error
-            return
-
-        if fluxlimits.ndim != 1: raise ValueError("Dimension error: "+format_error)
-        if fluxlimits.shape[0] == 3: raise ValueError("Dimension error: "+format_error)
-        
-        pars[keyword] = fluxlimits
-        line = format_keyword(keyword)
-        parlines.append(line)
-        
-        line = ''
-        for val in fluxlimits: line += "  "+format(val,"10")
-        parlines.append(line)
-        del moogpars[keyword]
-      
-    def do_blenlimits ():
-        keyword = 'blenlimits'
-        if keyword not in moogpars: return
-        blenlimits = moogpars[keyword]
-
-        format_error = "blenlimits must be given as a floating point array, [delta_wavelength,step,cogatom]"
-        try: blenlimits = np.asarray(blenlimits,dtype=float)
-        except: 
-            print "blenlimits not included: "+format_error
-            return
-
-        if blenlimits.ndim != 1: raise ValueError("Dimension error: "+format_error)
-        if blenlimits.shape[0] == 3: raise ValueError("Dimension error: "+format_error)
-        
-        pars[keyword] = blenlimits
-        line = format_keyword(keyword)
-        parlines.append(line)
-        
-        line = ''
-        for val in blenlimits: line += "  "+format(val,"10")
-        parlines.append(line) 
-        del moogpars[keyword]
-
-    def do_coglimits ():
-        raise NotImplementedError("For curves-of-growth calucate the ews and create your own")
-        keyword = 'coglimits'
-        if keyword not in moogpars: return
-        coglimits = moogpars[keyword]
-
-        format_error = "coglimits must be given as a floating point array, [rwlow, rwhigh, rwstep, wavestep, cogatom]"
-        try: coglimits = np.asarray(coglimits,dtype=float)
-        except: 
-            print "coglimits not included: "+format_error
-            return
-
-        if coglimits.ndim != 1: raise ValueError("Dimension error: "+format_error)
-        if coglimits.shape[0] == 3: raise ValueError("Dimension error: "+format_error)
-        
-        pars[keyword] = coglimits
-        line = format_keyword(keyword)
-        parlines.append(line)
-        
-        line = ''
-        for val in coglimits: line += "  "+format(val,"10")
-        parlines.append(line)
-        del moogpars[keyword]
-
-    def not_avail (keyword):
-        if keyword in moogpars: 
-            print "HeadsUp: Keyword not currently supported '"+keyword+"'"
-            del moogpars[keyword]
-
-    pass
-    #######################################################################################################
-    #######################################################################################################
     # these next lines actually build the information
     # parlines are the lines for the parameter file, each line is appended into the list
     # pars is a dictionary with the values used in parlines, similar to moogpars but has some differences 
     # pars is mostly used for debugging
-    
+
+    options = {} # default,[all_options],default
+    options['terminal'] = (None,['none','0','7','11','13','x11','xterm','sunview','graphon'],None)
+
+    options['standard_out'] = "{}.stdout".format(driver)
+    options['summary_out']  = None #"{}.sumout".format(driver)
+    options['smoothed_out'] = None #"{}.smout".format(driver)
+    options['iraf_out']     = None #"{}.irafout".format(dirver)
+
+    options['atmosphere'] = (1,['0','1','2'])
+    options['molecules']  = (0,['0','1','2'])
+    options['lines']      = (1,['0','1','2','3','4'])
+    options['flux/int']   = (0,['0','1'])
+    options['damping']    = (1,['0','1','2'])
+    options['units']      = (0,['0','1','2'])
+    options['obspectrum'] = (0,['-1','0','1','2','3','5'])
+    options['iraf']       = (0,['0','1'])
+    options['freeform']   = (0,['0','1'])
+    options['strong']     = (0,['0','1'])
+    options['histogram']  = (0,['0','1'])
+    options['gfstyle']    = (1,['0','1'])
+
+
+    # --------------------------------------------------------------------------- #
+    # create parlines, all the lines for a parameter file
 
     parlines = [driver]
-    pars = {'driver':driver}
-    moog_keyword_values('terminal',['none','0','7','11','13','x11','xterm','sunview','graphon'],0,terminal=True)
-    
-    #===> input parameters for files
-    moog_filename('standard_out','w',clobber,'STDOUT')
-    moog_filename('summary_out','w',clobber)
-    moog_filename('smoothed_out','w',clobber)
-    moog_filename('iraf_out','w',clobber)
-    
-    moog_filename('model_in','r',clobber,'FINALMODEL')
-    moog_filename('lines_in','r',clobber)
-    moog_filename('stronglines_in','r',clobber)
-    moog_filename('observed_in','r',clobber)
-    
-    #====> input flag parameters
-    moog_keyword_values('atmosphere',['0','1','2'],1)
-    moog_keyword_values('molecules',['0','1','2'],0)
-    moog_keyword_values('trudamp',['0','1'],1)
-    moog_keyword_values('lines',['0','1','2','3','4'],1)
-    moog_keyword_values('flux/int',['0','1'],0)
-    moog_keyword_values('damping',['0','1','2'],1)
-    moog_keyword_values('units',['0','1','2'],0)
-    
-    moog_keyword_values('obspectrum',['-1','0','1','3','5'],1)
-    moog_keyword_values('iraf',['0','1'],0)
-    do_plot()
-    moog_keyword_values('freeform',['0','1'],0)
-    moog_keyword_values('strong',['0','1'],0)
-    moog_keyword_values('histogram',['0','1'],0)
-    moog_keyword_values("gfstyle",['0','1'],1)
-    
-    
-    do_abundances()
-    do_plotpars()
-    do_synlimits()
-    do_isotopes()
-    do_fluxlimits()
-    do_coglimits()
-    do_blenlimits()
-        
-    not_avail('lumratio')
-    not_avail('delaradvel')
-    not_avail('scat')
-    not_avail('opacit')
-    
-    for key in moogpars: 
-        print("Keyword unknown to MOOG pars :"+str(key))
-    
+
+    d,defaults = options['terminal']
+    term = moogpars.pop('terminal',d)
+    if term is not None:
+        if not (term in defaults):
+            raise ValueError("terminal {} not in {}".format(term,defaults))
+        parlines.append("terminal   {}".format(term))
+
+    # ----------------------- files
+    add = (\
+        ("standard_out",'w'),
+        ("summary_out",'w'),
+        ("smooth_out",'w'),
+        ("iraf_out",'w'),
+        ("model_in",'r'),
+        ("lines_in",'r'),
+        ("stronglines_in",'r'),
+        ("observed_in",'r'),
+        )
+    for k,mode in add:
+        fp = moogpars.pop(k,options[k])
+        fp = _check_moog_files(fp,mode=mode,clobber=clobber)
+        if fp is None:
+            continue
+        parlines.append("{:<10} '{}'".format(k,fp))
+
+    # ----------------------- single value parameters
+    add = (\
+        'atmosphere',
+        'molecules',
+        'trudamp',
+        'lines',
+        'flux_int',
+        'damping',
+        'units',
+        'opspectrum',
+        'iraf',
+        'freeform',
+        'strong',
+        'histogram',
+        'gfstyle',
+        )
+    for k in add:
+        d,defaults = options[k]
+        val = format(moogpars.pop(k,d))
+        if val not in defaults:
+            raise ValueError("moog parameter {} must be in {}".format(val,defaults))
+        parlines.append("{:<10} {}".format(k,val))
+
+    # ----------------------- parameter files
+    parlines.append(_moog_par_format_plot(moogpars.pop('plot')))
+    parlines.append(_moog_par_format_plotpars(moogpars.pop('plotpars')))
+    parlines.append(_moog_par_format_abundances(moogpars.pop('abundances')))
+    parlines.append(_moog_par_format_synlimits(moogpars.pop('synlimits')))
+    parlines.append(_moog_par_format_fluxlimits(moogpars.pop('fluxlimits')))
+
+    # ----------------------- 
+    if len(moogpars):
+        raise KeyError("These keywords are not supported {}".format(moogpars.keys()))
+
+    # ----------------------- 
+    parlines.append("\n")
     if filename is None: 
         return parlines
     else:
-        FILE = open(filename, "w")
-        FILE.writelines("\n".join(parlines)+"\n")
-        FILE.close()                  
+        with open(filename,'w') as fn:
+            fn.write("\n".join(parlines))
+
+
+
+
 
 class TestMoogExec (object):
 
@@ -537,6 +498,11 @@ class TestMoogExec (object):
         pass 
 
 moog_silent_exec_path = Option("path",parent="moog",envvar="MOOGSILENT")
+
+
+class RadiativeTransferEngine (object):
+    pass 
+
 
 class MoogEngine(RadiativeTransferEngine):
     """an abstract class specifying the API for wrapping radiative transfer

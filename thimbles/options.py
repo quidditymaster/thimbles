@@ -1,4 +1,5 @@
 import sys
+from thimbles import thimbles_header_str
 from thimbles import workingdataspace as wds
 import os
 from copy import copy
@@ -256,18 +257,6 @@ to the central wavelength being displayed.
 Option(name="window_width", default=-4.5, parent="spec_display", help_=_help)
 
 
-thimbles_header_str =\
-"""
-THIMBLES:
-  Tools for            ##########
-  Handling            ############
-  Intricate          ##############
-  Measurements on    ############## 
-  Breathtakingly     ##############
-  Large              ##############
-  Ensembles of      ################
-  Spectra          ##################
-"""
 
 
 def print_option_help():

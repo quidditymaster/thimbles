@@ -1,8 +1,20 @@
+thimbles_header_str =\
 """
+THIMBLES:
+  Tools for            ##########
+  Handling            ############
+  Intricate          ##############
+  Measurements on    ############## 
+  Breathtakingly     ##############
+  Large              ##############
+  Ensembles of      ################
+  Spectra          ##################
+"""
+
+__doc__ = """
 THIMBLES: Tools for Handling Intricate Measurements on Breathtakingly Large Ensembles of Spectra
 
-"""
-# ########################################################################### #
+"""+thimbles_header_str
 
 import dependencies
 

@@ -22,7 +22,7 @@ import cPickle
 import numpy as np 
 
 import workingdataspace as wds
-from thimbles.options import Option, opts
+from thimbles.options import Option, opts, EvalError
 
 # ########################################################################### #
 
@@ -39,8 +39,8 @@ class TaskRegister(object):
 
 task_registry = TaskRegister()
 
-def task(name=None, result_name="return_value"):
-    new_task = Task(name=name, result_name=result_name)
+def task(name=None, result_name="return_value", option_tree=opts, registry=task_registry):
+    new_task = Task(name=name, result_name=result_name, option_tree=option_tree, registry=registry)
     return new_task.set_func
 
 #def task(task_func):
@@ -69,11 +69,11 @@ def argument_dict(func, filler_value=None, return_has_default=False):
 class Task(Option):
     target_ns = wds.__dict__
     
-    def __init__(self, result_name, name=None, func=None):
-        if name is not None and hasattr(func,'__name__'):
-            name = func.__name__
+    def __init__(self, result_name, name, option_tree, registry, func=None):
         self.name = name
         self.result_name = result_name
+        self.option_tree = option_tree
+        self.registry = registry
         if not isinstance(self.result_name, basestring):
             raise ValueError("result_name must be of type string not type {}".format(type(result_name))) 
         if not func is None:
@@ -84,9 +84,9 @@ class Task(Option):
         if not self.func is None:
             if self.name is None:
                 self.name = self.func.__name__
-            super(Task, self).__init__(name=self.name, default=self.func)
+            super(Task, self).__init__(name=self.name, default=self.func, option_tree=self.option_tree)
             self.generate_child_options()
-            task_registry.register_task(self)
+            self.registry.register_task(self)
         return func
     
     def generate_child_options(self):
@@ -106,12 +106,6 @@ class Task(Option):
         func_res = self.func(**task_kwargs)
         self.target_ns[self.result_name] = func_res
         return func_res
-
-class EvalError (Exception):
-
-    def __init__ (self,argname,msg):
-        self.argname = argname        
-        Exception.__init__(self,self.argname,msg)
 
 def fprint (func,max_lines=100,exclude_docstring=True,show=True):
     """ function print : Prints out the source code (from file) for a function

@@ -4,6 +4,9 @@ import numpy as np
 import pandas as pd
 import thimbles as tmb
 from thimbles.tasks import task
+from thimbles.linelists import LineList
+from thimbles.io.moog_io import read_moog_linelist
+from thimbles.io.moog_io import write_moog_linelist
 
 from thimbles.stellar_atmospheres import solar_abundance as ptable
 
@@ -12,6 +15,35 @@ def float_or_nan(val):
         return float(val)
     except ValueError:
         return np.nan
+
+def read_vald_linelist(fname):
+    lines = open(fname).readlines()
+    input_re = re.compile("'[A-Z][a-z] [12]', ")
+    col_names = "wv species ep loggf D0 stark_damp rad_damp waals_damp".split()
+    ldat = {cname:[] for cname in col_names}
+    for line in lines:
+        m = input_re.match(line)
+        if m is None:
+            continue
+        spl = line.rstrip().split(",")
+        species_name, ion_number = spl[0].replace("'", "").split()
+        ion_number = int(ion_number) - 1
+        proton_number = ptable[species_name]["z"]
+        wv, loggf, elow, jlo, eup, jup = map(float, spl[1:7])
+        l_lande, u_lande, m_lande = map(float_or_nan, spl[8:11])
+        rad_damp, stark_damp, waals_damp = map(float_or_nan, spl[12:15])
+        ldat["wv"].append(wv)
+        ldat["species"].append(proton_number+ion_number*0.1)
+        ldat["ep"].append(elow)
+        ldat["loggf"].append(loggf)
+        ldat["rad_damp"].append(rad_damp)
+        ldat["stark_damp"].append(stark_damp)
+        ldat["waals_damp"].append(waals_damp)
+        #and the parameters not present
+        ldat["moog_damp"].append(np.nan)
+        ldat["D0"].append(np.nan)
+    ldf = pd.DataFrame(data=ldat)
+    return LineList(ldf)
 
 @task(result_name="line_data")
 def read_linelist(fname, file_type="detect"):
@@ -32,128 +64,22 @@ def read_linelist(fname, file_type="detect"):
         elif ".h5" in fname:
             file_type = "hdf5"
     if file_type == "hdf5":
-        return pd.read_hdf(fname, "ldat")
-    lines = open(fname).readlines()
-    ldat = {"wv":[], "species":[], "Z":[], "ion":[], 
-            "ep":[], "loggf":[], "ew":[],
-            "rad_damp":[], "stark_damp":[], "waals_damp":[],
-            "moog_damp":[], "D0":[],
-            }
-    if file_type.lower() == "moog":
-        for line in lines:
-            try:
-                moog_cols = [line[i*10:(i+1)*10].strip() for i in range(7)]
-                wv = float(moog_cols[0])
-                species = float(moog_cols[1])
-                sp_split = moog_cols[1].split(".")
-                z = int(sp_split[0])
-                ion = int(sp_split[1][0])-1
-                #A=sp_split[1][1:]
-                ep = float(moog_cols[2])
-                loggf = float(moog_cols[3])
-                if moog_cols[4] != "":
-                    moog_damp = float(moog_cols[4])
-                else:
-                    moog_damp = np.nan
-                if moog_cols[5] != "":
-                    d0 = float(moog_cols[5])
-                else:
-                    d0 = np.nan
-                if moog_cols[6]:
-                    ew = float(moog_cols[6])
-                else:
-                    ew = 0
-                z = int(species)
-                
-                rad_damp = np.nan
-                stark_damp = np.nan
-                waals_damp = np.nan
-            except ValueError as e:
-                print e
-                continue
-            ldat["wv"].append(wv)
-            ldat["species"].append(z+(ion-1)*0.1)
-            ldat["Z"].append(z)
-            #TODO: add a nucleon number column "A"
-            ldat["ion"].append(ion)
-            ldat["ep"].append(ep)
-            ldat["loggf"].append(loggf)
-            ldat["ew"]=ew
-            ldat["rad_damp"].append(rad_damp)
-            ldat["stark_damp"].append(stark_damp)
-            ldat["waals_damp"].append(waals_damp)
-            ldat["moog_damp"].append(moog_damp)
-            ldat["D0"] = d0
+        return LineList(pd.read_hdf(fname, "ldat"))
+    elif file_type.lower() == "moog":
+        return read_moog_linelist(fname)
     elif file_type == "vald":
-        input_re = re.compile("'[A-Z][a-z] [12]', ")
-        for line in lines:
-            m = input_re.match(line)
-            if m is None:
-                continue
-            spl = line.rstrip().split(",")
-            species_name, ion_number = spl[0].replace("'", "").split()
-            ion_number = int(ion_number) - 1
-            proton_number = ptable[species_name]["z"]
-            wv, loggf, elow, jlo, eup, jup = map(float, spl[1:7])
-            l_lande, u_lande, m_lande = map(float_or_nan, spl[8:11])
-            rad_damp, stark_damp, waals_damp = map(float_or_nan, spl[12:15])
-            ldat["wv"].append(wv)
-            ldat["species"].append(proton_number+ion_number*0.1)
-            ldat["Z"].append(proton_number)
-            #TODO: add a nucleon number column "A"
-            ldat["ion"].append(ion_number)
-            ldat["ep"].append(elow)
-            ldat["loggf"].append(loggf)
-            ldat["rad_damp"].append(rad_damp)
-            ldat["stark_damp"].append(stark_damp)
-            ldat["waals_damp"].append(waals_damp)
-            #and the parameters not present
-            ldat["moog_damp"].append(np.nan)
-            ldat["ew"].append(0.0)
-            ldat["D0"].append(np.nan)
-    return pd.DataFrame(data=ldat)
+        return read_vald_linelist(fname)
+    else:
+        raise ValueError("file_type {} not understood".format(file_type))
 
 @task()
-def write_linelist(line_data, fname, file_type="moog", comment=None, a_to_ma=True):
+def write_linelist(fname, line_data, file_type="moog", subkwargs=None):
     """write out a linelist"""
-    if isinstance(line_data, pd.DataFrame):
-        if file_type == "hdf5":
-            line_data.to_hdf(fname, "ldat")
-        elif file_type == "moog":
-            out_file = open(fname,'w')
-            
-            # write the header line if desired
-            if comment is None:
-                comment = "#{}".format(datetime.today())
-            out_file.write(str(comment).rstrip()+"\n")
-            
-            fmt_string = "% 10.3f% 10.5f% 10.2f% 10.2f"
-            ew_scale_factor = 1.0
-            if a_to_ma: # convert from anstroms to milli angstroms
-                ew_scale_factor = 1000.0
-            for line_idx in range(len(line_data)):
-                cline = line_data.iloc[line_idx]
-                wv,species,ep,loggf = cline["wv"], cline["species"], cline["ep"], cline["loggf"]
-                out_str = fmt_string % (wv, species, ep, loggf)
-                for v_str in "moog_damp D0 ew".split():
-                    bad_value = False
-                    if not v_str in line_data.columns:
-                        bad_value = True
-                    elif np.isnan(cline[v_str]):
-                        bad_value = True
-                    if bad_value:
-                        out_str += 10*" "
-                    else:
-                        if v_str == "ew":
-                            val = cline[v_str]*ew_scale_factor
-                        else:
-                            val = cline[v_str]
-                        out_str +="{: 10.4f}".format(val)
-                out_str += "\n"
-                out_file.write(out_str)
-            out_file.close()
-        else:
-            raise ValueError("file_type not understood")
-    else:
-        raise ValueError("input type not understood")
+    if subkwargs is None:
+        subkwargs = {}
+    if file_type == "hdf5":
+        line_data.to_hdf(fname, "ldat")
+    elif file_type == "moog":
+        write_moog_line_list(fname, **subwkargs) 
+    raise ValueError("file_type not understood")
 

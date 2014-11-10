@@ -7,6 +7,9 @@ from copy import copy
 class OptionSpecificationError(Exception):
     pass
 
+class EvalError(Exception):
+    pass
+
 config_path = os.environ.get("THIMBLESCONFIGPATH", os.path.join(os.environ["HOME"], ".config", "thimbles", "config.txt"))
 
 class OptionTree(object):
@@ -38,7 +41,7 @@ class OptionTree(object):
         return self.options[index].value
     
     def __setitem__(self, index, value):
-        self.options[index].value = value        
+        self.options[index].value = value       
         
     def parse_options(self):
         rt_str_dict = {}
@@ -186,9 +189,9 @@ class Option(object):
                 self._valuated = True
                 return res
             except SyntaxError as e:
-                OptionSpecificationError("Evaluation of string:\n{}\nfailed with error {}".format(self.runtime_str, e))
+                raise OptionSpecificationError("Evaluation of string:\n{}\nfailed with error {}".format(self.runtime_str, e))
             except Exception as e:
-                OptionSpecificationError("Unknown valuation error {}".format(e))
+                raise OptionSpecificationError("Unknown valuation error {}".format(e))
         else:
             raise OptionSpecificationError("runtime string is None")
     

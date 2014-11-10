@@ -27,7 +27,7 @@ class RepresentationEngine(object):
         pass
 
 class ObjectTreeWidget(QtGui.QWidget):
-        
+    
     def __init__(self, obj, parent):
         super(ObjectTreeWidget, self).__init__(parent=parent)
         

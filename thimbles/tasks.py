@@ -69,7 +69,9 @@ def argument_dict(func, filler_value=None, return_has_default=False):
 class Task(Option):
     target_ns = wds.__dict__
     
-    def __init__(self, result_name, name, func=None):
+    def __init__(self, result_name, name=None, func=None):
+        if name is not None and hasattr(func,'__name__'):
+            name = func.__name__
         self.name = name
         self.result_name = result_name
         if not isinstance(self.result_name, basestring):
@@ -411,11 +413,17 @@ class DylanTask (object):
         # BASIC: kws[key] = eval(self.argstrings[key],ns)        
         args = []
         for key in self._argnames:
-            args.append(self.eval_argstring(key,ns))
+            if key in ns:
+                args.append(ns[key])
+            else:
+                args.append(self.eval_argstring(key,ns))
                         
         kws = {}  
         for key in self._keynames:
-            kws[key] = self.eval_argstring(key,ns)
+            if key in ns:
+                kws[key] = ns[key]
+            else:
+                kws[key] = self.eval_argstring(key,ns)
         
         # ======================= **kwargs for self.target
         if self.star_kwargs is not None and self.star_kwargs in ns:

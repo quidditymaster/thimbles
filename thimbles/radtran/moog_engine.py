@@ -40,7 +40,7 @@ plot          0
 """
 
 def write_abfind_par (\
-    filename=None,clobber=True,
+    filename="batch.par",clobber=True,
     standard_out="std.out",
     summary_out="sum.out",
     model_in="model_in",
@@ -110,6 +110,8 @@ def _moog_par_format_fluxlimits (fluxlimits):
       5555.0 5600.0 10.0
     ```
     """
+    if fluxlimits is None:
+        return ""
     lines = [\
         "fluxlimits",
         (" {:10}"*3).format(*map(float,fluxlimits))

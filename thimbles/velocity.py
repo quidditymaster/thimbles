@@ -1,6 +1,7 @@
 # Standard Library
 import time
 import os
+import warnings
 
 # 3rd Party
 import numpy as np
@@ -27,8 +28,7 @@ def try_load_template():
         rv_standard = Spectrum(np.asarray(hf["wv"]), np.asarray(hf["flux"]))
         hf.close()
     except Exception as e:
-        print e
-        print "there was an exception loading the template file, trying again"
+        warnings.warn(str(e)+"\nthere was an exception loading the template file, trying again")
     return rv_standard
 
 for i in range(3): #number of times to retry if load fails

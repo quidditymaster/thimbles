@@ -3,6 +3,7 @@ import pandas as pd
 import h5py
 import os
 import scipy.sparse
+import warnings
 import thimbles as tmb
 from thimbles.modeling.modeling import parameter, Model
 from thimbles.hypercube_interpolator import HypercubeGridInterpolator
@@ -38,8 +39,7 @@ def try_load_lemke():
         hf = h5py.File(os.path.join(resource_dir, "transition_data", "lemke.h5"), "r")
         return hf
     except Exception as e:
-        print e
-        print "exception loading lemke hydrogen profile data trying again"
+        warnings.warn(str(e)+"\nexception loading lemke hydrogen profile data trying again")
         return None
 
 lemke_dat = try_load_lemke()

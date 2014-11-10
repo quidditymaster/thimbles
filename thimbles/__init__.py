@@ -18,13 +18,13 @@ import photometry
 import spectrographs
 import observations
 import flags
+import hydrogen
 import features
 import profiles
 import velocity
 import stellar_atmospheres
 import modeling
 import binning
-import hydrogen
 import continuum
 
 from .spectrum import Spectrum

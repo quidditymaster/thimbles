@@ -1,3 +1,10 @@
+"""
+THIMBLES: Tools for Handling Intricate Measurements on Breathtakingly Large Ensembles of Spectra
+
+"""
+# ########################################################################### #
+
+import dependencies
 
 import utils
 from verbosity import logger
@@ -5,23 +12,23 @@ from verbosity import logger
 import os
 resource_dir = os.path.join(os.path.dirname(__file__), "resources")
 
-from thimbles import io
-from thimbles import sources
-from thimbles import photometry
-from thimbles import spectrographs
-from thimbles import observations
-from thimbles import flags
-from thimbles import features
-from thimbles import profiles
-from thimbles import velocity
-from thimbles import stellar_atmospheres
-from thimbles import modeling
-from thimbles import binning
-from thimbles import hydrogen
-from thimbles import continuum
+import io
+import sources
+import photometry
+import spectrographs
+import observations
+import flags
+import features
+import profiles
+import velocity
+import stellar_atmospheres
+import modeling
+import binning
+import hydrogen
+import continuum
 
 from .spectrum import Spectrum
 from .io import *
 
-from thimbles.thimblesdb import ThimblesDB
+from .thimblesdb import ThimblesDB
 

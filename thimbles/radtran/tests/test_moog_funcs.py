@@ -20,7 +20,7 @@ import unittest
 
 from thimbles.radtran.moog_engine import (\
     _moog_par_format_synlimits,_moog_par_format_fluxlimits,
-    _moog_par_format_plot,_moog_par_format_plotpars,_moog_par_format_synlimits
+    _moog_par_format_plot,_moog_par_format_plotpars,_moog_par_format_synlimits,
     _moog_par_format_abundances,get_model_name)
 
 
@@ -31,14 +31,14 @@ class TestMOOGParFormat (unittest.TestCase):
 
     def setUp (self):
         pass 
-
-    def test_get_model_name ():
+    
+    def test_get_model_name (self):
         pars = [5000,4.10,-2.13,1.10,"ODFNEW"]
         sol = "5000p410m213v110.ODFNEW"
         ans = get_model_name(*pars)
         assert sol==ans
-
-    def test_moog_par_format_plotpars ():
+    
+    def test_moog_par_format_plotpars (self):
         plotpars = [\
             [5555.0,5600.0,0.2,1],
             [-100,0.0,0.0,1.0],
@@ -52,8 +52,8 @@ class TestMOOGParFormat (unittest.TestCase):
             ))
         ans = _moog_par_format_plotpars(plotpars)
         assert sol==ans 
-
-    def test_format_synlimits ():
+    
+    def test_format_synlimits (self):
         synlimits = [5555.0,5600.0,1,1]
         sol = "\n".join((\
             "synlimits ",
@@ -62,7 +62,7 @@ class TestMOOGParFormat (unittest.TestCase):
         ans = _moog_par_format_synlimits(synlimits)
         assert sol,ans 
     
-    def test_moog_format_abundances ():
+    def test_moog_format_abundances (self):
         abundances = [[26.0,-9, -1.2, 0],
                       [8.0, -9,   -1, 0],
                       [7.0, -9,  1.2, 2],

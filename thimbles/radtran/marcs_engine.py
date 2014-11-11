@@ -39,5 +39,5 @@ class MarcsInterpolator(PhotosphereEngine):
         raise NotImplementedError("Not implemented for this engine type")
     
     def make_photosphere(self, fname, stellar_params):
-        
+        self._not_implemented()
     

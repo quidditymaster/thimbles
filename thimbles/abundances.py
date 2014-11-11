@@ -8,5 +8,5 @@ class AbundanceVector(object):
             abundances = solar_abundances + abundances
         self._data = pd.DataFrame(abundances)
 
-solar_abundances = AbundanceVector(ptable.logeps)
+#solar_abundances = AbundanceVector(ptable.logeps)
 

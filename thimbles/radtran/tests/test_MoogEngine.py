@@ -9,10 +9,12 @@ import time
 import numpy as np 
 import unittest
 
-from thimbles import StellarParameters
+import thimbles as tmb
+from thimbles.stellar_parameters import StellarParameters
 from thimbles.stellar_parameters import solar_parameters
 from thimbles.radtran import MoogEngine
 from thimbles.radtran import MarcsInterpolator
+
 
 class TestRadTranEngine(unittest.TestCase):
     
@@ -21,8 +23,7 @@ class TestRadTranEngine(unittest.TestCase):
         self.ll = tmb.io.linelist_io.read_linelist(os.path.join(self.wdir, "test.ln"))
         #self.sun_spec = tmb.io.read_spec("sun.txt")
         self.sun_params = StellarParameters(5777.0, 4.44, 0.0, 0.88)
-        
-        
+    
     def test_model_spectrum(self):
         spec = self.engine.model_spectrum(linelist=self.ll, stellar_params=self.sun_params, fluxing="normalized")
         #TODO: compare against a precalculated spectrum
@@ -43,7 +44,7 @@ class TestRadTranEngine(unittest.TestCase):
         ew_col = 'ew'
         abund = eng.ew_to_abundance(linelist=ll,stellar_params=sparams,ew_col=ew_col)
         ews = eng.abundance_to_ew(linelist=ll,stellar_params=sparams,abundance=abund)
-        self.assert(np.testing.assert_array_almost_equal(ews,ll[ew_col]))
+        self.assertTrue(np.testing.assert_array_almost_equal(ews,ll[ew_col]))
 
 class TestMoogEngine (TestRadTranEngine):
     

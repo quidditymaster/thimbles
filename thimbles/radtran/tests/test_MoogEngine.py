@@ -23,7 +23,8 @@ class TestRadTranEngine(unittest.TestCase):
         self.ll = tmb.io.linelist_io.read_linelist(os.path.join(self.wdir, "test.ln"))
         #self.sun_spec = tmb.io.read_spec("sun.txt")
         self.sun_params = StellarParameters(5777.0, 4.44, 0.0, 0.88)
-    
+        self.engine = MoogEngine(working_dir = "")
+        
     def test_model_spectrum(self):
         spec = self.engine.model_spectrum(linelist=self.ll, stellar_params=self.sun_params, fluxing="normalized")
         #TODO: compare against a precalculated spectrum

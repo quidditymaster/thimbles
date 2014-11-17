@@ -13,13 +13,20 @@ import matplotlib.pyplot as plt
 import thimbles as tmb
 from thimbles.utils import resampling
 #from thimbles.utils.misc import inv_var_2_var, var_2_inv_var, clean_variances, clean_inverse_variances
-from .metadata import MetaData
-from .flags import SpectrumFlags
-from . import logger
-from .reference_frames import InertialFrame
-from .resolution import LineSpreadFunction, GaussianLSF, BoxLSF
-from .binning import CoordinateBinning
+#from .metadata import MetaData
+from thimbles.flags import SpectrumFlags
+from thimbles import logger
+#from thimbles.reference_frames import InertialFrame
+#from thimbles.resolution import LineSpreadFunction, GaussianLSF, BoxLSF
+from thimbles.binning import CoordinateBinning
 from scipy.interpolate import interp1d
+from thimbles.modeling import Model
+
+from sqlalchemy import ForeignKey
+from sqlalchemy import Column, Date, Integer, String, Float
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.ext.declarative import declared_attr
+from sqlalchemy.orm import relationship, backref
 
 # ########################################################################### #
 
@@ -156,7 +163,7 @@ class SpectralQuantity(object):
           the variance for points outside of the wavelength solution.
         """
         if not isinstance(wavelength_solution, WavelengthSolution):
-            wavelength_solution = WavelengthSolution
+            wavelength_solution = WavelengthSolution(wavelength_solution)
         self._wvsol = wavelength_solution
         self.values = np.asarray(values)
         self.set_variance()
@@ -205,7 +212,6 @@ class Spectrum(object):
                  barycenter_vel=None,
                  lsf=None,
                  norm="ones", 
-                 metadata=None,
                  flags=None
              ):
         """makes a spectrum from a wavelength solution, flux and optional inv_var
@@ -213,30 +219,32 @@ class Spectrum(object):
         if isinstance(wavelengths, WavelengthSolution):
             self.wv_soln = wavelengths
         else:
+            wavelengths = np.asarray(wavelengths)
             #TODO proper error handling for odd inputs
             self.wv_soln = WavelengthSolution(wavelengths, rv=rv, barycenter_vel=barycenter_vel, lsf=lsf)
         
         # TODO: check that the dimensions of the inputs match
         self.flux = np.asarray(flux)
-        if inv_var == None:
+        if inv_var is None:
             self.inv_var = (self.flux > 0.0)*np.ones(self.flux.shape, dtype=float)
             inv_var = tmb.utils.misc.smoothed_mad_error(self, 1.0)
         self.inv_var = tmb.utils.misc.clean_inverse_variances(inv_var)
         #the memory address of the last stored transform
-        if norm == "auto":
-            norm_res = tmb.utils.misc.approximate_normalization(self, overwrite=True)
-        elif norm == "ones":
-            self.norm = np.ones(len(self.wv))
+        if isinstance(norm, basestring):
+            if norm == "auto":
+                norm_res = tmb.utils.misc.approximate_normalization(self, overwrite=True)
+            elif norm == "ones":
+                self.norm = np.ones(len(self.wv))
         else:
             self.norm = norm
         self._last_rebin_wv_soln_id = None
         self._last_rebin_transform = None
         
-        if metadata is None:
-            metadata = MetaData()
-        elif not isinstance(metadata, MetaData):
-            metadata = MetaData(metadata)
-        self.metadata = metadata
+        #if metadata is None:
+        #    metadata = MetaData()
+        #elif not isinstance(metadata, MetaData):
+        #    metadata = MetaData(metadata)
+        #self.metadata = metadata
         
         if flags is None:
             flags = SpectrumFlags()

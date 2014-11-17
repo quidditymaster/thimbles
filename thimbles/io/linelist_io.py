@@ -80,6 +80,6 @@ def write_linelist(fname, line_data, file_type="moog", subkwargs=None):
     if file_type == "hdf5":
         line_data.to_hdf(fname, "ldat")
     elif file_type == "moog":
-        write_moog_line_list(fname, **subwkargs) 
+        write_moog_linelist(fname, line_data, **subkwargs) 
     raise ValueError("file_type not understood")
 

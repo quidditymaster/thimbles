@@ -1,7 +1,7 @@
 import binning
 import numpy as np
 
-class HypercubeGridInterpolator:
+class HyperGridInterpolator:
     
     """A class for doing quick linear interpolation over a large D dimensional
      hypercube of vector outputs.

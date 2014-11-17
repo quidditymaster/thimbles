@@ -5,34 +5,30 @@ import scipy.sparse
 import scipy.sparse.linalg
 from copy import copy
 
+from sqlalchemy import ForeignKey
+from sqlalchemy import Column, Date, Integer, String, Float
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.ext.declarative import declared_attr
+from sqlalchemy.orm import relationship, backref
+
+from thimbles.thimblesdb import ThimblesTable, Base
+
 class ModelingError(Exception):
     pass
 
-#factory_defaults = {
-#"history": ValueHistory,
-#"scale":ParameterScale,
-#"distribution":NormalDeltaDistribution,
-#}
-
-def parameter(free=False, scale=1.0, name=None, step_scale=1.0, derivative_scale=0.0001, convergence_scale=0.01, min=-np.inf, max=np.inf, history_max=10):
+def parameter(**kwargs):
     """a decorator to turn getter methods of Model class objects 
     into Parameter objects.
     """
-    def function_to_parameter(func):
-        param=Parameter(
-            func,
-            free=free,
-            name=name,
-            scale=scale,
-            step_scale=step_scale,
-            derivative_scale=derivative_scale,
-            convergence_scale=convergence_scale,
-            min=min,
-            max=max,
-            history_max=history_max,
-        )
-        return param
-    return function_to_parameter
+    def make_pf(setter):
+        return ParameterFactory(setter, kwargs)
+    return make_pf
+
+def vectorparameter(**kwargs):
+    def inject_args(func):
+        func._parameter_args__ = kwargs
+        func._parameter_factory__ = VectorParameter
+    return inject_args
 
 class ParameterDistribution(object):
     
@@ -235,25 +231,33 @@ class ParameterGroup(object):
             else:
                 setattr(p, attr, val_dict[p])
 
-
-class Model(ParameterGroup):
+class Model(ParameterGroup, ThimblesTable, Base):
+    model_type = Column(String)
+    parameters = relationship("Parameter")
+    __mapper_args__={
+        "polymorphic_identity": "model",
+        "polymorphic_on": model_type
+    }
     
     def __init__(self):
-        self.attach_parameters()
+        if len(self.parameters) == 0:
+            self.attach_parameters()
+        ThimblesTable.__init__(self)
     
     def attach_parameters(self):
-        self._parameters = []
+        self.parameters = []
         for attrib in dir(self):
             try:
                 val = getattr(self, attrib)
             except Exception:
                 continue
-            if isinstance(val, Parameter):
-                val.set_model(self)
-                self._parameters.append(val)
-                if val.name is None:
-                    val.name = attrib
-                val.validate()
+            if isinstance(val, ParameterFactory):
+                new_param = val.make_parameter()
+                new_param.set_model(self)
+                self.parameters.append(new_param)
+                if new_param.name is None:
+                    new_param.name = attrib
+                new_param.validate()
     
     def parameter_expansion(self, input_vec, **kwargs):
         parameters = self.free_parameters
@@ -293,7 +297,7 @@ class Model(ParameterGroup):
                 p.set(flat_pval.reshape(pshape))
         pexp_mat = scipy.sparse.hstack(deriv_vecs)
         return pexp_mat
-        
+    
     def as_linear_op(self, input_vec, **kwargs):
         return scipy.sparse.identity(len(input_vec))#implicitly allowing additive model passthrough
 
@@ -302,22 +306,51 @@ class ParameterPrior(ParameterGroup, ParameterDistribution):
     def __init__(self, parameters):
         pass
 
+class ParameterFactory(object):
+    
+    def __init__(self, func, kwargs):
+        self._getter = func
+        self.kwargs = kwargs
+        
+        #set defaults
+        self._setter = None
+        self._expander = None
+    
+    def setter(self, setter):
+        self._setter = setter
+    
+    def expander(self, expander):
+        self._expander = expander 
+    
+    def make_parameter(self):
+        return Parameter(getter=self._getter, setter=self._setter, expander=self._expander, **self.kwargs)
 
-class Parameter(object):
+class Parameter(ThimblesTable, Base):
+    _value = Column(Float) #a handle for storing and loading our model values
+    model_id = Column(Integer, ForeignKey("Model._id"))
+    parameter_type = Column(String)
+    __mapper_args__={
+        "polymorphic_identity":"parameter",
+        "polymorphic_on": parameter_type
+    }
     
     def __init__(self, 
-                 getter, 
-                 free,
-                 name,
-                 scale,
-                 step_scale,
-                 derivative_scale,
-                 convergence_scale,
-                 min, 
-                 max, 
-                 history_max,
+                 getter,
+                 setter,
+                 expander=None,
+                 free = False,
+                 name = None,
+                 scale= 1.0,
+                 step_scale=1.0,
+                 derivative_scale=1e-4,
+                 convergence_scale=1e-2,
+                 min=-np.inf, 
+                 max=np.inf, 
+                 history_max=10,
                  ):
         self._getter=getter
+        self._setter=setter
+        self._expander=expander
         self.model=None
         self.name = name
         self.scale=scale
@@ -328,10 +361,8 @@ class Parameter(object):
         self.max = max
         self._free=free
         self._dist=None
-        self._setter = None
-        self._expander = None
-        self._parameterizer = None
-        self._contextualizer = None
+        #self._parameterizer = None
+        #self._contextualizer = None
         
         self.history = ValueHistory(self, history_max)   
     
@@ -375,9 +406,9 @@ class Parameter(object):
     def set_model(self, model):
         self.model = model
     
-    def setter(self, setter):
-        self._setter=setter
-        return setter
+    #def setter(self, setter):
+    #    self._setter=setter
+    #    return setter
     
     def set(self, value, **kwargs):
         min_respected = np.atleast_1d(value) >= self.min
@@ -388,32 +419,32 @@ class Parameter(object):
         else:
             return False
     
-    def expander(self, expander):
-        self._expander=expander
-        return expander
+    #def expander(self, expander):
+    #    self._expander=expander
+    #    return expander
     
     def expand(self, input_vec, **kwargs):
         return self._expander(self.model, input_vec, **kwargs)
     
-    def contextualizer(self, contextualizer):
-        self._contextualizer = contextualizer
-        return contextualizer
-    
-    @property
-    def context(self):
-        if self._contextualizer is None:
-            return {}
-        else:
-            return self._contextualizer(self.model)
-    
-    def parameterizer(self, parameterizer):
-        self._parameterizer = parameterizer
-        return parameterizer
-    
-    def reparameterize(self, fit_state):
-        self._parameterizer(self.model, fit_state=fit_state)
-        self.history.recontextualize()
-    
+    #def contextualizer(self, contextualizer):
+    #    self._contextualizer = contextualizer
+    #    return contextualizer
+    #
+    #@property
+    #def context(self):
+    #    if self._contextualizer is None:
+    #        return {}
+    #    else:
+    #        return self._contextualizer(self.model)
+    #
+    #def parameterizer(self, parameterizer):
+    #    self._parameterizer = parameterizer
+    #    return parameterizer
+    #
+    #def reparameterize(self, fit_state):
+    #    self._parameterizer(self.model, fit_state=fit_state)
+    #    self.history.recontextualize()
+    #
     def get(self):
         return self._getter(self.model)
     
@@ -425,6 +456,13 @@ class Parameter(object):
     
     def weight(self, offset=None):
         return self.dist.weight(offset)
+
+class VectorParameter(Parameter):
+    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
+    _value = Column(String)
+    __mapper_args__={
+        "polymorphic_identity": "vectorparameter"
+    }
 
 class IdentityPlaceHolder(object):
     

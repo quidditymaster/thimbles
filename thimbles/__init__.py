@@ -16,6 +16,21 @@ THIMBLES: Tools for Handling Intricate Measurements on Breathtakingly Large Ense
 
 """+thimbles_header_str
 
+try:
+    import numba
+    _with_numba = True
+except ImportError:
+    _with_numba = False
+
+def _passthrough(val):
+    return val
+
+def try_jit(func):
+    if _with_numba:
+        return numba.jit
+    else:
+        return _passthrough 
+
 import dependencies
 import utils
 from verbosity import logger
@@ -23,6 +38,7 @@ from verbosity import logger
 import os
 resource_dir = os.path.join(os.path.dirname(__file__), "resources")
 
+from thimbles import modeling
 from thimbles import io
 from thimbles import sources
 from thimbles import photometry
@@ -34,9 +50,9 @@ from thimbles import features
 from thimbles import profiles
 from thimbles import velocity
 from thimbles import stellar_atmospheres
-from thimbles import modeling
 from thimbles import binning
 from thimbles import continuum
+from thimbles import radtran
 
 from thimbles.spectrum import Spectrum
 from thimbles.io import *

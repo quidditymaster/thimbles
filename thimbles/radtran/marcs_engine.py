@@ -10,7 +10,8 @@ marcs_model_dir = os.path.join(resource_dir)  #TODO: allow a user option for set
 
 from thimbles.radtran.engines import PhotosphereEngine
 
-def write_moog_marcs_file(layer_data, out_fname, fvturb, infeh, comment_string = None):
+def write_moog_marcs_file(layer_data, out_fname, vmicro, abundances, comment_string = None):
+    
     outf = open(out_fname, "wb")
     outf.write("WEBMARCS\n")
     if comment_string == None:
@@ -39,5 +40,5 @@ class MarcsInterpolator(PhotosphereEngine):
         raise NotImplementedError("Not implemented for this engine type")
     
     def make_photosphere(self, fname, stellar_params):
-        self._not_implemented()
+        pass
     

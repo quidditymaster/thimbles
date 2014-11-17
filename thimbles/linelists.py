@@ -74,9 +74,15 @@ class LineList(object):
     def __setitem__(self, index, value):
         self._data[index] = value
     
+    @property
+    def columns(self):
+        return self._data.columns
+    
+    @property
     def iloc(self):
         return self._data.iloc
     
+    @property
     def ix(self):
         return self._data.ix
     

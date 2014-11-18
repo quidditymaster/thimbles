@@ -6,7 +6,6 @@ import scipy.sparse
 import warnings
 import thimbles as tmb
 from thimbles.modeling.modeling import parameter, Model
-from thimbles.hypercube_interpolator import HypercubeGridInterpolator
 from thimbles import resource_dir
 from profiles import convolved_stark
 from spectrum import Spectrum

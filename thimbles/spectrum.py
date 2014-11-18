@@ -18,9 +18,10 @@ from thimbles.flags import SpectrumFlags
 from thimbles import logger
 #from thimbles.reference_frames import InertialFrame
 #from thimbles.resolution import LineSpreadFunction, GaussianLSF, BoxLSF
-from thimbles.binning import CoordinateBinning
+#from thimbles.binning import CoordinateBinning
 from scipy.interpolate import interp1d
 from thimbles.modeling import Model
+from thimbles.coordinatization import Coordinatization, as_coordinatization
 
 from sqlalchemy import ForeignKey
 from sqlalchemy import Column, Date, Integer, String, Float
@@ -36,30 +37,30 @@ __all__ = ["WavelengthSolution","Spectrum"]
 
 speed_of_light = 299792.458 #speed of light in km/s
 
-class WavelengthSolution(CoordinateBinning):
+class WavelengthSolution(object):
     
-    def __init__(self, obs_wavelengths, rv=None, barycenter_vel=None, lsf=None):
+    def __init__(self, wavelengths, rv=None, vhelio=None, lsf=None):
         """a class that encapsulates the manner in which a spectrum is sampled
-        obs_wavelengths: np.ndarray
-        emitter_frame: InertialFrame or Float
-          the frame of motion of the emitting object relative to the Earth
-          sun Barycenter. A float value will be interpreted as the radial
-          velocity of the frame. velocity is in Km/S away is positive.
-        observer_frame: InertialFrame or Float
-          the frame of motion of the observer along the line of sight
-          relative to the earth sun barycenter. A float value will be 
-          interpreted as the radial velocity of the frame. velocity is in 
-          Km/S away is positive.
+        
+        wavelengths: np.ndarray
+          the central wavelengths of each pixel
+        rv: float
+          the projected velocity along the line of sight not including
+          the contribution from the earths motion around the earth sun
+          barycenter. [km/s]
+        vhelio:
+          the velocity around the earth sun barycenter projected onto the
+          line of sight. [km/s]
         """
-        super(WavelengthSolution, self).__init__(obs_wavelengths)
+        self.indexer = as_coordinatization(wavelengths)
         
         if rv is None:
             rv = 0.0
         self._rv = rv
         
-        if barycenter_vel is None:
-            barycenter_vel = 0.0
-        self._barycenter_vel = barycenter_vel
+        if vhelio is None:
+            vhelio = 0.0
+        self._vhelio = vhelio
         
         if lsf is None:
             lsf = np.ones(len(obs_wavelengths))
@@ -80,16 +81,16 @@ class WavelengthSolution(CoordinateBinning):
         return self.rv
     
     @property
-    def barycenter_vel(self):
-        return self._barycenter_vel
+    def vhelio(self):
+        return self._vhelio
     
-    @barycenter_vel.setter
-    def barycenter_vel(self, value):
-        self._varycenter_vel = value
+    @vhelio.setter
+    def vhelio(self, value):
+        self._vhelio = value
     
-    def get_wvs(self, pixels=None, frame="emitter"):
+    def get_wvs(self, pixels=None, clip=False, snap=False):
         if pixels == None:
-            obs_wvs = self.coordinates
+            obs_wvs = self.indexer
         else:
             obs_wvs = self.indicies_to_coordinates(pixels)
         return self.observer_to_frame(obs_wvs, frame=frame)

@@ -147,11 +147,13 @@ class Coordinatization(object):
           if true returned coordate values are clipped to lie between
           the minimum and maximum coordinate values of this coordinatization.
         snap: bool
-          if true the returned coordinates are snapped to match the nearest
-          coordinate center exactly.
+          if true the input indexes are rounded to the nearest integer values
+          so that the output coordinates lie exactly on the coordinate centers.
         """
         #TODO:dump this operation out to cython
         index = np.asarray(index)
+        if snap:
+            index = np.around(index)
         input_shape = index.shape
         index = np.atleast_1d(index)
         out_coordinates = np.zeros(index.shape, dtype=float)
@@ -167,24 +169,23 @@ class Coordinatization(object):
             else:
                 out_coordinates[i] = self.coordinates[int_part]*(1.0-alpha)
                 out_coordinates[i] += self.coordinates[int_part+1]*alpha
+        if clip:
+            out_coordinates = np.clip(out_coordinates, self.min, self.max)
         return out_coordinates
     
     def get_index(self, coord, clip=False, snap=False):
-        """convert coordinates to array indexes.
-        """
+        """convert array of coordinates to the associated indexes
         
-        """assign continuous indexes to the input_coordinates 
-        which place them on to the indexing of these coordinates.
+        parameters
         
-        coords: ndarray
-          coordinates to convert to the index
-        extralpolation: string
-          'linear': linearly extrapolate the indexes to indexes < 0 and
-             greater than len(self.coordinates)-1
-          'nan': coordinates outside of the bin boundaries are set to np.nan
-          'nearest': a value of 0 is placed for coordinates less than 
-            the lower limit and a value of len(self.coordinates)-1 is placed 
-            for coordinates greater than the upper limit.
+        coord: ndarray or number
+          an array of coordinates
+        clip: bool
+          if true returned coordate values are clipped to lie between
+          0 and len(self) - 1
+        snap: bool
+          if true the returned indexes are rounded to the nearest integer
+          and the returned array has dtype int.
         """
         coord = np.asarray(coord)
         in_shape = coord.shape
@@ -212,6 +213,10 @@ class Coordinatization(object):
                         cur_idx += 1
                 idx = cur_idx + (cur_x - lb)/(ub-lb)
             out_index[cur_i] = idx
+        if snap:
+            out_coordinates = np.around(out_index).astype(int)
+        if clip:
+            out_coordinates = np.clip(out_coordinates, 0, len(self)-1)
         return out_index.reshape(in_shape)
         
         #TODO:dump this to cython
@@ -286,40 +291,97 @@ class Coordinatization(object):
 
 class LinearCoordinatization(Coordinatization):
     
-    def __init__(self, coordinates):
-        """approximates the input coordinates with a linear
-        coordinatization which simply linearly interpolates
-        between the first and last values.
+    def __init__(self, coordinates=None, min=None, max=None, npts=None, dx=None):
+        """a class representing a linear mapping between a coordinate and
+        the index number of an array.
+        
+        coordinates: ndarray
+          an input coordinate array if specified none of min, max, npts, or dx
+          may be specified. If coordinates is None, any three of min, max, npts
+          and dx may be specified but not all four.
+        min: float
+          the minimum coordinate
+        max: float
+          the maximum coordinate
+        npts: integer
+          the number of points in the coordinatization
+        dx: float
+          the difference between consecutive positions in the array
+        
+        Note: if npts is the value left unspecified dx will adjusted 
+        to allow for an integer npts with npts >= 2.
+        
         """
-        self.x0 = coordinates[0]
-        self.npts = len(coordinates)
-        self.dx = (coordinates[-1]-coordinates[0])/(self.npts-1)
+        if not (coordinates is None):
+            if not all([(val is None) for val in [min, max, npts, dx]]):
+                raise ValueError("if coordinates are specified min, max, npts and dx may not be")
+            self.npts = len(coordinates)
+            self.min, self.max =sorted([coordinates[0], coordinates[-1]])
+            self.dx = float(self.max-self.min)/(self.npts-1)
+            if np.sign(coordinates[-1]-coordinates[0]) < 0:
+                self.dx = -self.dx
+        else:
+            if max is None:
+                if not all([not (val is None) for val in [min, npts, dx]]):
+                    raise ValueError("three of min, max, npts, and dx must be specified")
+                self.min = min
+                self.max = np.abs(dx)*(npts-1) + self.min
+                self.npts = npts
+                self.dx = dx
+            elif min is None:
+                if not all([not (val is None) for val in [max, npts, dx]]):
+                    raise ValueError("three of min, max, npts, and dx must be specified")
+                self.max = max
+                self.min = self.max - np.abs(dx)*(npts-1)
+                self.npts = npts
+                self.dx = dx
+            elif npts is None:
+                if not all([not (val is None) for val in [min, max, dx]]):
+                    raise ValueError("three of min, max, npts, and dx must be specified")
+                self.min = min
+                self.max = max
+                self.npts = int(round(float(self.max-self.min)/dx)) + 1
+                if self.npts <= 1:
+                    self.npts = 2
+                self.dx = (self.max-self.min)/(self.npts - 1)
+            elif dx is None:
+                if not all([not (val is None) for val in [min, max, npts]]):
+                    raise ValueError("three of min, max, npts, and dx must be specified")        
+                self.min = min
+                self.max = max
+                self.npts = npts
+                self.dx = float(self.max-self.min)/(self.npts -1)
+                   
     
     def __len__(self):
         return self.npts
     
-    def coordinates_to_indicies(self, input_coordinates):
-        return (np.asarray(input_coordinates) - self.x0)/self.dx
-    
-    def indicies_to_coordinates(self, input_indicies):
-        return np.asarray(input_indicies)*self.dx + self.x0
-    
-    #def map_indicies(self, input_coordinates):
-    #    return (input_coordinates-self.x0)/self.dx
-    
-    def get_bin_index(self, input_coordinates):
-        #TODO make this handle negatives properly
-        return np.asarray(self.coordinates_to_indicies(input_coordinates), dtype = int)
+    @property
+    def min(self):
+        return self._min
 
+    @min.setter 
+    def min(self, value):
+        self._min = value
+    
+    @property
+    def max(self):
+        return self._max
 
-class TensoredBinning(object):
-    """A binning class for handling bins in multiple dimensions.
-    The multidimensional bins are built up by tensoring together
-    bins along each dimension. That is if we have the bins in x
-    (0, 1), (1, 2) and in y the bins (0, 3), (3,5) then the tensored
-    binning will be [[(0, 1), (0, 3)], [(0, 1), (3, 5)], [(1, 2), (0, 3)]
-    [(1, 2), (3, 5)]]. That is we get one bin for each possible pairing
-    of the input bins. 
+    @max.setter
+    def max(self, value):
+        self._max = value
+
+    def get_index(self, coord):
+        return (np.asarray(coord) - self.min)/self.dx
+    
+    def get_coord(self, index):
+        return np.asarray(index)*self.dx + self.min
+
+class TensoredCoordinatization(object):
+    """A class for handling coordinatizations in multiple dimensions.
+    The multidimensional coordinates are built up by tensoring together
+    coordinates along each dimension. 
     """
     
     def __init__(self, bin_centers_list):
@@ -327,18 +389,27 @@ class TensoredBinning(object):
         inputs
             bins_list: a list of the bins along each dimension
         """
-        self.binnings = [CoordinateBinning(bin_centers) for bin_centers in bin_centers_list]
-        self.shape = tuple([len(b) for b in self.binnings])
+        self.coordinatizations = [as_coordinatization(bin_centers) for bin_centers in bin_centers_list]
+        self.shape = tuple([len(b) for b in self.coordinatizations])
     
-    def coordinates_to_indicies(self, xcoords, extrapolation="linear"):
-        xcoords = np.asarray(xcoords)
-        if len(xcoords.shape) != 2:
-            if len(self.shape) == len(xcoords):
-                xcoords = xcoords.reshape((-1, len(self.shape)))
+    def get_index(self, coord, clip=False, snap=False):
+        coord = np.asarray(coord)
+        in_shape = coord.shape
+        coord = np.atleast_2d(coord)
         indexes_list = []
-        for binning_idx in range(len(self.binnings)):
-            xv = xcoords[:, binning_idx]
-            index_vec = self.binnings[binning_idx].coordinates_to_indicies(xv, extrapolation=extrapolation)
+        for dim_idx in range(len(self.coordinatizations)):
+            cur_coord = self.coordinatizations[dim_idx]
+            index_vec = cur_coord.get_index(coord[:, dim_idx], clip=clip, snap=snap)
             indexes_list.append(index_vec.reshape((-1, 1)))
-        return np.hstack(indexes_list)
+        return np.hstack(indexes_list).reshape(in_shape)
     
+    def get_coord(self, index, clip=False, snap=False):
+        index = np.asarray(index)
+        in_shape = index.shape
+        index = np.atleast_2d(index)
+        coord_list = []
+        for dim_idx in range(len(self.binnings)):
+            cur_cdn = self.coordinatizations[dim_idx]
+            coord_vec = cur_cdn.get_coord(index[:, dim_idx], clip=clip,snap=snap)
+            coord_list.append(coord_vec.reshape((-1, 1)))
+        return np.hstack(indexes_list).reshape(in_shape)

@@ -79,5 +79,51 @@ class TestIndexConversion(unittest.TestCase):
         self.assertTrue(np.std(t_idxs - res_idxs) < 1e-14)
         self.assertTrue(np.mean(np.abs(t_idxs-res_idxs)) < 1e-13)
 
+
+class TestLinearCoordinatization(TestIndexConversion):
+
+    def setUp(self):
+        self.min = 5000.0
+        self.max = 12000.0
+        self.npts = 53
+        self.x = np.linspace(self.min, self.max, self.npts)
+        self.coord_obj = coord.LinearCoordinatization(self.x)
+        self.tol = 1e-15
+
+class TestLinearCoordinatizationInit(unittest.TestCase):
+    
+    def setUp(self):
+        self.min = 5000.0
+        self.max = 12000.0
+        self.npts = 53
+        self.dx = (self.max-self.min)/(self.npts - 1)
+    
+    def validate_coord(self, coord_instance):
+        ci = coord_instance
+        self.assertAlmostEqual(ci.min, self.min)
+        self.assertAlmostEqual(ci.max, self.max)
+        self.assertAlmostEqual(ci.npts, self.npts)
+        self.assertAlmostEqual(ci.dx, self.dx)
+    
+    def test_coord_make(self):
+        #test making from a coordinate vector
+        x = np.linspace(self.min, self.max, self.npts)
+        ci = coord.LinearCoordinatization(x)
+        self.validate_coord(ci)
+        
+        #make using any combination of min max dx and npts
+        ci = coord.LinearCoordinatization(min=self.min, max=self.max, npts=self.npts)
+        self.validate_coord(ci)
+        
+        ci = coord.LinearCoordinatization(min=self.min, max=self.max, dx=self.dx)
+        self.validate_coord(ci)
+        
+        ci = coord.LinearCoordinatization(max=self.max, npts=self.npts, dx=self.dx)
+        self.validate_coord(ci)
+        
+        ci = coord.LinearCoordinatization(min=self.min, npts=self.npts, dx=self.dx)
+        self.validate_coord(ci)
+
+
 if __name__ == "__main__":
     unittest.main()

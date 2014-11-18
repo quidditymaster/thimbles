@@ -11,7 +11,6 @@ marcs_model_dir = os.path.join(resource_dir)  #TODO: allow a user option for set
 from thimbles.radtran.engines import PhotosphereEngine
 
 def write_moog_marcs_file(layer_data, out_fname, vmicro, abundances, comment_string = None):
-    
     outf = open(out_fname, "wb")
     outf.write("WEBMARCS\n")
     if comment_string == None:

@@ -22,15 +22,6 @@ try:
 except ImportError:
     _with_numba = False
 
-def _passthrough(val):
-    return val
-
-def try_jit(func):
-    if _with_numba:
-        return numba.jit
-    else:
-        return _passthrough 
-
 import dependencies
 import utils
 from verbosity import logger
@@ -50,7 +41,7 @@ from thimbles import features
 from thimbles import profiles
 from thimbles import velocity
 from thimbles import stellar_atmospheres
-from thimbles import binning
+from thimbles import coordinatization
 from thimbles import continuum
 from thimbles import radtran
 
@@ -58,4 +49,3 @@ from thimbles.spectrum import Spectrum
 from thimbles.io import *
 
 from thimbles.thimblesdb import ThimblesDB
-

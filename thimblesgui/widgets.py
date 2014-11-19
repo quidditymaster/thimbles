@@ -671,7 +671,7 @@ class FeatureFitWidget(QWidget):
         self.bottom_marker_line ,= self.fit_axis(1).plot([feat_wv, feat_wv], [-10.0, 10.0], c="r", lw=1.5) 
         #import pdb; pdb.set_trace()
         #and now for the residuals plot
-        inv_var = bspec.get_inv_var()
+        inv_var = bspec.ivar
         bkground_alpha = 0.5
         self.zero_line ,= self.fit_axis(1).plot([bspec.wv[0], bspec.wv[-1]], [0, 0], c="k", alpha=bkground_alpha, lw=2.0)
         sig_levels = [3]
@@ -699,7 +699,7 @@ class FeatureFitWidget(QWidget):
         self.top_marker_line.set_data([feat_wv, feat_wv], [0.7*nac, 1.1*nac])
         self.bottom_marker_line.set_xdata([feat_wv, feat_wv])
         
-        inv_var = bspec.get_inv_var()
+        inv_var = bspec.ivar
         significance = (feature_model-bspec.flux)*np.sqrt(inv_var)
         self.resid_line.set_data(bspec.wv, significance)
         self.zero_line.set_data([bspec.wv[0], bspec.wv[-1]], [0, 0])

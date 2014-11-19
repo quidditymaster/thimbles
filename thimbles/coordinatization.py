@@ -79,7 +79,6 @@ def as_coordinatization(coordinates, delta_max=0, force_linear=False, force_log_
     
     return Coordinatization(coordinates)
 
-
 class Coordinatization(object):
     
     def __init__(self, coordinates, as_edges=False, check_ordered=False):
@@ -218,62 +217,6 @@ class Coordinatization(object):
         if clip:
             out_coordinates = np.clip(out_coordinates, 0, len(self)-1)
         return out_index.reshape(in_shape)
-        
-        #TODO:dump this to cython
-        # get the upper and lower bounds for the coordinates
-        lb,ub = self.bins[0],self.bins[-1]
-        xv = np.asarray(coord)
-        out_idx_vals = np.zeros(len(xv.flat), dtype = float)
-        for x_idx in xrange(len(xv.flat)):
-            cur_x = xv.flat[x_idx]
-            #check if the last solution still works
-            if self._cached_prev_bin[0] <= cur_x <= self._cached_prev_bin[1]:
-                #if so find the fraction through the pixel
-                alpha = (cur_x-self._cached_prev_bin[0])/(self._cached_prev_bin[1]-self._cached_prev_bin[0])
-                out_idx_vals[x_idx] = self._cached_prev_bin_idx + alpha
-                continue
-            #make sure that the x value is inside the bin range or extrapolate
-            if lb > cur_x:
-                if extrapolation == "linear":
-                    out_idx_vals[x_idx] = (cur_x-self.coordinates[0])/self._start_dx
-                elif extrapolation == "nan":
-                    out_idx_vals[x_idx] = np.nan
-                elif extrapolation == "nearest":
-                    out_idx_vals[x_idx] = 0
-                else:
-                    raise ValueError("extrapolation value not understood")
-                continue
-            if ub < cur_x:
-                if extrapolation == "linear":
-                    out_idx_vals[x_idx] = (len(self.coordinates) -1)+(cur_x-self.coordinates[-1])/self._end_dx
-                elif extrapolation == "nearest":
-                    out_idx_vals[x_idx] = len(self.bins)-2
-                elif extrapolation == "nan":
-                    out_idx_vals[x_idx] = np.nan
-                else:
-                    raise ValueError("extrapolation value not understood")
-                continue
-            lbi, ubi = 0, len(self.bins)-1
-            while True:
-                mididx = (lbi+ubi)//2
-                midbound = self.bins[mididx]
-                if midbound <= cur_x:
-                    lbi = mididx
-                else:
-                    ubi = mididx
-                if self.bins[lbi] <= cur_x <= self.bins[lbi+1]:
-                    self._cached_prev_bin = self.bins[lbi], self.bins[lbi+1]
-                    self._cached_prev_bin_idx = lbi
-                    break
-            alpha = (cur_x-self._cached_prev_bin[0])/(self._cached_prev_bin[1]-self._cached_prev_bin[0])
-            out_idx_vals[x_idx] = lbi + alpha
-        return out_idx_vals
-    
-    def get_bin_index(self, coords):
-        """ find the bin index to which the coordinate belongs
-        """
-        out_c = np.around(self.coordinates_to_indicies(coords))
-        return np.array(out_c, dtype=int)
     
     def interpolant_matrix(self, coords):
         raise NotImplementedError("I'm getting to it...")
@@ -315,11 +258,7 @@ class LinearCoordinatization(Coordinatization):
         if not (coordinates is None):
             if not all([(val is None) for val in [min, max, npts, dx]]):
                 raise ValueError("if coordinates are specified min, max, npts and dx may not be")
-            self.npts = len(coordinates)
-            self.min, self.max =sorted([coordinates[0], coordinates[-1]])
-            self.dx = float(self.max-self.min)/(self.npts-1)
-            if np.sign(coordinates[-1]-coordinates[0]) < 0:
-                self.dx = -self.dx
+            self._from_coord_vec(coordinates)
         else:
             if max is None:
                 if not all([not (val is None) for val in [min, npts, dx]]):
@@ -352,9 +291,23 @@ class LinearCoordinatization(Coordinatization):
                 self.npts = npts
                 self.dx = float(self.max-self.min)/(self.npts -1)
                    
+    def _from_coord_vec(self, coordinates):
+        self.npts = len(coordinates)
+        self.min, self.max =sorted([coordinates[0], coordinates[-1]])
+        self.dx = float(self.max-self.min)/(self.npts-1)
+        if np.sign(coordinates[-1]-coordinates[0]) < 0:
+            self.dx = -self.dx
     
     def __len__(self):
         return self.npts
+    
+    @property
+    def coordinates(self):
+        return np.linspace(self.min, self.max, self.npts)
+    
+    @coordinates.setter
+    def coordinates(self, value):
+        self._from_coord_vec(value)
     
     @property
     def min(self):

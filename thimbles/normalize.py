@@ -12,7 +12,7 @@ def normalize(spectrum,
           ):
     flux = spectrum.flux
     wvs = spectrum.wv
-    inv_var=spectrum.inv_var
+    inv_var=spectrum.ivar
     
     if mask_kwargs is None:
         mask_kwargs = {}

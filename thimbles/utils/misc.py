@@ -467,7 +467,7 @@ def smoothed_mad_error(spectrum,
                        error_scale = 200,
                        apply_poisson=True, 
                        overwrite_error=False):
-    cinv_var = spectrum.inv_var
+    cinv_var = spectrum.ivar
     good_mask = (cinv_var > 0)*(spectrum.flux > 0)
     #detect and reject perfectly flat regions
     flux_der = scipy.gradient(spectrum.flux)
@@ -491,7 +491,7 @@ def smoothed_mad_error(spectrum,
     new_inv_var = np.where(good_mask, 1.0/var, 0.0)
     new_inv_var = clean_inverse_variances(new_inv_var)
     if overwrite_error:
-        spectrum.inv_var = new_inv_var
+        spectrum.ivar = new_inv_var
     return new_inv_var
 
 @task()

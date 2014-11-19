@@ -338,7 +338,7 @@ class AppForm(QMainWindow):
                     if len(bspec) > 3:
                         precull_opt = self.options.pre_cull
                         if precull_opt=="snr":
-                            med_snr = np.median(bspec.flux*np.sqrt(bspec.get_inv_var()))
+                            med_snr = np.median(bspec.flux*np.sqrt(bspec.ivar))
                             if med_snr > 1.0:
                                 accepted=True
                         elif precull_opt[:8] == "strength":

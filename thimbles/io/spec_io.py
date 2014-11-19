@@ -21,7 +21,7 @@ import h5py
 from thimbles.tasks import task
 
 from ..utils.misc import var_2_inv_var
-from ..spectrum import Spectrum
+from ..spectrum import Spectrum, WavelengthSolution
 #from ..metadata import MetaData
 import wavelength_extractors
 
@@ -41,11 +41,13 @@ def read_hdf5(filepath):
         wv_soln_path = spec_grp_name + "/wv_soln" 
         wvs = np.array(hf[wv_soln_path + "/wv_centers"])
         lsf = np.array(hf[wv_soln_path + "/lsf"])
-        rv, bcvel = hf[wv_soln_path + "/velocity_offsets"]
+        rv, vhelio = hf[wv_soln_path + "/velocity_offsets"]
+        wvs = WavelengthSolution(wvs, rv=rv, vhelio=vhelio)
         
         quant_path = spec_grp_name + "/spectral_quantities" 
         flux = np.array(hf[quant_path+"/flux/values"])
         ivar = np.array(hf[quant_path+"/flux/ivar"])
+
         new_spec = Spectrum(wvs, flux, ivar, rv=rv, barycenter_vel=bcvel, lsf=lsf)
         spectra.append(new_spec)
     return spectra
@@ -60,7 +62,7 @@ def write_hdf5(filepath, spectra):
         wv_soln_path = spec_grp_name + "/wv_soln" 
         hf[wv_soln_path + "/wv_centers"] = cspec.wv
         hf[wv_soln_path + "/lsf"] = cspec.wv_soln.lsf
-        hf[wv_soln_path + "/velocity_offsets"] = [cspec.wv_soln.rv, cspec.wv_soln.barycenter_vel]
+        hf[wv_soln_path + "/velocity_offsets"] = [cspec.rv, cspec.vhelio]
         
         quant_path = spec_grp_name + "/spectral_quantities" 
         hf[quant_path+"/flux/values"] = cspec.flux

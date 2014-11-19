@@ -39,21 +39,27 @@ speed_of_light = 299792.458 #speed of light in km/s
 
 class WavelengthSolution(object):
     
-    def __init__(self, wavelengths, rv=None, vhelio=None, lsf=None):
+    def __init__(self, wavelengths, rv=None, vhelio=None, shifted=True, lsf=None):
         """a class that encapsulates the manner in which a spectrum is sampled
         
         wavelengths: np.ndarray
-          the central wavelengths of each pixel
+          the central wavelengths of each pixel, the radial velocity
+          and heliocentric velocity shifts are assumed to have already
+          been applied unless shifted==False.
         rv: float
           the projected velocity along the line of sight not including
           the contribution from the earths motion around the earth sun
           barycenter. [km/s]
-        vhelio:
+        vhelio: float
           the velocity around the earth sun barycenter projected onto the
           line of sight. [km/s]
+        shifted: bool
+          if False then the passed in rv and vhelio will be applied to 
+          the wavelengths via
+          wavelengths = wavelengths*(1-(rv+vhelio)/c)
+        lsf: ndarray
+          the line spread function in units of pixel width.
         """
-        self.indexer = as_coordinatization(wavelengths)
-        
         if rv is None:
             rv = 0.0
         self._rv = rv
@@ -62,9 +68,17 @@ class WavelengthSolution(object):
             vhelio = 0.0
         self._vhelio = vhelio
         
+        if not shifted:
+            wavelengths = wavelengths*(1.0-(rv+vhelio)/speed_of_light)
+        
+        self.indexer = as_coordinatization(wavelengths)
+        
         if lsf is None:
-            lsf = np.ones(len(obs_wavelengths))
+            lsf = np.ones(len(self))
         self.lsf = lsf
+    
+    def __len__(self):
+        return len(self.indexer)
     
     @property
     def rv(self):
@@ -72,6 +86,8 @@ class WavelengthSolution(object):
     
     @rv.setter
     def rv(self, value):
+        new_wvs = self.indexer.coordinates*(1.0 - value/speed_of_light)
+        self.indexer
         self._rv = value
     
     def set_rv(self, rv):
@@ -86,120 +102,26 @@ class WavelengthSolution(object):
     
     @vhelio.setter
     def vhelio(self, value):
+        new_wvs = self.indexer.coordinates*(1.0 - value/speed_of_light)
+        self.indexer.coordinates = new_wvs
         self._vhelio = value
     
     def get_wvs(self, pixels=None, clip=False, snap=False):
-        if pixels == None:
-            obs_wvs = self.indexer
-        else:
-            obs_wvs = self.indicies_to_coordinates(pixels)
-        return self.observer_to_frame(obs_wvs, frame=frame)
+        if pixels is None:
+            pixels = np.arange(len(self.indexer))            
+        return self.indexer.get_coord(pixels, clip=clip, snap=snap)
     
-    def get_index(self, wvs, frame="emitter", clip=False):
-        shift_wvs = self.frame_to_observer(wvs, frame="emitter")
-        if clip:
-            return self.coordinates_to_indicies(shift_wvs, extrapolation="nearest")
-        else:
-            return self.coordinates_to_indicies(shift_wvs, extrapolation="linear")
-    
-    def observer_to_frame(self, observer_wvs, frame="emitter"):
-        if frame == "emitter":
-            delta_v = self.rv - self.barycenter_vel
-        elif frame == "observer":
-            delta_v = 0.0
-        else:
-            delta_v = frame - self.rv
-        return observer_wvs*(1.0-delta_v/speed_of_light)
-    
-    def frame_to_observer(self, frame_wvs, frame="emitter"):
-        if frame == "emitter":
-            delta_v = self.rv - self.barycenter_vel
-        elif frame == "observer":
-            delta_v = 0.0
-        else:
-            delta_v = frame - self.barycenter_vel
-        return frame_wvs*(1.0+delta_v/speed_of_light)
-    
-    def frame_conversion(self, wvs, wv_frame, target_frame):
-        rest_wvs = self.frame_to_observer(wvs, frame=wv_frame)
-        return self.observer_to_frame(rest_wvs, frame=target_frame)
-    
-    @property
-    def dx_dlam(self):
-        """find the gradient in pixel space which corresponds to
-        a progression of wavelengths.
-        """
-        return 1.0/self.dlam_dx
-    
-    @property
-    def dlam_dx(self):
-        """find the gradients in wavelength space corresponding to 
-        a progression of pixels.
-        """
-        return scipy.gradient(self.wv)    
+    def get_index(self, wvs=None, clip=False, snap=False):
+        if wvs == None:
+            return np.arange(len(self.indexer))
+        return self.indexer.get_index(wvs, clip=clip, snap=snap)
 
 
-class SpectralQuantity(object):
-    
-    def __init__(self, 
-                 wavelength_solution, 
-                 values, 
-                 variances=None,
-                 valuation_type="interpolate",
-                 fill_value=0.0,
-                 fill_var=np.inf):
-        """a wavelength dependent quantity 
-        
-        wavelength_solution: WavelengthSolution
-          the conversion from pixel to wavelength
-        values: numpy.ndarray
-          the value at each pixel
-        variances: numpy.ndarray
-          the associated uncertainty of the values
-        valuation_type: string
-          options 'interpolate', 'rebin'
-        fill_value: float
-          the value to return for wavelengths outside of the solution
-        fill_var: float
-          the variance for points outside of the wavelength solution.
-        """
-        if not isinstance(wavelength_solution, WavelengthSolution):
-            wavelength_solution = WavelengthSolution(wavelength_solution)
-        self._wvsol = wavelength_solution
-        self.values = np.asarray(values)
-        self.set_variance()
-        self.valuation_type = valuation_type
-        self.fill_value = fill_value
-        self.fill_var = fill_var
-        
-    
-    def set_variance(self, variances):
-        if not variances is None:
-            variances = tmb.utils.misc.clean_variances(variances)
-            self._var = variances
-            self._inv_var = tmb.utils.misc.var_2_inv_var(variances)
-        else:
-            self._var = None
-            self._inv_var = None
-    
-    @property
-    def ivar(self):
-        if self._inv_var is None:
-            return None
-        return self._inv_var
-    
-    @ivar.setter
-    def ivar(self, value):
-        var = tmb.utils.misc.inv_var_2_var(value)
-        self.set_variance(var)
-    
-    @property
-    def var(self):
-        return self._var
-    
-    @var.setter
-    def var(self, value):
-        self.set_variance(value)
+def as_wavelength_solution(wavelengths):
+    if isinstance(wavelengths, WavelengthSolution):
+        return wavelengths
+    else:
+        return WavelengthSolution(wavelengths)
 
 class Spectrum(object):
     """A representation of a collection of relative flux measurements
@@ -208,44 +130,34 @@ class Spectrum(object):
     def __init__(self,
                  wavelengths, 
                  flux, 
-                 inv_var=None,
-                 rv=None,
-                 barycenter_vel=None,
-                 lsf=None,
-                 norm="ones", 
+                 ivar=None,
                  flags=None
              ):
-        """makes a spectrum from a wavelength solution, flux and optional inv_var
+        """makes a spectrum
+        wavelengths: ndarray or WavelengthSolution
+          the wavelengths at each pixel, if more specific information
+          is required (e.g. specifying the lsf or the heliocentric vel
+          create a WavelengthSolution object outside with the info and
+          pass that in instead of an ndarray.
+        flux: ndarray
+          the measured flux in each pixel
+        ivar: ndarray
+          the noise inverse variance of each pixel
+        flags: an optional SpectrumFlags object
+          see flags.py for info
         """
-        if isinstance(wavelengths, WavelengthSolution):
-            self.wv_soln = wavelengths
-        else:
-            wavelengths = np.asarray(wavelengths)
-            #TODO proper error handling for odd inputs
-            self.wv_soln = WavelengthSolution(wavelengths, rv=rv, barycenter_vel=barycenter_vel, lsf=lsf)
-        
-        # TODO: check that the dimensions of the inputs match
+        self.wv_soln = as_wavelength_solution(wavelengths)
         self.flux = np.asarray(flux)
-        if inv_var is None:
-            self.inv_var = (self.flux > 0.0)*np.ones(self.flux.shape, dtype=float)
-            inv_var = tmb.utils.misc.smoothed_mad_error(self, 1.0)
-        self.inv_var = tmb.utils.misc.clean_inverse_variances(inv_var)
-        #the memory address of the last stored transform
-        if isinstance(norm, basestring):
-            if norm == "auto":
-                norm_res = tmb.utils.misc.approximate_normalization(self, overwrite=True)
-            elif norm == "ones":
-                self.norm = np.ones(len(self.wv))
-        else:
-            self.norm = norm
+        
+        if ivar is None:
+            self._ivar = (self.flux > 0.0)*np.ones(self.flux.shape, dtype=float)
+            ivar = tmb.utils.misc.smoothed_mad_error(self, 1.0)
+        self._ivar = tmb.utils.misc.clean_inverse_variances(ivar)
+        
         self._last_rebin_wv_soln_id = None
         self._last_rebin_transform = None
         
-        #if metadata is None:
-        #    metadata = MetaData()
-        #elif not isinstance(metadata, MetaData):
-        #    metadata = MetaData(metadata)
-        #self.metadata = metadata
+        #TODO:allow for a spectrum context which includes the header.
         
         if flags is None:
             flags = SpectrumFlags()
@@ -254,24 +166,16 @@ class Spectrum(object):
         self.flags = flags
     
     def __add__(self, other):
-        if not isinstance(other, Spectrum):
-            try:
-                other = float(other)
-                return Spectrum(self.wv_soln, self.flux+other, self.inv_var)
-            except TypeError:
-                raise TypeError("operation not supported between Spectrum and type %s" % type(other))
-        rebinned_other = other.rebin(self.wv_soln)
-        return Spectrum(self.wv_soln, self.flux+rebinned_other.flux, tmb.utils.misc.var_2_inv_var(self.var + other.var))
+        if isinstance(other, (float, int)):
+            return Spectrum(self.wv_soln, self.flux + other, self.ivar)
+        else:
+            raise NotImplementedError()
     
     def __div__(self, other):
-        if not isinstance(other, Spectrum):
-            try:
-                other = float(other)
-                return Spectrum(self.wv_soln, self.flux/other, self.inv_var*other**2)
-            except TypeError:
-                raise TypeError("operation not supported between Spectrum and type %s" % type(other))
-        rebinned_other = other.rebin(self.wv_soln)
-        return Spectrum(self.wv_soln, self.flux-rebinned_other.flux, tmb.utils.misc.var_2_inv_var(self.var/other.flux**2 + (self.flux/other.flux**2)**2*other.var))
+        if isinstance(other, (float, int)):
+            return Spectrum(self.wv_soln, self.flux/other, self.ivar*other**2)
+        else:
+            raise NotImplementedError()
     
     def __equal__ (self,other):
         if not isinstance(other,Spectrum):
@@ -279,22 +183,18 @@ class Spectrum(object):
         
         checks = [np.all(other.wv==self.wv),
                   np.all(other.flux==self.flux),
-                  np.all(other.inv_var==self.inv_var),
-                  other.metadata==self.metadata]
+                  np.all(other.ivar==self.inv_var),
+                  ]
         return np.all(checks)
     
     def __len__(self):
         return len(self.flux)
     
     def __mul__(self, other):
-        if not isinstance(other, Spectrum):
-            try:
-                other = float(other)
-                return Spectrum(self.wv_soln, self.flux*other, self.inv_var/other**2)
-            except TypeError:
-                raise TypeError("operation not supported between Spectrum and type %s" % type(other))
-        rebinned_other = other.rebin(self.wv_soln)
-        return Spectrum(self.wv_soln, self.flux*rebinned_other.flux, tmb.utils.misc.var_2_inv_var(self.var*other.flux + other.var*self.flux))
+        if isinstance(other, (float, int)):
+            return Spectrum(self.wv_soln, self.flux*other, self.ivar/other**2)
+        else:
+            raise NotImplementedError()
     
     def __repr__(self):
         wvs = self.wv
@@ -303,29 +203,18 @@ class Spectrum(object):
         return "<`thimbles.Spectrum` ({0:8.3f},{1:8.3f})>".format(first_wv, last_wv)
     
     def __sub__(self, other):
-        if not isinstance(other, Spectrum):
-            try:
-                other = float(other)
-                return Spectrum(self.wv_soln, self.flux-other, self.inv_var)
-            except TypeError:
-                raise TypeError("operation not supported between Spectrum and type %s" % type(other))
-        rebinned_other = other.rebin(self.wv_soln)
-        return Spectrum(self.wv_soln, self.flux-rebinned_other.flux, tmb.utils.misc.var_2_inv_var(self.var + other.var))
-    
-    @property
-    def px(self):
-        return self.wv_soln.get_index()
-    
+        if isinstance(other, (float, int)):
+            return Spectrum(self.wv_soln, self.flux - other, self.ivar)
+        else:
+            raise NotImplementedError()
+        
     @property
     def rv(self):
-        return self.wv_soln.get_rv()
+        return self.wv_soln.rv
     
     @property
     def wv(self):
-        """
-        This returns the default values from get_wvs
-        """
-        return self.get_wvs(pixels=None, frame='emitter')
+        return self.wv_soln.get_wvs()
     
     def set_rv(self, rv):
         self.wv_soln.set_rv(rv)
@@ -333,18 +222,18 @@ class Spectrum(object):
     def get_rv(self):
         return self.wv_soln.get_rv()
     
-    def get_wvs(self, pixels=None, frame="emitter"):
-        return self.wv_soln.get_wvs(pixels, frame)
+    def get_wvs(self, pixels=None, clip=False, snap=False):
+        return self.wv_soln.get_wvs(pixels, clip=clip, snap=snap)
     
-    def get_index(self, wvs, frame="emitter", clip=False):
-        return self.wv_soln.get_index(wvs, frame=frame, clip=clip)
+    def get_index(self, wvs, clip=False, snap=False):
+        return self.wv_soln.get_index(wvs, clip=clip, snap=snap)
     
-    def get_inv_var(self):
-        return self.inv_var
-    
-    def get_var(self):
-        #TODO deal with zeros appropriately
-        return tmb.utils.misc.inv_var_2_var(self.inv_var)
+    #def get_inv_var(self):
+    #    return self.inv_var
+    #
+    #def get_var(self):
+    #    #TODO deal with zeros appropriately
+    #    return tmb.utils.misc.inv_var_2_var(self.inv_var)
     
     def normalize(self, **kwargs):
         #TODO: put extra controls in here
@@ -352,29 +241,19 @@ class Spectrum(object):
         return norm_res
     
     def normalized(self):
-        nspec = Spectrum(self.wv_soln, self.flux/self.norm, self.get_inv_var()*self.norm**2)
+        nspec = Spectrum(self.wv_soln, self.flux/self.norm, self.ivar*self.norm**2)
         nspec.flags["normalized"] = True
         return nspec
     
-    def rebin_new(self, coords, kind=None, coord_type=None, fill=None):
-        """valuate the spectrum at a given set of coordinates
-        the method for determining the output spectrum values is dictated
-        by this spectrum's valuation policy by default.
-
-        coords: WavelengthSolution or numpy.ndarray
-          the coordinates centers of the bins in the output spectrum
-          if a np.ndarray is specified it will be assumed that the line
-          spread function is gaussian with a sigma width parameter equal to
-          the spacing between the pixels (Nyquist sampled).
-        kind: string
-          "interp", the flux values will be linearly interpolated
-          "rebin", a rebinning matrix is built which redistributes flux 
-            according to pixel overlap and line spread functions.
-            An attempt is made to build a differential line spread function
-            to sample 
-        """
-        pass
-    
+    def sample(self, wavelengths, kind="interp", fill=np.nan):
+        if kind == "interp":
+            indexes = self.get_index(wavelengths)
+            int_part = np.around(indexes).astype(int)
+            alphas = indexes - int_part
+            return self.flux[int_part]*(1-alphas) + self.flux[int_part+1]*alphas
+        if kind =="rebin":
+            raise NotImplementedError()
+        
     def lsf_sampling_matrix(self, model_wvs):
         wv_widths = scipy.gradient(self.wv)*self.wv_soln.lsf
         #TODO: use faster interpolation
@@ -454,12 +333,12 @@ class Spectrum(object):
             out_norm = out_norm.copy()
         return Spectrum(out_wvs, out_flux, out_invvar, norm=out_norm)
     
-    def plot(self, axes=None, frame="emitter", **mpl_kwargs):
+    def plot(self, axes=None, **mpl_kwargs):
         plot_wvs = self.get_wvs(frame=frame)
         plot_flux = self.flux
         if axes == None:
             axes = plt.figure().add_subplot(111)
-            xlabel = 'Wavelength in '+str(frame)+" frame"
+            xlabel = 'Wavelength'
             axes.set_xlabel(xlabel)
             axes.set_ylabel('Flux')
         l, = axes.plot(plot_wvs, plot_flux, **mpl_kwargs)
@@ -467,8 +346,16 @@ class Spectrum(object):
     
     @property
     def var(self):
-        return tmb.utils.misc.inv_var_2_var(self.inv_var)
+        return tmb.utils.misc.inv_var_2_var(self._ivar)
+    
+    @var.setter
+    def var(self, value):
+        self.ivar = tmb.utils.misc.inv_var_2_var(value)
     
     @property
     def ivar(self):
-        return self.inv_var
+        return self._ivar
+    
+    @ivar.setter
+    def ivar(self, value):
+        self._ivar = tmb.utils.misc.clean_inverse_variances(value)

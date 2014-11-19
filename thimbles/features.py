@@ -276,7 +276,7 @@ class SaturatedVoigtFeatureModel(Model):
         for spec in spectra:
             trans = tmb.utils.resampling.get_resampling_matrix(spec.wv, self.model_wv, preserve_normalization=False)
             transforms_to_model.append(trans)
-            cur_snr2 = trans*(spec.flux**2*spec.inv_var)
+            cur_snr2 = trans*(spec.flux**2*spec.ivar)
             cur_dof = trans*np.ones(spec.wv.shape)
             max_dof = np.max(cur_dof)
             cur_dof /= max_dof #TODO replace this with a preserved norm

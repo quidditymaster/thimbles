@@ -879,7 +879,7 @@ def vec_sort_lad(e, u):
 
 def pseudo_huber_irls_weights(resids, sigma, gamma=5.0):
     z = np.clip(resids/sigma, 1e-5, np.inf)/gamma
-    return (np.sqrt(1.0 + z**2) - 1)/z**2
+    return 2.0*(np.sqrt(1.0 + z**2) - 1)/z**2
 
 def pseudo_residual(resids, sigma, gamma=5.0):
     """a convenience function for use in conjunction with 
@@ -917,11 +917,11 @@ def irls(A,
          b,
          sigma,
          reweighting_func=None, 
-         reweighting_kwargs=None,
          start_x=None,
-         max_iter=100,
+         max_iter=20,
          resid_delta_thresh=1e-8,
-         x_delta_thresh=1e-8
+         x_delta_thresh=1e-8,
+         **reweighting_kwargs
          ):
     """
     perform iteratively reweighted least squares searching for a solution of
@@ -966,45 +966,46 @@ def irls(A,
     A_issparse = scipy.sparse.issparse(A)
     
     if start_x is None:
-        start_x = np.zeros(A.shape[1])
+        start_x = np.zeros((A.shape[1],))
+    start_x = np.asarray(start_x)
     last_x = start_x
     
     if reweighting_func is None:
         reweighting_func = pseudo_huber_irls_weights
-        if reweighting_kwargs is None:
+        if len(reweighting_kwargs) == 0:
             reweighting_kwargs = {"gamma":5.0}
-    
-    if reweighting_kwargs is None:
-        reweighting_kwargs = {}
-    
+        
     last_resids = None
-    cur_x = None
+    delta_x = None
     
     if A_issparse:
         solver = scipy.sparse.linalg.lsqr
+        dotter = lambda x, y: x*y
     else:
+        A = np.asarray(A)
         solver = np.linalg.lstsq
+        dotter = np.dot
     
     for iter_idx in range(max_iter):
-        cur_resids = A*last_x - b
+        cur_resids = b - dotter(A, last_x)
         resids_converged = False
         x_converged = False
         if not last_resids is None:
             if np.std(cur_resids - last_resids) < resid_delta_thresh:
                 resids_converged = True
-        if not cur_x is None:
-            if np.std(cur_x - last_x) < x_delta_thresh:
+        if not delta_x is None:
+            if np.std(delta_x) < x_delta_thresh:
                 x_converged = True
         if resids_converged and x_converged:
-            return cur_x
-        weights = reweighting_func(last_resids, sigma, **reweighting_kwargs)
+            break
+        weights = reweighting_func(cur_resids, sigma, **reweighting_kwargs)
         diag_weights = scipy.sparse.dia_matrix((weights, 0), (len(weights), len(weights)))
         A_reweighted = diag_weights*A
-        b_reweighted = weights*b
-        cur_x = solver(A_reweighted, b_reweighted)[0]
+        resids_reweighted = weights*cur_resids
+        delta_x = solver(A_reweighted, resids_reweighted)[0]
         last_resids = cur_resids
-        last_x = cur_x  
-    return cur_x
+        last_x = last_x + delta_x
+    return last_x
 
 @task()
 def l1_factor(input_matrix, input_weights, rank=3, n_iter=3):

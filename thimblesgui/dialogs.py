@@ -5,10 +5,9 @@ import matplotlib.pyplot as plt
 from PySide.QtGui import *
 from PySide.QtCore import *
 
-from options import options
 import thimblesgui as tmbg
-from thimblesgui import user_namespace
 import thimbles as tmb
+from thimbles.options import opts
 
 class SaveDialog(QDialog):
     
@@ -272,7 +271,7 @@ class RVSettingDialog(QDialog):
         self.setLayout(lay)
     
     def on_ccor(self):
-        ccor_rv = tmb.velocity.template_rv_estimate(self.spectra, delta_max=options.max_rv)
+        ccor_rv = tmb.velocity.template_cc_rv(self.spectra, max_velocity=options.max_rv)
         self.current_rv = ccor_rv
         self.reset_rv_text()
     

@@ -1,5 +1,5 @@
 import numpy as np
-from . import verbosity
+from . import logger
 
 def bins_to_centers(bins):
     bins = np.asarray(bins)

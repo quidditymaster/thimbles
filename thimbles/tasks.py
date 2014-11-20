@@ -21,27 +21,60 @@ from types import LambdaType
 import cPickle
 import numpy as np 
 
-import workingdataspace as user_namespace
-from thimbles.options import Option, opts
+import workingdataspace as wds
+from thimbles.options import Option, opts, EvalError
 
 # ########################################################################### #
 
-task_registry = {}
-def register_task(task):
-    task_registry[task.name] = task
+class TaskRegister(object):
+    
+    def __init__(self):
+        self.registry = {}
+    
+    def register_task(self, task):
+        self.registry[task.name] = task
+    
+    def __getitem__(self, index):
+        return self.registry[index]
 
-def task(name=None, result_name="return_value"):
-    new_task = Task(name=name, result_name=result_name)
-    register_task(new_task)
+task_registry = TaskRegister()
+
+def task(name=None, result_name="return_value", option_tree=opts, registry=task_registry):
+    new_task = Task(name=name, result_name=result_name, option_tree=option_tree, registry=registry)
     return new_task.set_func
 
+def argument_dict(func, filler_value=None, return_has_default=False):
+    argspec = inspect.getargspec(func)
+    n_args_total = len(argspec.args)
+    if argspec.defaults is None:
+        n_defaults = 0
+    else:
+        n_defaults = len(argspec.defaults)
+    defaults = [filler_value for i in range(n_args_total-n_defaults)]
+    if not argspec.defaults is None:
+        defaults.extend(argspec.defaults)
+    arg_dict = OrderedDict(zip(argspec.args, defaults))
+    
+    if return_has_default:
+        has_defaults = [False for i in range(n_args_total-n_defaults)]
+        has_defaults.extend([True for i in range(n_defaults)])
+        has_defaults_dict = OrderedDict(zip(argspec.args, has_defaults))
+        return arg_dict, has_defaults_dict
+    else:
+        return arg_dict 
 
 class Task(Option):
+    target_ns = wds.__dict__
     
-    def __init__(self, name=None, result_name=None, func=None):
-        self.result_name = result_name
+    def __init__(self, result_name, name, option_tree, registry, func=None):
         self.name = name
-        self.set_func(func)
+        self.result_name = result_name
+        self.option_tree = option_tree
+        self.registry = registry
+        if not isinstance(self.result_name, basestring):
+            raise ValueError("result_name must be of type string not type {}".format(type(result_name))) 
+        if not func is None:
+            self.set_func(func)
     
     def set_func(self, func):
         self.func = func
@@ -50,16 +83,22 @@ class Task(Option):
                 self.name = self.func.__name__
             super(Task, self).__init__(default=func)
         return func
-        
-    def inspect_arguments(self):
-        pass
+    
+    def generate_child_options(self):
+        arg_dict, arg_has_default = argument_dict(self.func, return_has_default=True)
+        self.task_kwargs = arg_dict.keys()
+        for arg_key in arg_dict:
+            opt_kwargs = {}
+            if arg_has_default[arg_key]:
+                opt_kwargs["default"] = arg_dict[arg_key]
+            Option(name=arg_key, parent=self, **opt_kwargs)
+    
+    def run(self):
+        task_kwargs = {kw:getattr(self, kw).value for kw in self.task_kwargs}
+        func_res = self.func(**task_kwargs)
+        self.target_ns[self.result_name] = func_res
+        return func_res
 
-class EvalError (Exception):
-
-    def __init__ (self,argname,msg):
-        self.argname = argname        
-        Exception.__init__(self,self.argname,msg)
-        
 def fprint (func,max_lines=100,exclude_docstring=True,show=True):
     """ function print : Prints out the source code (from file) for a function
     
@@ -81,7 +120,7 @@ def fprint (func,max_lines=100,exclude_docstring=True,show=True):
     if exclude_docstring:
         msg = ' <docstring see help({})> '.format(func.__name__)
         to_print = to_print.replace(func.__doc__,msg)
-              
+    
     if show:
         print(to_print) 
     else:
@@ -128,7 +167,7 @@ class DylanTask (object):
     
       
     """ 
-    defaultNamespace = user_namespace.__dict__
+    defaultNamespace = wds.__dict__
     
     def __init__ (self, target=None, argstrings=None, result_name="result"):
         """
@@ -360,11 +399,17 @@ class DylanTask (object):
         # BASIC: kws[key] = eval(self.argstrings[key],ns)        
         args = []
         for key in self._argnames:
-            args.append(self.eval_argstring(key,ns))
+            if key in ns:
+                args.append(ns[key])
+            else:
+                args.append(self.eval_argstring(key,ns))
                         
         kws = {}  
         for key in self._keynames:
-            kws[key] = self.eval_argstring(key,ns)
+            if key in ns:
+                kws[key] = ns[key]
+            else:
+                kws[key] = self.eval_argstring(key,ns)
         
         # ======================= **kwargs for self.target
         if self.star_kwargs is not None and self.star_kwargs in ns:

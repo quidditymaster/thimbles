@@ -4,7 +4,7 @@ import numpy as np
 from .pixel_wavelength_functions import (NoSolution, LogLinear, Polynomial, 
                                         Linear , ChebyshevPolynomial,
                                         CubicSpline, LegendrePolynomial) 
-from .. import verbosity
+from .. import logger
 
 # ########################################################################### #
 
@@ -917,7 +917,7 @@ def from_header (header,preference=None):
         try: 
             wv_solutions.append(func(header))
             compatible_solutions.append(func_name)
-            verbosity('compatible wavelength solution from {}'.format(func_name))
+            logger('compatible wavelength solution from {}'.format(func_name))
         except IncompatibleWavelengthSolution:
             pass
     # check how many solutions were found

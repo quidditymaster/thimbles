@@ -15,7 +15,7 @@ from thimbles.utils import resampling
 #from thimbles.utils.misc import inv_var_2_var, var_2_inv_var, clean_variances, clean_inverse_variances
 from .metadata import MetaData
 from .flags import SpectrumFlags
-from . import verbosity
+from . import logger
 from .reference_frames import InertialFrame
 from .resolution import LineSpreadFunction, GaussianLSF, BoxLSF
 from .binning import CoordinateBinning

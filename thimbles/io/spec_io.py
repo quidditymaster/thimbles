@@ -18,20 +18,21 @@ import numpy as np
 import h5py
 
 # Internal
+from thimbles.tasks import task
+
 from ..utils.misc import var_2_inv_var
 from ..spectrum import Spectrum
 from ..metadata import MetaData
 import wavelength_extractors
 
-
 # ########################################################################### #
 
 
-__all__ = ["read_spec","read_txt","read_fits",
-           "read_txt","read_fits","read_fits_hdu","read_bintablehdu",
-           "read_many_fits"]
+__all__ = ["read_spec","read_ascii","read_fits",
+           "read_fits","read_fits_hdu","read_bintablehdu",
+           "read_many_fits", "read_hdf5"]
 
-def read_h5(filepath):
+def read_hdf5(filepath):
     hf = h5py.File(filepath, "r")
     spectra = []
     spec_keys = hf.keys()
@@ -49,7 +50,7 @@ def read_h5(filepath):
         spectra.append(new_spec)
     return spectra
 
-def write_h5(filepath, spectra):
+def write_hdf5(filepath, spectra):
     """writes a list of lists of spectra to a hdf5 file
     """
     hf = h5py.File(filepath, "w")
@@ -69,9 +70,9 @@ def write_h5(filepath, spectra):
 # ########################################################################### #
 # read functions
 
-def read_txt (filepath,**np_kwargs):
+def read_ascii (filepath,**np_kwargs):
     """
-    Readin text files with wavelength and data columns (optionally inverse varience)
+    Readin text files with wavelength and data columns (optionally inverse variance)
     
     Parameters
     ----------
@@ -235,7 +236,6 @@ def read_bintablehdu (hdulist,which_hdu=1,wvcolname=None,fluxcolname=None,varcol
     fluxcolname : None or string
     varcolname : None or string
     
-    
     """
     metadata = MetaData()
     metadata['filepath'] = hdulist.filename()
@@ -379,14 +379,7 @@ def read_many_fits (filelist,relative_paths=False,are_orders=False):
         spectra = sort_spectra     
     return spectra
 
-pass
-# ############################################################################# #
-# This is the general read in function for fits and text files
-
-# general read function
-
-def is_many_fits (filepath):
-    
+def probably_file_list(filepath):
     if isinstance(filepath,basestring):
         # check if this is a file with a list of files
         if not os.path.isfile(filepath):
@@ -401,27 +394,89 @@ def is_many_fits (filepath):
     else:
         return False
 
-def read_spec(filepath,**kwargs):
-    """
-    General read 
-    
-    **kwargs are passed either to read_txt or read_fits depending on determined 
-    file type
-    
+def read_spec_list(fname, file_type="detect"):
+    lines = open(fname).readlines()
+    spectra = []
+    for line in lines:
+        cur_fname = line.rstrip().split("#")[0]
+        if len(cur_fname) == 0:
+            continue
+        cur_specl = read_spec(line.rstrip(), file_type=file_type)
+        spectra.extend(cur_specl)
+    return spectra
+
+def probably_fits_file(fname):
+    """check to see if the file might be a fits file
     """
     # NOTE: Could also check for 'END' card and/or 'NAXIS  ='
     fits_rexp = re.compile("[SIMPLE  =,XTENSION=]"+"."*71+"BITPIX  =")
+    with open(fname,'r') as f:
+        file_header = f.read(300)
+    s = fits_rexp.search(file_header)
+    if s is None:
+        return False
+    else:
+        return True
+
+def probably_ascii_columns(fname):
+    raise NotImplementedError()
+    with open(fname, "r") as f:
+        file_head = f.read(1000)
+    lines = file_head.split("\n")
+    lines = [line.split("#")[0] for line in lines]
+    len_lines = [len(line.split()) for line in lines if len(line.split()) > 0]
+    if len(len_lines) > 2:
+        len_lines = np.array(len_lines[:-1])
+        if np.all(len_lines == len_lines[0]):
+            return True
+    return False
+
+def probably_hdf5(fname):
+    return fname[-3:] == ".h5"
+
+def detect_spectrum_file_type(fname):
+    if probably_fits_file(fname):
+        return "fits"
+    elif probably_hdf5(fname):
+        return "hdf5"
+    elif probably_file_list(fname):
+        return "file_list"
+    elif probably_ascii_columns:
+        return "ascii"
+    return None
+
+pass
+# ############################################################################# #
+# This is a swiss army knife spectrum read in function
+@task()
+def read_spec(fname, file_type="detect", extra_kwargs=None):
+    """
+    a swiss army knife read in function for spectra, attempts to read in 
+    a large variety of formats.
     
-    # check the first line of the file. What type is it?
-    with open(filepath,'r') as f:
-        header_line = f.readline()
-    s = fits_rexp.search(header_line)
+    file type: string
+      "detect"    attempt to determine the file type automatically
+      "fits"      read a fits type file
+      "hdf5"      read a hdf5 format spectrum file
+      "ascii"     read a file with ascii columns for wavelength and flux
+      "file_list" file is actually a list of files to read in.
+    extra_kwargs: dictionary
+      a dictionary to unpack into the readin function that gets called on
+      the basis of the file_type.
+    """
+    if extra_kwargs is None:
+        extra_kwargs = {}
+    if file_type == "detect":
+        file_type = detect_spectrum_file_type(fname)
+        if file_type is None:
+            raise Exception("unable to detect spectrum file type")
     
-    
-    if s is None: # is not a fits file
-        if is_many_fits(filepath): # is a file of many files
-            return read_many_fits(filepath,**kwargs)
-        else: # is a single text file
-            return read_txt(filepath,**kwargs)
-    else: # is a fits file
-        return read_fits(filepath,**kwargs)
+    if file_type == "fits":
+        res =  read_fits(fname, **extra_kwargs)
+    elif file_type == "hdf5":
+        res = read_hdf5(fname, **extra_kwargs)
+    elif file_type == "file_list":
+        res = read_spec_list(fname, **extra_kwargs)
+    elif file_type == "ascii":
+        res = read_ascii(fname, **extra_kwargs)
+    return res

@@ -17,7 +17,14 @@ import numpy as np
 import scipy
 import scipy.optimize
 
+#internal imports
+from thimbles.options import opts
+from thimbles.tasks import task_registry
+from thimbles import workingdataspace as wds
+
 import thimblesgui as tmbg
+from thimblesgui.views import ObjectTreeWidget
+from thimblesgui.task_widgets import task_runner_factory
 import thimbles as tmb
 import thimbles.io as io
 
@@ -27,78 +34,46 @@ _resources_dir = os.path.join(os.path.dirname(__file__),"resources")
 
 class AppForm(QMainWindow):
     
-    def __init__(self, options, rows=[]):
+    def __init__(self):
         super(AppForm, self).__init__()
         self.setWindowTitle("Thimbles")
-        self.main_frame = QWidget()        
-        self.options = options
-        self.layout = QHBoxLayout()
-        self.main_table_model = tmbg.models.MainTableModel()
-        self.rfunc = tmbg.user_namespace.eval_("tmb.io."+options.read_func)
-        
-        self.load_linelist()
-        
-        
-        if self.options.batch_mode:
-            input_files = open(options.files[0], "r").readlines()
-            input_files = [fname.rstrip() for fname in input_files]  
-        else:
-            input_files = options.files
-        
-        print "input files", input_files
-        
-        for sfile_name in input_files:
-            try:
-                joined_name = os.path.join(options.data_dir, sfile_name)
-                spec_list = self.rfunc(joined_name)
-            except Exception as e:
-                print "there was an error reading file %s" % sfile_name
-                print e
-            spec_base_name = os.path.basename(sfile_name)
-            fit_features = self.pre_process_spectra(spec_list)
-            spec_base_name = os.path.basename(sfile_name)
-            features_name = "features_%s" % spec_base_name
-            if not self.options.no_window:
-                spec_row = tmbg.models.SpectraRow(spec_list, spec_base_name)
-                self.main_table_model.addRow(spec_row)
-                if not fit_features is None:
-                    frow = tmbg.models.FeaturesRow(fit_features, features_name)
-                    self.main_table_model.addRow(frow)
-            
-            if self.options.features_out:
-                self.save_features(spec_base_name, fit_features)
-            
-            if self.options.moog_out:
-                self.save_moog_from_features(spec_base_name, fit_features)
-        
-        #setup for the dual spectrum operations
-        self.partial_result = None
-        self.current_operation = None
-
-        self.main_table_view = tmbg.views.NameTypeTableView(self)
-        self.main_table_view.setModel(self.main_table_model)
-        self.main_table_view.setColumnWidth(0, 200)
-        self.main_table_view.setColumnWidth(1, 200)
-        self.main_table_view.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.main_table_view.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.layout.addWidget(self.main_table_view)
-        
-        #import pdb; pdb.set_trace()
-                
-        op_gb = self._init_operations_groups()
-        self.layout.addWidget(op_gb)
-        
+        self.main_frame = QWidget()
+        self.layout = QGridLayout()
         self.main_frame.setLayout(self.layout)
         self.setCentralWidget(self.main_frame)
+        
+        #make working data space view 
+        self.wds_widget = ObjectTreeWidget(wds, parent=self)
+        self.layout.addWidget(self.wds_widget, 0, 1, 1, 1)
+        
+        #make the tasks launching buttons widget
+        self.tasks_box = QGroupBox("Tasks Launcher")
+        self.tasks_layout = QVBoxLayout()
+        self.tasks_box.setLayout(self.tasks_layout)
+        self.task_scroll = QScrollArea(parent=self)
+        task_buttons = []
+        for cur_task in task_registry.registry.values():
+            cbutton = QPushButton(cur_task.name)
+            self.tasks_layout.addWidget(cbutton)
+            task_runner_func = task_runner_factory(cur_task)
+            cbutton.clicked.connect(task_runner_func)
+        self.task_scroll.setWidget(self.tasks_box)
+        self.layout.addWidget(self.task_scroll, 0, 2, 1, 1)
+        #op_gb = self._init_operations_groups()
+        #self.layout.addWidget(op_gb)
+        
+        #self.main_frame.setLayout(self.layout)
         
         #self.create_menu()
         #self._init_actions()
         #self._init_menus()
         
-        self._init_status_bar()
-        self._connect()
+        #self._init_status_bar()
+        #self._connect()
     
     def print_args(self, *args, **kwargs):
+        """prints the arguments passed in
+        useful for connecting to events during gui debugging"""
         print "in print_args"
         print args, kwargs
     
@@ -435,7 +410,7 @@ class AppForm(QMainWindow):
         if self.options.rv == "cc":
             #best_template = self.match_standard(spectra)
             #import pdb; pdb.set_trace()
-            rv = tmb.velocity.template_rv_estimate(spectra, delta_max=self.options.max_rv)
+            rv = tmb.velocity.template_cc_rv(spectra, max_velocity=self.options.max_rv)
         else:
             rv = float(self.options.rv)
         for spec in spectra:

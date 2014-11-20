@@ -12,6 +12,8 @@ from sqlalchemy.orm import relationship, backref
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from thimbles.options import Option, opts, OptionSpecificationError
+
 Base = declarative_base()
 
 class ThimblesDB(object):
@@ -25,21 +27,20 @@ class ThimblesDB(object):
     """
     
     def __init__(self, path):
-        abs_path = os.path.abspath(path)
-        if not os.path.isdir(abs_path):
-            raise Exception("{} is not a valid directory".format(abs_path))
+        self.path = os.path.abspath(path)
+        if not os.path.isdir(self.path):
+            raise Exception("{} is not a valid directory".format(self.path))
         
         #set up the database
-        self.db_url = "sqlite:///{}tdb.db".format(os.path.abspath(path))
+        self.db_url = "sqlite:///{}tdb.db".format(self.path)
         self.engine = create_engine(self.db_url)
         Base.metadata.create_all(self.engine)
         Session = sessionmaker(bind=self.engine)
         self.session = Session()
         
         #set up the hdf5 file
-        hdf5_path = os.path.join(abs_path, "tdb.h5")
+        hdf5_path = os.path.join(self.path, "tdb.h5")
         self.h5 = h5py.File(hdf5_path, "r+")
-        
     
     def save(self):
         self.session.commit()
@@ -49,6 +50,8 @@ class ThimblesDB(object):
         self.h5.close()
 
 current_dbs = {}
+Option("thimblesdb", option_style="parent_dict")
+Option("path", parent="thimblesdb", option_style="raw_string",  envvar="THIMBLESDB.PATH", default=None)
 current_db_path = os.environ.get("THIMBLESPROJECTDB", None)
 if not current_db_path is None:
     current_db_path = os.path.abspath(current_db_path)
@@ -78,8 +81,10 @@ class ThimblesTable(object):
     #db = get_db()
     _id = Column(Integer, primary_key=True)
     
-    @classmethod
-    def load(cls, **kwargs):
+    def load_nsqla(self, **kwargs):
+        """load the columns which aren't stored in the SQL database
+        """
+        self.metadata
         if isinstance(db, basestring):
             db = get_db(db)
         elif not isinstance(db, ThimblesDB):
@@ -90,7 +95,9 @@ class ThimblesTable(object):
         else:
             new_instance = cls(**kwargs)
             new_instance.db = db
-
+    
+    def unload(self):
+        raise NotImplementedError()
 
 class ArrayColumn(object):
     """a column type to be used for large numerical data arrays.
@@ -99,4 +106,3 @@ class ArrayColumn(object):
     def __init__(self):
         pass
     
-

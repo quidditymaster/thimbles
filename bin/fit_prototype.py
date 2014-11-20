@@ -132,7 +132,7 @@ class GridSearch(modeling.FitState):
         return True
 
 class SpectralModeler(modeling.DataModelNetwork):
-    
+        
     def __init__(self, target_spectra, lsf_models, ldat, species_grouper, max_iter, spectrum_id, start_teff):
         self.spectrum_id = spectrum_id
         self.hmasks = [get_H_mask(tspec.wv, args.H_mask_radius) for tspec in target_spectra]

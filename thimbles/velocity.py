@@ -1,6 +1,7 @@
 # Standard Library
 import time
 import os
+import warnings
 
 # 3rd Party
 import numpy as np
@@ -16,7 +17,7 @@ from thimbles.tasks import task
 
 from thimbles import resource_dir
 
-__all__ = ["template_rv_estimate"]
+__all__ = ["template_cc_rv"]
 
 # ########################################################################### #
 
@@ -27,27 +28,30 @@ def try_load_template():
         rv_standard = Spectrum(np.asarray(hf["wv"]), np.asarray(hf["flux"]))
         hf.close()
     except Exception as e:
-        print e
-        print "there was an exception loading the template file, trying again"
+        warnings.warn(str(e)+"\nthere was an exception loading the template file, trying again")
     return rv_standard
 
 for i in range(3): #number of times to retry if load fails
     rv_standard = try_load_template()
     if rv_standard is None:
-        time.sleep(0.01+0.1*np.random.random())
+        time.sleep(0.01+0.05*np.random.random())
     else:
         break
 
 speed_of_light = 299792.458
 
-#@task()
-def template_rv_estimate(spectra, template=rv_standard, delta_max=500, pix_poly_width=2):
+#TODO: make a general cross correlator task. one where we build a cross correlation stack and one where we do the whole spectrum at once
+
+@task()
+def template_cc_rv(spectra, template=rv_standard, max_velocity=500, pix_poly_width=2):
     """use a template spectrum to estimate a common rv shift for a collection
     of spectra.
     
     spectra: list of spectrum objects
-    template: a template spectrum to use to do the shifting to
-        (expects a log-linear wavelength sampled template)
+      the spectra to cross correlate
+    template: Spectrum 
+      the spectrum to cross correlate against
+      the template should be log-linear wavelength sampled.
     
     """
     log_delta = np.log10(template.wv[-1]/template.wv[0])/len(template)
@@ -60,7 +64,7 @@ def template_rv_estimate(spectra, template=rv_standard, delta_max=500, pix_poly_
         bounded_template = template.bounded_sample(spec_bounds)
         normed = spec.normalized()
         rebinned = normed.rebin(bounded_template.wv)
-        max_pix_off = int(np.log10(1.0+delta_max/speed_of_light)/log_delta) + 1
+        max_pix_off = int(np.log10(1.0+max_velocity/speed_of_light)/log_delta) + 1
         rebinned_med = np.median(rebinned.flux)
         template_med = np.median(bounded_template.flux)
         ccors.append(cross_corr(rebinned.flux-rebinned_med, bounded_template.flux-template_med, max_pix_off, overlap_adj=True))

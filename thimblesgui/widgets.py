@@ -20,9 +20,8 @@ from PySide.QtCore import *
 
 import models
 import views
-import user_namespace
 import thimbles as tmb
-from options import options
+from thimbles.options import opts
 
 class NormalizationWidget(QWidget):
     

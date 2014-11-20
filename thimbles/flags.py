@@ -126,8 +126,9 @@ spectrum_flag_space.add_dimension("sky")
 # rebinned
 # re-sampled
 
-class SpectrumFlags(Flags, Base, ThimblesTable):
-    flag_int= Column(Integer)    
+class SpectrumFlags(Flags):#(ThimblesTable, Flags, Base):
+    #flag_int= Column(Integer)    
     
     def __init__(self, flag_int=None):
-        super(SpectrumFlags, self).__init__(spectrum_flag_space, flag_int)
+        #ThimblesTable.__init__(self)
+        Flags.__init__(self, spectrum_flag_space, flag_int)

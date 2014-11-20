@@ -2,11 +2,11 @@ from thimbles.abundances import AbundanceVector
 
 class StellarParameters(object):
     
-    def __init__(self, teff, logg, abundances=None, vmicro=2.0):
+    def __init__(self, teff, logg, abundances=0.0, vmicro=2.0):
         self.teff = teff
         self.logg = logg
         if abundances is None:
-            abundances = 0.0
+            abundances = AbundanceVector(0.0)
         self.abundances = abundances
         self.vmicro = vmicro
     

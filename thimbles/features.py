@@ -18,6 +18,12 @@ from thimbles import hydrogen
 from latbin import matching
 from thimbles.utils.misc import saturated_voigt_cog
 
+from sqlalchemy import create_engine, ForeignKey
+from sqlalchemy import Column, Date, Integer, String, Float
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.ext.declarative import declared_attr
+from sqlalchemy.orm import relationship, backref
+
 def indicator_factory(indval, tolerance):
     return lambda x: np.abs(x-indval) < tolerance
 
@@ -78,6 +84,7 @@ class SpeciesGrouper(object):
         return grp_nums[recon_idxs]
 
 class SaturatedVoigtFeatureModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     
     def __init__(self, 
                  transitions, 
@@ -222,6 +229,12 @@ class SaturatedVoigtFeatureModel(Model):
         self._recalc_feature_matrix = True
         self._recollapse_feature_matrix = True
     
+    def generate_fit_groups(self):
+        self.fdat.groupby("species_group", sort_by="wv")
+        
+        self.fdat["fit_group"]
+        #TODO:
+    
     #def calc_ew_errors(self):
     #    self.fdat["ew_error"] = np.ones(len(self.fdat))
     #    total_sig2 = self.fdat["ew"]
@@ -263,7 +276,7 @@ class SaturatedVoigtFeatureModel(Model):
         for spec in spectra:
             trans = tmb.utils.resampling.get_resampling_matrix(spec.wv, self.model_wv, preserve_normalization=False)
             transforms_to_model.append(trans)
-            cur_snr2 = trans*(spec.flux**2*spec.inv_var)
+            cur_snr2 = trans*(spec.flux**2*spec.ivar)
             cur_dof = trans*np.ones(spec.wv.shape)
             max_dof = np.max(cur_dof)
             cur_dof /= max_dof #TODO replace this with a preserved norm
@@ -644,8 +657,8 @@ class SaturatedVoigtFeatureModel(Model):
         ax.set_xlabel("adjusted relative strength")
         ax.set_ylabel("log(EW/doppler_width)")
 
-
 class SimpleMatrixOpacityModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     
     def __init__(self, model_wvs, opac_matrix, opac_strength):
         Model.__init__(self)
@@ -666,6 +679,7 @@ class SimpleMatrixOpacityModel(Model):
         return self.opac_matrix*self.opac_strength + input_vec
 
 class OpacityToTransmission(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     
     def __init__(self):
         Model.__init__(self)

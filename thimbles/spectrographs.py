@@ -20,6 +20,7 @@ class SpectrographSetup(Base, ThimblesTable):
     spectrograph = relationship(Spectrograph)
 
 class PiecewisePolynomialSpectrographEfficiencyModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     
     def __init__(self, spec_wvs, degree=3, n_max_part=5):
         Model.__init__(self)

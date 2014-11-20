@@ -10,13 +10,14 @@ class OptionSpecificationError(Exception):
 class EvalError(Exception):
     pass
 
-config_path = os.environ.get("THIMBLESCONFIGPATH", os.path.join(os.environ["HOME"], ".config", "thimbles", "config.txt"))
+config_dir = os.environ.get("THIMBLESCONFIGPATH", os.path.join(os.environ["HOME"], ".config", "thimbles"))
+config_file = os.path.join(config_dir, "config.txt")
 
 class OptionTree(object):
     
-    def __init__(self, config_path=config_path):
+    def __init__(self, config_file=config_file):
         self.option_path = ""
-        self.config_path=config_path
+        self.config_file=config_file
         self.options = {}
     
     @property
@@ -53,8 +54,8 @@ class OptionTree(object):
         #parse the config file
         parent_opt_path = None
         sub_path = None
-        if os.path.isfile(self.config_path):
-            lines = open(config_path, "r").readlines()
+        if os.path.isfile(self.config_file):
+            lines = open(config_file, "r").readlines()
             for line in lines:
                 crun_str = None
                 spl = line.split("#")[0].split()

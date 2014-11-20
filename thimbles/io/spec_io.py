@@ -21,8 +21,8 @@ import h5py
 from thimbles.tasks import task
 
 from ..utils.misc import var_2_inv_var
-from ..spectrum import Spectrum
-from ..metadata import MetaData
+from ..spectrum import Spectrum, WavelengthSolution
+#from ..metadata import MetaData
 import wavelength_extractors
 
 # ########################################################################### #
@@ -41,11 +41,13 @@ def read_hdf5(filepath):
         wv_soln_path = spec_grp_name + "/wv_soln" 
         wvs = np.array(hf[wv_soln_path + "/wv_centers"])
         lsf = np.array(hf[wv_soln_path + "/lsf"])
-        rv, bcvel = hf[wv_soln_path + "/velocity_offsets"]
+        rv, vhelio = hf[wv_soln_path + "/velocity_offsets"]
+        wvs = WavelengthSolution(wvs, rv=rv, vhelio=vhelio)
         
         quant_path = spec_grp_name + "/spectral_quantities" 
         flux = np.array(hf[quant_path+"/flux/values"])
         ivar = np.array(hf[quant_path+"/flux/ivar"])
+
         new_spec = Spectrum(wvs, flux, ivar, rv=rv, barycenter_vel=bcvel, lsf=lsf)
         spectra.append(new_spec)
     return spectra
@@ -60,7 +62,7 @@ def write_hdf5(filepath, spectra):
         wv_soln_path = spec_grp_name + "/wv_soln" 
         hf[wv_soln_path + "/wv_centers"] = cspec.wv
         hf[wv_soln_path + "/lsf"] = cspec.wv_soln.lsf
-        hf[wv_soln_path + "/velocity_offsets"] = [cspec.wv_soln.rv, cspec.wv_soln.barycenter_vel]
+        hf[wv_soln_path + "/velocity_offsets"] = [cspec.rv, cspec.vhelio]
         
         quant_path = spec_grp_name + "/spectral_quantities" 
         hf[quant_path+"/flux/values"] = cspec.flux
@@ -97,10 +99,10 @@ def read_ascii (filepath,**np_kwargs):
     #### check if file exists   ####### #############
     if not os.path.isfile(filepath): 
         raise IOError("File does not exist:'{}'".format(filepath))
-
-    metadata = MetaData()
-    metadata['filepath'] = os.path.abspath(filepath)
-
+    
+    #metadata = MetaData()
+    #metadata['filepath'] = os.path.abspath(filepath)
+    
     # Allows for not repeating a loadtxt
     np_kwargs['unpack'] = True
     np_kwargs['dtype'] = float
@@ -129,7 +131,7 @@ def read_ascii (filepath,**np_kwargs):
     else:
         inv_var = None
     
-    return [Spectrum(wvs,data,inv_var,metadata=metadata)]
+    return [Spectrum(wvs,data,inv_var)]#,metadata=metadata)]
     
 ############################################################################
 
@@ -212,16 +214,16 @@ def read_fits_hdu (hdulist,which_hdu=0,band=0,preference=None):
                        "from header incompatable with number of data orders, n={}").format(len(wvs),len(data)))
     
     #=================================================================#
-    metadata = MetaData()
-    metadata['filepath'] = hdulist.filename
-    metadata['hdu_used']=which_hdu
-    metadata['band_used']=band
-    metadata['header'] = deepcopy(hdu.header)
+    #metadata = MetaData()
+    #metadata['filepath'] = hdulist.filename
+    #metadata['hdu_used']=which_hdu
+    #metadata['band_used']=band
+    #metadata['header'] = deepcopy(hdu.header)
         
     spectra = []
     for i in xrange(len(wvs)):
-        metadata['order'] = i
-        spectra.append(Spectrum(wvs[i],data[i],metadata=metadata))
+    #    metadata['order'] = i
+        spectra.append(Spectrum(wvs[i],data[i]))#,metadata=metadata))
          
     return spectra
 
@@ -237,11 +239,11 @@ def read_bintablehdu (hdulist,which_hdu=1,wvcolname=None,fluxcolname=None,varcol
     varcolname : None or string
     
     """
-    metadata = MetaData()
-    metadata['filepath'] = hdulist.filename()
-    metadata['header'] = hdulist[0].header
-    for i,hdu in enumerate(hdulist[1:]):
-        metadata['header{}'.format(i+1)] = hdu.header
+    #metadata = MetaData()
+    #metadata['filepath'] = hdulist.filename()
+    #metadata['header'] = hdulist[0].header
+    #for i,hdu in enumerate(hdulist[1:]):
+    #    metadata['header{}'.format(i+1)] = hdu.header
     
     guesses = dict(wvcol_guess = ['wavelength','wvs','wavelengths','wave','waves'],
                    fluxcol_guess = ['flux','ergs','intensity'],
@@ -305,10 +307,10 @@ def read_bintablehdu (hdulist,which_hdu=1,wvcolname=None,fluxcolname=None,varcol
                 ivar = inv_var[i]
             else:
                 ivar = None
-            metadata['order'] = i
-            spectra.append(Spectrum(wvs[i],flux[i],ivar,metadata=metadata.copy()))
+            #metadata['order'] = i
+            spectra.append(Spectrum(wvs[i],flux[i],ivar))#,metadata=metadata.copy()))
     elif wvs.ndim == 1:
-        spectra.append(Spectrum(wvs,flux,inv_var,metadata=metadata))
+        spectra.append(Spectrum(wvs,flux,inv_var))#,metadata=metadata))
     else:
         raise ValueError("Don't know how to deal with data ndim={}".format(wvs.ndim))
     return spectra
@@ -466,6 +468,12 @@ def read_spec(fname, file_type="detect", extra_kwargs=None):
     """
     if extra_kwargs is None:
         extra_kwargs = {}
+    if not isinstance(file_type, basestring):
+        try:
+            return file_type(fname, **extra_kwargs)
+        except IOError as e:
+            raise e
+    
     if file_type == "detect":
         file_type = detect_spectrum_file_type(fname)
         if file_type is None:

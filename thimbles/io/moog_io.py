@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from datetime import datetime
 
 from thimbles.linelists import LineList
 
@@ -34,25 +35,25 @@ def read_moog_linelist(fname):
     ldf = pd.DataFrame(data=ldat)
     return LineList(ldf)
 
-def write_moog_linelist(fname, line_data, a_to_ma=True):
+def write_moog_linelist(fname, linelist, a_to_ma=True, comment=None):
     out_file = open(fname,'w')
     
     # write the header line if desired
     if comment is None:
         comment = "#{}".format(datetime.today())
         out_file.write(str(comment).rstrip()+"\n")
-            
+    
     fmt_string = "% 10.3f% 10.5f% 10.2f% 10.2f"
     ew_scale_factor = 1.0
     if a_to_ma: # convert from anstroms to milli angstroms
         ew_scale_factor = 1000.0
-        for line_idx in range(len(line_data)):
-            cline = line_data.iloc[line_idx]
+        for line_idx in range(len(linelist)):
+            cline = linelist.iloc[line_idx]
             wv,species,ep,loggf = cline["wv"], cline["species"], cline["ep"], cline["loggf"]
             out_str = fmt_string % (wv, species, ep, loggf)
             for v_str in "moog_damp D0 ew".split():
                 bad_value = False
-                if not v_str in line_data.columns:
+                if not v_str in linelist.columns:
                     bad_value = True
                 elif np.isnan(cline[v_str]):
                     bad_value = True
@@ -64,6 +65,18 @@ def write_moog_linelist(fname, line_data, a_to_ma=True):
                     else:
                         val = cline[v_str]
                     out_str +="{: 10.4f}".format(val)
-                out_str += "\n"
             out_file.write(out_str)
+            out_file.write("\n")
         out_file.close()
+
+
+def read_moog_ewfind_summary(fname):
+    pass
+
+def read_moog_abfind_summary(fname):
+    pass
+
+def read_moog_synth_summary(fname):
+    pass
+
+

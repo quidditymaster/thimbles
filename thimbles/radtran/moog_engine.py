@@ -14,47 +14,164 @@ import os
 import sys
 import re
 from warnings import warn
-from subprocess import Popen,PIPE
+import subprocess
 import numpy as np
-from thimbles.options import Option,opts
 
-moog = Option('moog',option_style="parent_dict")
+import thimbles as tmb
+from thimbles.radtran.engines import RadiativeTransferEngine
+from thimbles.radtran.marcs_engine import MarcsInterpolator
+from thimbles.options import Option,opts
+from thimbles.options import config_dir
+
+
+Option('moog',option_style="parent_dict")
+Option("executable",parent="moog", option_style="raw_string",envvar="MOOGSILENT")
+default_moog_wdir = os.path.join(config_dir, "working_dirs", "moog")
+Option("working_dir", 
+       parent="moog",
+       option_style="raw_string",
+       envvar="MOOGWORKINGDIR", 
+       default=default_moog_wdir,)
+#TODO: make a default strong lines file to crop to wavelengths and use always.
 
 # =========================================================================== #
-
-parfile_templates = {}
-parfile_templates['abfind'] = \
-"""
-abfind
-standard_out   '{standard_out}'
-summary_out    '{summary_out}'
-model_in       '{model_in}''
-lines_in       '{lines_in}'
-atmosphere    1
-molecules     2
-lines         1
-flux/int      0
-damping       1
-plot          0
-{abundances}
+core_template=\
+"""damping        1
+flux/int       0
+freeform       0
+gfstyle        1
+atmosphere     1
+molecules      2
+lines_in     {lines_in}
+standard_out {outfile}.std
+summary_out  {outfile}.sum
+model_in     {model_in}
 """
 
-def write_abfind_par (\
-    filename="batch.par",clobber=True,
-    standard_out="std.out",
-    summary_out="sum.out",
-    model_in="model_in",
-    lines_in="lines_in",
-    abundances=None,
+abfind_template="abfind\n"+core_template
+ewfind_template="ewfind\n"+core_template
+synth_template= "synth\n" + core_template +\
+"""synlimits
+          {min_wv: 10.5f} {max_wv: 10.5f} {delta_wv: 10.5f} {opac_rad: 10.5f}  
+"""
+
+class MoogEngine(RadiativeTransferEngine):
+    """an abstract class specifying the API for wrapping radiative transfer
+    codes.
+    """
+    
+    def __init__(self, working_dir=None, photosphere_engine=None):
+        if working_dir is None:
+            working_dir = opts["moog.working_dir"]
+        if photosphere_engine == None:
+            photosphere_engine = MarcsInterpolator()
+        RadiativeTransferEngine.__init__(self,working_dir, photosphere_engine)
+    
+    def _exec_moog(self):
+        """execute moog silent in this engines working directory"""
+        cur_dir = os.getcwd()
+        #change to the working directory and execute
+        os.chdir(self.working_dir)
+        x = opts['moog.executable']
+        p = subprocess.call(x),#stdout=PIPE,stdin=PIPE)
+        #p.wait()
+        #change back to the original directory
+        os.chdir(cur_dir)
+    
+    def ew_to_abundance(self, linelist, stellar_params):
+        """generate abundances on the basis of equivalent widths
+        by performing a fit to predicted ew's instead of inverting
+        the line by line abundances.
+
+        for a line by line individual abundance determination use
+        the line_abundance method.
+        """
+        self._not_implemented()
+    
+    def line_abundance(self, linelist, stellar_params, inject_as=None):
+        #write out the model atmosphere
+        photo_name = "modelatm.tmp"
+        photo_file = os.path.join(self.working_dir, photo_name)
+        self.photosphere_engine.make_photosphere(photo_file, stellar_params)
+        #write out the linelist in moog format
+        line_name = "templines.ln.tmp"
+        line_file = os.path.join(self.working_dir, line_name)
+        tmb.io.moog_io.write_moog_linelist(line_file, linelist)
+        out_fname = "result.tmp"
+        f = open(os.path.join(self.working_dir, "batch.par"), "w")
+        f.write(abfind_template.format(model_in=photo_name,
+                               lines_in=line_name,
+                               outfile=out_fname
+        ))
+        f.flush()
+        f.close()
+        self._exec_moog()
+        summary_fname = os.path.join(self.working_dir, out_fname + ".sum")
+        result = tmb.io.moog_io.read_moog_abfind_summary(summary_fname)
+        return result
+    
+    def abundance_to_ew(self, linelist, stellar_params, abundances=None):
+        #write out the model atmosphere
+        photo_name = "modelatm.tmp"
+        photo_file = os.path.join(self.working_dir, photo_name)
+        self.photosphere_engine.make_photosphere(photo_file, stellar_params)
+        #write out the linelist in moog format
+        line_name = "templines.ln.tmp"
+        line_file = os.path.join(self.working_dir, line_name)
+        tmb.io.moog_io.write_moog_linelist(line_file, linelist)
+        out_fname = "result.tmp"
+        f = open(os.path.join(self.working_dir, "batch.par"), "w")
+        f.write(ewfind_template.format(model_in=photo_name,
+                               lines_in=line_name,
+                               outfile=out_fname
+        ))
+        f.flush()
+        f.close()
+        self._exec_moog()
+        summary_fname = os.path.join(self.working_dir, out_fname + ".sum")
+        result = tmb.io.moog_io.read_moog_ewfind_summary(summary_fname)
+        return result
+    
+    def spectrum(self, 
+                 linelist, 
+                 stellar_params, 
+                 wavelengths, 
+                 normalized=True, 
+                 delta_wv=0.01,
+                 opac_rad=3.0
     ):
-    """
+        if not normalized:
+            self._not_implemented("moog only generates the normalized spectrum")
+        #write out the model atmosphere
+        photo_name = "modelatm.tmp"
+        photo_file = os.path.join(self.working_dir, photo_name)
+        self.photosphere_engine.make_photosphere(photo_file, stellar_params)
+        #write out the linelist in moog format
+        line_name = "templines.ln.tmp"
+        line_file = os.path.join(self.working_dir, line_name)
+        tmb.io.moog_io.write_moog_linelist(line_file, linelist)
+        out_fname = "result.tmp"
+        f = open(os.path.join(self.working_dir, "batch.par"), "w")
+        #wavelengths = aswavelengthsolution(wavelengths)
+        f.write(synth_template.format(model_in=photo_name,
+                                      lines_in=line_name,
+                                      outfile=out_fname,
+                                      min_wv=wavelengths.min,
+                                      max_wv=wavelengths.max,
+                                      delta_wv=delta_wv,
+                                      opac_rad=3.0,
+                                      
+        ))
+        f.flush()
+        f.close()
+        self._exec_moog()
+        summary_fname = os.path.join(self.working_dir, out_fname + ".sum")
+        result = tmb.io.moog_io.read_moog_ewfind_summary(summary_fname)
+        return result
+    
+    def continuum(self, stellar_params):
+        self._not_implemented()
 
-    """
-    pars = locals().copy()
-    pars['abundances'] = _moog_par_format_abundances(abundances)
-    del pars['clobber']
-    del pars['filename']
-    return parfile_templates.format(**pars)
 
 def get_model_name (teff,logg,feh,vt,modtype=None):
     """ Based on the input atmosphere parameters it returns a formatted string representation
@@ -489,63 +606,5 @@ def write_moog_par (driver,filename='batch.par',clobber=True,max_filename_length
 
 
 
-
-
-class TestMoogExec (object):
-
-    def setUp (self):
-        pass 
-
-    def test_synth_driver (self):
-        pass 
-
-moog_silent_exec_path = Option("path",parent="moog",envvar="MOOGSILENT")
-
-
-class RadiativeTransferEngine (object):
-    pass 
-
-
-class MoogEngine(RadiativeTransferEngine):
-    """an abstract class specifying the API for wrapping radiative transfer
-    codes.
-    """
-    
-    def __init__(self, working_dir, photosphere_engine=None):
-        self.photosphere_engine = photosphere_engine
-        RadiativeTransferEngine.__init__(self,working_dir)
-
-    def exec_moog_silent (self):
-        """ Execute moog silent specified in opts['moog.path'] """
-        x = opts['moog.path']
-        p = Popen(x,stdout=PIPE,stdin=PIPE)
-        p.wait()
-
-    def write_moog_par (self,*args,**kws):
-        return write_moog_par(*args,**kws)
-
-    def _not_implemented(self, msg=None):
-        if msg is None:
-            msg = "Not implemented for this engine type"
-        raise NotImplementedError(msg)
-    
-    def ew_to_abundance(self, linelist, stellar_params):
-        """generate abundances on the basis of equivalent widths"""
-        self._not_implemented()
-    
-    def line_abundance(self, linelist, stellar_params, inject_as=None):
-        self._not_implemented()
-    
-    def abundance_to_ew(self, linelist, stellar_params, abundances=None):
-        self._not_implemented()
-    
-    def spectrum(self, linelist, stellar_params, normalized=True):
-        self._not_implemented
-    
-    def continuum(self, stellar_params):
-        self._not_implemented()
-    
-    def line_strength(self, linelist, stellar_params):
-        self._not_implemented()
 
 

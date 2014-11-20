@@ -6,10 +6,16 @@ import scipy.sparse
 import warnings
 import thimbles as tmb
 from thimbles.modeling.modeling import parameter, Model
-from thimbles.hypercube_interpolator import HypercubeGridInterpolator
 from thimbles import resource_dir
 from profiles import convolved_stark
 from spectrum import Spectrum
+from thimbles.tasks import task
+
+from sqlalchemy import ForeignKey
+from sqlalchemy import Column, Date, Integer, String, Float
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.ext.declarative import declared_attr
+from sqlalchemy.orm import relationship, backref
 
 data_cols = np.loadtxt(os.path.join(resource_dir, "transition_data", "Hydrogen_lines.txt"), usecols=[0, 1, 2, 3, 5])
 hlines = pd.DataFrame(data=dict(wv=data_cols[:, 0], 
@@ -19,6 +25,7 @@ hlines = pd.DataFrame(data=dict(wv=data_cols[:, 0],
                                 loggf=data_cols[:, 4]),
                       )
 
+@task()
 def get_H_mask(wvs, masking_radius=10.0):
     """a mask to remove wavelengths close to hydrogen features"""
     min_wv = np.min(wvs)
@@ -83,6 +90,8 @@ class HydrogenLineOpacity(tmb.profiles.LineProfile):
         return np.exp(interped_profile)
 
 class HydrogenForegroundOpacityModel(Spectrum, Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__={"polymorphic_identity":"hydrogenforegroundopacity"}
     
     def __init__(self, wvs, strength, temperature, electron_density):
         Model.__init__(self)

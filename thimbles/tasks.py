@@ -81,7 +81,7 @@ class Task(Option):
         if not self.func is None:
             if self.name is None:
                 self.name = self.func.__name__
-            super(Task, self).__init__(default=func)
+            super(Task, self).__init__(self.name, default=func)
         return func
     
     def generate_child_options(self):

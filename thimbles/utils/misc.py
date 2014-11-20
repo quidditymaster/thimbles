@@ -878,7 +878,7 @@ def vec_sort_lad(e, u):
     return opt_ratio
 
 def pseudo_huber_irls_weights(resids, sigma, gamma=5.0):
-    z = np.clip(resids/sigma, 1e-5, np.inf)/gamma
+    z = np.where(resids != 0, resids/sigma, 1e-6)/gamma
     return 2.0*(np.sqrt(1.0 + z**2) - 1)/z**2
 
 def pseudo_residual(resids, sigma, gamma=5.0):
@@ -994,7 +994,7 @@ def irls(A,
             if np.std(cur_resids - last_resids) < resid_delta_thresh:
                 resids_converged = True
         if not delta_x is None:
-            if np.std(delta_x) < x_delta_thresh:
+            if np.mean(delta_x**2) < x_delta_thresh**2:
                 x_converged = True
         if resids_converged and x_converged:
             break

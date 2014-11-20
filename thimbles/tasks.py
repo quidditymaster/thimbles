@@ -30,28 +30,27 @@ task_registry = {}
 def register_task(task):
     task_registry[task.name] = task
 
-def task(name=None, result_name="return_value", aliases=None):
+def task(name=None, result_name="return_value"):
     new_task = Task(name=name, result_name=result_name)
+    register_task(new_task)
     return new_task.set_func
 
-#def task(task_func):
-#    task_registry[task_func.__name__] = Task(task_func)
 
 class Task(Option):
     
-    def __init__(self, result_name, name, aliases=None, func=None):
-        self.name = name
+    def __init__(self, name=None, result_name=None, func=None):
         self.result_name = result_name
-        if not func is None:
-            self.set_func(func)
+        self.name = name
+        self.set_func(func)
     
     def set_func(self, func):
         self.func = func
         if not self.func is None:
             if self.name is None:
                 self.name = self.func.__name__
+            super(Task, self).__init__(default=func)
         return func
-    
+        
     def inspect_arguments(self):
         pass
 

@@ -1,20 +1,16 @@
 thimbles_header_str =\
 """
 THIMBLES:
-  Tools for            ##########
-  Handling            ############
-  Intricate          ##############
-  Measurements on    ############## 
-  Breathtakingly     ##############
-  Large              ##############
-  Ensembles of      ################
-  Spectra          ##################
+  Tools for            ##########       |  
+  Handling            ############      |  
+  Intricate          ##############     |  
+  Measurements on  _ ##############     |  
+  Breathtakingly _/ \############## __  |   
+  Large         /    ##############/   \|  
+  Ensembles of /    ################   (\)  ____
+  Spectra  ___/    ##################    \_/    \_
 """
-
-__doc__ = """
-THIMBLES: Tools for Handling Intricate Measurements on Breathtakingly Large Ensembles of Spectra
-
-"""+thimbles_header_str
+__doc__ = thimbles_header_str
 
 try:
     import numba
@@ -22,15 +18,14 @@ try:
 except ImportError:
     _with_numba = False
 
-import dependencies
-import utils
-from verbosity import logger
-
 import os
 resource_dir = os.path.join(os.path.dirname(__file__), "resources")
 
+from thimbles import dependencies
+from thimbles.verbosity import logger
 from thimbles import modeling
 from thimbles import io
+from thimbles.io import *
 from thimbles import sources
 from thimbles import photometry
 from thimbles import spectrographs
@@ -44,8 +39,5 @@ from thimbles import stellar_atmospheres
 from thimbles import coordinatization
 from thimbles import continuum
 from thimbles import radtran
-
 from thimbles.spectrum import Spectrum
-from thimbles.io import *
 
-from thimbles.thimblesdb import ThimblesDB

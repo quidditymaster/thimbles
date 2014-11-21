@@ -41,3 +41,4 @@ from thimbles import continuum
 from thimbles import radtran
 from thimbles.spectrum import Spectrum
 
+from thimbles.thimblesdb import ThimblesDB

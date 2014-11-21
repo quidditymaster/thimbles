@@ -20,14 +20,10 @@ from thimbles import logger
 #from thimbles.resolution import LineSpreadFunction, GaussianLSF, BoxLSF
 #from thimbles.binning import CoordinateBinning
 from scipy.interpolate import interp1d
-from thimbles.modeling import Model
+from thimbles.thimblesdb import ThimblesTable
+from thimbles.modeling import Model, parameter
 from thimbles.coordinatization import Coordinatization, as_coordinatization
-
-from sqlalchemy import ForeignKey
-from sqlalchemy import Column, Date, Integer, String, Float
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.ext.declarative import declared_attr
-from sqlalchemy.orm import relationship, backref
+from thimbles.sqlaimports import *
 
 # ########################################################################### #
 
@@ -37,7 +33,7 @@ __all__ = ["WavelengthSolution","Spectrum"]
 
 speed_of_light = 299792.458 #speed of light in km/s
 
-class WavelengthSolution(object):
+class WavelengthSolution(ThimblesTable):
     
     def __init__(self, wavelengths, rv=None, vhelio=None, shifted=True, lsf=None):
         """a class that encapsulates the manner in which a spectrum is sampled
@@ -123,9 +119,13 @@ def as_wavelength_solution(wavelengths):
     else:
         return WavelengthSolution(wavelengths)
 
-class Spectrum(object):
+class Spectrum(Model):
     """A representation of a collection of relative flux measurements
     """
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__={"polymorphic_identity":"Spectrum"}
+    flux = Column(PickleType)
+    _ivar = Column(PickleType)
     
     def __init__(self,
                  wavelengths, 

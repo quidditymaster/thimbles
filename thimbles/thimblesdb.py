@@ -1,9 +1,8 @@
 from copy import deepcopy
 import os
-#from thimbles.sqlaimports import *
-from thimbles import Session
-from sqlalchemy.ext.declarative import declarative_base, declared_attr
-from sqlalchemy import create_engine, Column, Integer
+from thimbles.sqlaimports import *
+from sqlalchemy.ext.declarative import declared_attr
+from sqlalchemy import create_engine
 from thimbles.options import Option, opts, OptionSpecificationError
 from sqlalchemy.orm import sessionmaker
 Session = sessionmaker()
@@ -22,21 +21,12 @@ class ThimblesDB(object):
     """encapsulates 
     """
     
-    def __init__(self, path, create=False):
+    def __init__(self, path):
         self.path = os.path.abspath(path)
-        if not os.path.exists(self.path):
-            if create:
-                os.makedirs(self.path)
-                #give the file system a moment to catch up.
-                import time;time.sleep(0.02)
-            else:
-                raise IOError("path does not exisit")
-        
-        #set up the database
-        self.db_url = "sqlite:////{}".format(self.path)
+        self.db_url = "sqlite:///{}".format(self.path)
         self.engine = create_engine(self.db_url)
         Base.metadata.create_all(self.engine)
-        self.session = Session()
+        self.session = Session(bind=self.engine)
     
     def add(self, obj):
         self.session.add(obj)

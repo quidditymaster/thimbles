@@ -312,7 +312,7 @@ class LinearCoordinatization(Coordinatization):
     @property
     def min(self):
         return self._min
-
+    
     @min.setter 
     def min(self, value):
         self._min = value
@@ -320,16 +320,26 @@ class LinearCoordinatization(Coordinatization):
     @property
     def max(self):
         return self._max
-
+    
     @max.setter
     def max(self, value):
         self._max = value
 
-    def get_index(self, coord):
-        return (np.asarray(coord) - self.min)/self.dx
-    
-    def get_coord(self, index):
-        return np.asarray(index)*self.dx + self.min
+    def get_index(self, coord, clip=False, snap=False):
+        indexes = (np.asarray(coord) - self.min)/self.dx
+        if clip:
+            indexes = np.clip(0, len(self)-1)
+        if snap:
+            indexes = np.around(indexes).astype(int)
+        return indexes
+
+    def get_coord(self, index, clip=False, snap=False):
+        if snap:
+            index = np.around(index).astype(int)
+        coords = np.asarray(index)*self.dx + self.min
+        if clip:
+            coords = np.clip(coords, self.min, self.max)
+        return coords
 
 class TensoredCoordinatization(object):
     """A class for handling coordinatizations in multiple dimensions.

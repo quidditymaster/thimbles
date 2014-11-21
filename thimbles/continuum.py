@@ -9,8 +9,11 @@ from thimbles.utils.misc import smooth_ppol_fit
 import thimbles.utils.piecewise_polynomial as ppol
 from thimbles import logger
 from spectrum import Spectrum
+from sqlaimports import *
 
 class BlackBodyContinuumModel(Spectrum):
+    _id = Column(Integer, ForeignKey("Spectrum._id"), primary_key=True)
+    __mapper_args__={"polymorphic_identity":"BlackBodyContinuum"}
     
     def __init__(self, model_wvs, teff):
         self.model_wvs = model_wvs

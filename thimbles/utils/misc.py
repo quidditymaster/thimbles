@@ -921,6 +921,7 @@ def irls(A,
          max_iter=20,
          resid_delta_thresh=1e-8,
          x_delta_thresh=1e-8,
+         damp = 1e-5,
          **reweighting_kwargs
          ):
     """
@@ -974,12 +975,12 @@ def irls(A,
         reweighting_func = pseudo_huber_irls_weights
         if len(reweighting_kwargs) == 0:
             reweighting_kwargs = {"gamma":5.0}
-        
+    
     last_resids = None
     delta_x = None
     
     if A_issparse:
-        solver = scipy.sparse.linalg.lsqr
+        solver = lambda x, y: scipy.sparse.linalg.lsqr(x, y, damp=damp)
         dotter = lambda x, y: x*y
     else:
         A = np.asarray(A)

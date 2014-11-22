@@ -67,7 +67,7 @@ class HydrogenLineOpacity(tmb.profiles.LineProfile):
         self.log_nes = np.array(lemke_dat[base_group+"log_ne"])
         self.log_ts = np.array(lemke_dat[base_group+"log_t"])
         self.alphas = np.array(lemke_dat[base_group+"alphas"])
-        self.alpha_binner = tmb.binning.CoordinateBinning(self.alphas)
+        self.alpha_binner = tmb.coordinatization.as_coordinatization(self.alphas)
         profile_grid = np.array(lemke_dat[base_group+"profile"])
         pinterp = HypercubeGridInterpolator(coordinates=[self.log_ts, self.log_nes],
                                             grid_data=profile_grid)

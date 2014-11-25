@@ -111,7 +111,12 @@ class WavelengthSolution(ThimblesTable):
         if wvs == None:
             return np.arange(len(self.indexer))
         return self.indexer.get_index(wvs, clip=clip, snap=snap)
-
+    
+    def interp_matrix(self, wv_soln, fill_mode="zeros"):
+        """generate an interpolation matrix which will transform from
+        an input wavelength solution to this wavelength solution.
+        """
+        
 
 def as_wavelength_solution(wavelengths):
     if isinstance(wavelengths, WavelengthSolution):
@@ -164,6 +169,20 @@ class Spectrum(Model):
         else:
             flags = SpectrumFlags(int(flags))
         self.flags = flags
+    
+    def sample(wavelengths,
+               valuation_mode="interp", 
+               fill_mode="nearest",
+               ):
+        other_wv_soln = as_wavelength_solution(wavelengths)
+        interp_trans = self.wv_soln.interp_matrix(other_wv_soln)
+        
+        if mode == "interp":
+            out_lsf = self._lsf
+            trans = self.wv_soln.interp_matrix(other_wv_soln)
+    
+    def matched_filter(self):
+        pass
     
     def __add__(self, other):
         if isinstance(other, (float, int)):

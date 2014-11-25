@@ -1,5 +1,6 @@
 import unittest
 import thimbles.coordinatization as coord
+from thimbles.coordinatization import as_coordinatization
 import numpy as np
 
 class TestEdgeCenterConversion(unittest.TestCase):
@@ -39,15 +40,15 @@ class TestIndexConversion(unittest.TestCase):
         self.max = 12000.0
         self.npts = 53
         self.x = np.linspace(self.min, self.max, self.npts)
-        self.coord_obj = coord.Coordinatization(self.x)
+        self.coord_obj = coord.ArbitraryCoordinatization(self.x)
         self.tol = 1e-15
     
     def test_setting(self):
         #test setting the normal way
-        c_obj = coord.Coordinatization(self.x)
+        c_obj = coord.ArbitraryCoordinatization(self.x)
         self.assertTrue(np.std(c_obj.coordinates - self.x) < self.tol)
         #test setting as bin edges
-        c_obj = coord.Coordinatization(coord.centers_to_edges(self.x), as_edges=True)
+        c_obj = coord.ArbitraryCoordinatization(coord.centers_to_edges(self.x), as_edges=True)
         self.assertTrue(np.std(c_obj.coordinates - self.x) < self.tol)
     
     def test_min_max(self):
@@ -79,9 +80,8 @@ class TestIndexConversion(unittest.TestCase):
         self.assertTrue(np.std(t_idxs - res_idxs) < 1e-14)
         self.assertTrue(np.mean(np.abs(t_idxs-res_idxs)) < 1e-13)
 
-
 class TestLinearCoordinatization(TestIndexConversion):
-
+    
     def setUp(self):
         self.min = 5000.0
         self.max = 12000.0
@@ -123,6 +123,22 @@ class TestLinearCoordinatizationInit(unittest.TestCase):
         
         ci = coord.LinearCoordinatization(min=self.min, npts=self.npts, dx=self.dx)
         self.validate_coord(ci)
+
+
+class TestAsCoordinatization(unittest.TestCase):
+    
+    def setUp(self):
+        pass
+
+    def test_to_linear(self):
+        res = as_coordinatization(np.linspace(10, 35, 101))
+        self.assertTrue(isinstance(res, coord.LinearCoordinatization))
+    
+    def test_to_log_linear(self):
+        #import pdb; pdb.set_trace()
+        res = as_coordinatization(np.exp(np.linspace(1, 5, 26)))
+        self.assertTrue(isinstance(res, coord.LogLinearCoordinatization))
+
 
 
 if __name__ == "__main__":

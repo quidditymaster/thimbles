@@ -1177,3 +1177,10 @@ def saturated_voigt_cog(gamma_ratio=0.1):
     cog= ppol.InvertiblePiecewiseQuadratic(fit_quad.coefficients, fit_quad.control_points, centers=fit_quad.centers, scales=fit_quad.scales)
     #import pdb; pdb.set_trace()
     return cog
+
+def banded_approximate_inverse(A, k, gamma="neglect_lower"):
+    #cast to a sparse matrix
+    A = scipy.sparse.dia_matrix(A)
+    
+    if gamma=="neglect_lower":
+        gamma = scipy.sparse.linalg

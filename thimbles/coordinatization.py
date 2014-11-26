@@ -1,4 +1,5 @@
 import numpy as np
+import scipy
 
 from thimbles import logger
 from thimbles.sqlaimports import *
@@ -100,10 +101,17 @@ class Coordinatization(object):
         return self.npts
     
     def interpolant_matrix(self, input_coord):
-        input_coord = as_coordinatization(input_coord)
-        idx_val = input_coord.get_index(self.coordinates)
-        snap_idx = np.clip(np.around(idx_val).astype(int), 0, len(self)-1)
-        delta_idx = idx_val - snap_idx
+        """generates a constant matrix which when multiplied against a 
+        vector sampled as the input coordinates it results in a vector 
+        sampled as the linear interpolation of that vector at the coordinates
+        of this coordinatization.
+        """
+        input_coord = as_coordinatization(input_coord)        
+        nearest_cols = input_coord.get_index(self.coordinates)
+        #the input coordinates most closely lie at these coordinates
+        col_idx_val = input_coord.get_index(self.coordinates)
+        snap_idx = np.clip(np.around(col_idx_val).astype(int), 1, len(input_coord)-2)
+        delta_idx = col_idx_val - snap_idx
         delta_int = np.where(delta_idx > 0, 1, -1)
         neighbor_idxs = snap_idx + delta_int
         snap_alpha = np.abs(delta_idx)
@@ -111,11 +119,11 @@ class Coordinatization(object):
         mat_shape = (len(self), len(input_coord))
         mat_dat = np.hstack([snap_alpha, neighbor_alpha])
         row_idxs = np.hstack([np.arange(len(self)), np.arange(len(self))])
-        col_idxs = np.hstack([snap_idxs, neighbor_idxs])
+        col_idxs = np.hstack([snap_idx, neighbor_idxs])
         interp_mat = scipy.sparse.coo_matrix((mat_dat, (row_idxs, col_idxs)), shape=mat_shape)
         return interp_mat
 
-class ArbitraryCoordinatization(object):
+class ArbitraryCoordinatization(Coordinatization):
     coordinates = Column(PickleType)
     __mapper_args__={
         "polymorphic_identity":"arbitrarycoordinatization",

@@ -80,6 +80,14 @@ class TestIndexConversion(unittest.TestCase):
         self.assertTrue(np.std(t_idxs - res_idxs) < 1e-14)
         self.assertTrue(np.mean(np.abs(t_idxs-res_idxs)) < 1e-13)
 
+    def test_interpolant(self):
+        #test_x = np.sort(np.random.uniform(self.min, self.max, size=(100,)))
+        test_x = np.linspace(self.min, self.max, 100)
+        test_y = np.linspace(0, 1, 100)
+        #import pdb; pdb.set_trace()
+        iterp_mat = self.coord_obj.interpolant_matrix(test_x)
+        
+        
 class TestLinearCoordinatization(TestIndexConversion):
     
     def setUp(self):
@@ -138,8 +146,6 @@ class TestAsCoordinatization(unittest.TestCase):
         #import pdb; pdb.set_trace()
         res = as_coordinatization(np.exp(np.linspace(1, 5, 26)))
         self.assertTrue(isinstance(res, coord.LogLinearCoordinatization))
-
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -35,6 +35,7 @@ speed_of_light = 299792.458 #speed of light in km/s
 
 class WavelengthSolution(ThimblesTable):
     
+    
     def __init__(self, wavelengths, rv=None, vhelio=None, shifted=True, lsf=None):
         """a class that encapsulates the manner in which a spectrum is sampled
         

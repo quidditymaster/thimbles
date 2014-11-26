@@ -83,16 +83,20 @@ class TestIndexConversion(unittest.TestCase):
     def test_interpolant(self):
         #test_x = np.sort(np.random.uniform(self.min, self.max, size=(100,)))
         test_x = np.linspace(self.min, self.max, 100)
-        test_y = np.linspace(0, 1, 100)
+        interp_mat = self.coord_obj.interpolant_matrix(test_x)
+        test_y = interp_mat*test_x
+        #import matplotlib.pyplot as plt
+        #plt.plot(interp_mat*np.arange(100))
+        #plt.show()
         #import pdb; pdb.set_trace()
-        iterp_mat = self.coord_obj.interpolant_matrix(test_x)
-        
-        
+        np.testing.assert_allclose(test_y, test_x)
+
+
 class TestLinearCoordinatization(TestIndexConversion):
     
     def setUp(self):
-        self.min = 5000.0
-        self.max = 12000.0
+        self.min = 100.0
+        self.max = 120.0
         self.npts = 53
         self.x = np.linspace(self.min, self.max, self.npts)
         self.coord_obj = coord.LinearCoordinatization(self.x)

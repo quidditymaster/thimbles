@@ -602,10 +602,11 @@ def smooth_ppol_fit(x, y, y_inv=None, order=3, mask=None, mult=None, partition="
     ppol_basis *= mult.reshape((-1, 1))
     in_sig = 1.0/np.sqrt(y_inv[mask])
     med_sig = np.median(in_sig)
-    fit_coeffs = pseudo_huber_irls(ppol_basis, y, 
+    fit_coeffs = irls(ppol_basis, y, 
                       sigma=in_sig, 
-                      gamma=2.0*med_sig, 
-                      max_iter=5, conv_thresh=1e-4)
+                      gamma=5.0, 
+                      max_iter=5, 
+                      )
     n_polys = len(partition) + 1
     n_coeffs = order+1
     out_coeffs = np.zeros((n_polys, n_coeffs))
@@ -1177,3 +1178,24 @@ def saturated_voigt_cog(gamma_ratio=0.1):
     cog= ppol.InvertiblePiecewiseQuadratic(fit_quad.coefficients, fit_quad.control_points, centers=fit_quad.centers, scales=fit_quad.scales)
     #import pdb; pdb.set_trace()
     return cog
+
+def anti_smoothing_matrix(width, npts):
+    max_width = int(max(1, 5*width))+1
+    deltas = np.arange(-max_width, max_width+1)
+    dvec = scipy.gradient(scipy.gradient(np.exp(-(deltas/width)**2)))
+    row_idxs = np.empty((max_width*2+1)*(npts-1))
+    col_idxs = np.empty((max_width*2+1)*(npts-1))
+    data = np.empty((max_width*2+1)*(npts-1))
+    dat_lb, dat_ub = 0, 0
+    for center_idx in range(npts):
+        cur_row = deltas + center_idx
+        lb = max(center_idx - max_width, 0)
+        ub = min(center_idx + max_width, npts)
+        dat_lb = dat_ub
+        dat_ub += ub-lb
+        row_idxs[dat_lb:dat_ub+1] = cur_row[lb:ub+1]
+        col_idxs[dat_lb:dat_ub+1] = np.repeat(center_idx, ub-lb+1)
+        data[dat_lb:dat_ub+1] = dvec[lb:ub+1]
+    return scipy.sparse.coo_matrix((data, (row_idxs, col_idxs)), shape=(npts, npts))
+    #import pdb; pdb.set_trace()
+    

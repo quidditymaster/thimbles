@@ -30,7 +30,6 @@ class RadiativeTransferEngine(object):
         if not os.path.exists(self.working_dir):
             os.makedirs(self.working_dir)
         self.photosphere_engine = photosphere_engine
-        pass
     
     def _make_photo_file(self, stellar_params):
         photo_file = os.path.join(self.working_dir, self._photosphere_fname)
@@ -38,8 +37,7 @@ class RadiativeTransferEngine(object):
             self.photosphere_engine.make_photosphere(photo_file, stellar_params)
         elif isinstance(stellar_params, basestring):
             if os.path.exists(stellar_params):
-                targ_path = os.path.join(self.working_dir, self._photosphere_fname)
-                shutil.copy(stellar_params, targ_path)
+                shutil.copy(stellar_params, photo_file)
             else:
                 raise IOError("model atmosphere file {} not found".format(stellar_params))
     

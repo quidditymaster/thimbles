@@ -11,6 +11,7 @@ DATE: Sun Nov  9 15:12:50 2014
 
 from __future__ import print_function, division, unicode_literals
 import os
+import shutil
 import sys
 import re
 from warnings import warn
@@ -26,6 +27,7 @@ from thimbles.options import config_dir
 
 Option('moog',option_style="parent_dict")
 Option("executable",parent="moog", option_style="raw_string",envvar="MOOGSILENT")
+Option("opac_rad", parent="moog", default=3.0)
 default_moog_wdir = os.path.join(config_dir, "working_dirs", "moog")
 Option("working_dir", 
        parent="moog",
@@ -89,17 +91,27 @@ class MoogEngine(RadiativeTransferEngine):
         self._not_implemented()
     
     def line_abundance(self, linelist, stellar_params, inject_as=None):
+        """line by line abundances for the given linelist (with an ew column)
+        and stellar_params.
+        
+        parameters
+        
+        linelist: LineList
+          the line data and ew measurements
+        stellar_params: StellarParameters or String
+          if a StellarParameters object use the photosphere engine to create a 
+          model photosphere, if a string use it as a file path to a pre generated
+          photosphere file (the file will be copied to the working_dir)
+        """
         #write out the model atmosphere
-        photo_name = "modelatm.tmp"
-        photo_file = os.path.join(self.working_dir, photo_name)
-        self.photosphere_engine.make_photosphere(photo_file, stellar_params)
+        self._make_photo_file(stellar_params)
         #write out the linelist in moog format
         line_name = "templines.ln.tmp"
         line_file = os.path.join(self.working_dir, line_name)
         tmb.io.moog_io.write_moog_linelist(line_file, linelist)
         out_fname = "result.tmp"
         f = open(os.path.join(self.working_dir, "batch.par"), "w")
-        f.write(abfind_template.format(model_in=photo_name,
+        f.write(abfind_template.format(model_in=self._photosphere_fname,
                                lines_in=line_name,
                                outfile=out_fname
         ))
@@ -111,17 +123,14 @@ class MoogEngine(RadiativeTransferEngine):
         return result
     
     def abundance_to_ew(self, linelist, stellar_params, abundances=None):
-        #write out the model atmosphere
-        photo_name = "modelatm.tmp"
-        photo_file = os.path.join(self.working_dir, photo_name)
-        self.photosphere_engine.make_photosphere(photo_file, stellar_params)
+        self._make_photo_file(stellar_params)
         #write out the linelist in moog format
         line_name = "templines.ln.tmp"
         line_file = os.path.join(self.working_dir, line_name)
         tmb.io.moog_io.write_moog_linelist(line_file, linelist)
         out_fname = "result.tmp"
         f = open(os.path.join(self.working_dir, "batch.par"), "w")
-        f.write(ewfind_template.format(model_in=photo_name,
+        f.write(ewfind_template.format(model_in=self._photosphere_fname,
                                lines_in=line_name,
                                outfile=out_fname
         ))
@@ -137,15 +146,12 @@ class MoogEngine(RadiativeTransferEngine):
                  stellar_params, 
                  wavelengths, 
                  normalized=True, 
-                 delta_wv=0.01,
-                 opac_rad=3.0
+                 delta_wv=None,
+                 opac_rad=None
     ):
         if not normalized:
             self._not_implemented("moog only generates the normalized spectrum")
-        #write out the model atmosphere
-        photo_name = "modelatm.tmp"
-        photo_file = os.path.join(self.working_dir, photo_name)
-        self.photosphere_engine.make_photosphere(photo_file, stellar_params)
+        self._make_photo_file(stellar_params)
         #write out the linelist in moog format
         line_name = "templines.ln.tmp"
         line_file = os.path.join(self.working_dir, line_name)
@@ -153,13 +159,15 @@ class MoogEngine(RadiativeTransferEngine):
         out_fname = "result.tmp"
         f = open(os.path.join(self.working_dir, "batch.par"), "w")
         #wavelengths = aswavelengthsolution(wavelengths)
+        if opac_rad is None:
+            opac_rad = opts["moog.opac_rad"]
         f.write(synth_template.format(model_in=photo_name,
                                       lines_in=line_name,
                                       outfile=out_fname,
                                       min_wv=wavelengths.min,
                                       max_wv=wavelengths.max,
-                                      delta_wv=delta_wv,
-                                      opac_rad=3.0,
+                                      delta_wv=0.01, #make this depend on the wavelength being synthesized
+                                      opac_rad=opac_rad,
                                       
         ))
         f.flush()

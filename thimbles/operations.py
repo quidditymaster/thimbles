@@ -1,6 +1,8 @@
 import numpy as np
 from spectrum import WavelengthSolution
 
+def 
+
 class BiSpectrumOperationPolicy(object)
     
     def __init__(self, binning_p, 

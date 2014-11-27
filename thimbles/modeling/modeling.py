@@ -233,7 +233,7 @@ class ParameterGroup(object):
 
 class Model(ParameterGroup, ThimblesTable, Base):
     model_type = Column(String)
-    parameters = relationship("Parameter")
+    parameters = relationship("Parameter", backref="model")
     __mapper_args__={
         "polymorphic_identity": "model",
         "polymorphic_on": model_type
@@ -328,6 +328,7 @@ class ParameterFactory(object):
 class Parameter(ThimblesTable, Base):
     _value = Column(Float) #a handle for storing and loading our model values
     model_id = Column(Integer, ForeignKey("Model._id"))
+    
     parameter_type = Column(String)
     __mapper_args__={
         "polymorphic_identity":"parameter",

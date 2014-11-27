@@ -1,6 +1,8 @@
 import numpy as np
+import scipy
 
 from thimbles import logger
+from thimbles.sqlaimports import *
 
 class CoordinatizationError(Exception):
     pass
@@ -24,7 +26,7 @@ def centers_to_edges(centers):
     edges[-1] = centers[-1] + 0.5*(centers[-1] - centers[-2])
     return edges
 
-def as_coordinatization(coordinates, delta_max=0, force_linear=False, force_log_linear=False):
+def as_coordinatization(coordinates, delta_max=1e-10, force_linear=False, force_log_linear=False):
     """convert a set of coordinates into a coordinatization
     or if passed a coordinatization return it. This function detects
     whether the given coordinates are sufficiently close to 
@@ -63,23 +65,69 @@ def as_coordinatization(coordinates, delta_max=0, force_linear=False, force_log_
         return LinearCoordinatization(coordinates)
     if force_log_linear:
         return LogLinearCoordinatization(coordinates)
-    if len(coordinates == 2):
+    if len(coordinates) == 2:
         #perfectly described by a linear coordinatization no need to check
         return LinearCoordinatization(coordinates)
     
     if delta_max <= 0:
-        return Coordinatization(coordinates)
+        return ArbitraryCoordinatization(coordinates)
     
     for coord_class in [LinearCoordinatization,
                         LogLinearCoordinatization]:
         test_coord_instance = coord_class(coordinates)
-        test_coords = test_lin.get_coord(np.arange(len(coordinates)))
+        test_coords = test_coord_instance.get_coord(np.arange(len(coordinates)))
         if np.max(np.abs(test_coords - coordinates)) < delta_max:
             return test_coord_instance
     
-    return Coordinatization(coordinates)
+    return ArbitraryCoordinatization(coordinates)
 
 class Coordinatization(object):
+    min = Column(Float)
+    max = Column(Float)
+    npts = Column(Integer)
+    coordinate_type = Column(String)
+    __mapper_args__ = {
+        "polymorphic_identity":"coordinatization",
+        "polymorphic_on": coordinate_type
+    }
+    
+    def get_index(self, coord):
+        raise NotImplementedError("abstract class")
+    
+    def get_coord(self, index):
+        raise NotImplementedError("abstract class")
+    
+    def __len__(self):
+        return self.npts
+    
+    def interpolant_matrix(self, input_coord):
+        """generates a constant matrix which when multiplied against a 
+        vector sampled as the input coordinates it results in a vector 
+        sampled as the linear interpolation of that vector at the coordinates
+        of this coordinatization.
+        """
+        input_coord = as_coordinatization(input_coord)        
+        nearest_cols = input_coord.get_index(self.coordinates)
+        #the input coordinates most closely lie at these coordinates
+        col_idx_val = input_coord.get_index(self.coordinates)
+        snap_idx = np.clip(np.around(col_idx_val).astype(int), 1, len(input_coord)-2)
+        delta_idx = col_idx_val - snap_idx
+        delta_int = np.where(delta_idx > 0, 1, -1)
+        neighbor_idxs = snap_idx + delta_int
+        snap_alpha = np.abs(delta_idx)
+        neighbor_alpha = 1.0-snap_alpha
+        mat_shape = (len(self), len(input_coord))
+        mat_dat = np.hstack([snap_alpha, neighbor_alpha])
+        row_idxs = np.hstack([np.arange(len(self)), np.arange(len(self))])
+        col_idxs = np.hstack([snap_idx, neighbor_idxs])
+        interp_mat = scipy.sparse.coo_matrix((mat_dat, (row_idxs, col_idxs)), shape=mat_shape)
+        return interp_mat
+
+class ArbitraryCoordinatization(Coordinatization):
+    coordinates = Column(PickleType)
+    __mapper_args__={
+        "polymorphic_identity":"arbitrarycoordinatization",
+    }
     
     def __init__(self, coordinates, as_edges=False, check_ordered=False):
         """a class for representing coordinatizations of ordered arrays.
@@ -117,6 +165,9 @@ class Coordinatization(object):
         else:
             self.bins = coordinates
             self.coordinates = edges_to_centers(coordinates)
+        min, max = sorted([self.coordinates[0], self.coordinates[-1]])
+        self.min = min
+        self.max = max
         self._cached_prev_bin = (self.bins[0], self.bins[1])
         self._cached_prev_bin_idx = 0
         self._start_dx = self.bins[1] - self.bins[0]
@@ -126,15 +177,7 @@ class Coordinatization(object):
     
     def __len__(self):
         return len(self.coordinates)
-    
-    @property
-    def min(self):
-        return self.coordinates[0]
-    
-    @property
-    def max(self):
-        return self.coordinates[-1]
-    
+        
     def get_coord(self, index, clip=False, snap=False):
         """convert array indexes to coordinates
         
@@ -217,22 +260,12 @@ class Coordinatization(object):
         if clip:
             out_coordinates = np.clip(out_coordinates, 0, len(self)-1)
         return out_index.reshape(in_shape)
-    
-    def interpolant_matrix(self, coords):
-        raise NotImplementedError("I'm getting to it...")
-        index_vals = self.coordinates_to_indicies(coords, extrapolation="nan")
-        upper_index = np.ceil(index_vals)
-        lower_index = np.floor(index_vals)
-        alphas = index_vals - lower_index
-        interp_vals =  self.flux[upper_index]*alphas
-        interp_vals += self.flux[lower_index]*(1-alphas)
-        var = self.get_var()
-        sampled_var = var[upper_index]*alphas**2
-        sampled_var += var[lower_index]*(1-alphas)**2
-        return Spectrum(wvs, interp_vals, misc.var_2_inv_var(sampled_var))
-
 
 class LinearCoordinatization(Coordinatization):
+    dx = Column(Float)
+    __mapper_args__={
+        "polymorphic_identity":"linearcoordinatization"
+    }
     
     def __init__(self, coordinates=None, min=None, max=None, npts=None, dx=None):
         """a class representing a linear mapping between a coordinate and
@@ -255,6 +288,7 @@ class LinearCoordinatization(Coordinatization):
         to allow for an integer npts with npts >= 2.
         
         """
+        self._recalc_coords = True
         if not (coordinates is None):
             if not all([(val is None) for val in [min, max, npts, dx]]):
                 raise ValueError("if coordinates are specified min, max, npts and dx may not be")
@@ -290,7 +324,7 @@ class LinearCoordinatization(Coordinatization):
                 self.max = max
                 self.npts = npts
                 self.dx = float(self.max-self.min)/(self.npts -1)
-                   
+    
     def _from_coord_vec(self, coordinates):
         self.npts = len(coordinates)
         self.min, self.max =sorted([coordinates[0], coordinates[-1]])
@@ -303,28 +337,15 @@ class LinearCoordinatization(Coordinatization):
     
     @property
     def coordinates(self):
-        return np.linspace(self.min, self.max, self.npts)
+        if self._recalc_coords:
+            self._coords = np.linspace(self.min, self.max, self.npts) 
+        return self._coords
     
     @coordinates.setter
     def coordinates(self, value):
         self._from_coord_vec(value)
+        self._recalc_coords = True
     
-    @property
-    def min(self):
-        return self._min
-    
-    @min.setter 
-    def min(self, value):
-        self._min = value
-    
-    @property
-    def max(self):
-        return self._max
-    
-    @max.setter
-    def max(self, value):
-        self._max = value
-
     def get_index(self, coord, clip=False, snap=False):
         indexes = (np.asarray(coord) - self.min)/self.dx
         if clip:
@@ -332,11 +353,97 @@ class LinearCoordinatization(Coordinatization):
         if snap:
             indexes = np.around(indexes).astype(int)
         return indexes
-
+    
     def get_coord(self, index, clip=False, snap=False):
         if snap:
             index = np.around(index).astype(int)
         coords = np.asarray(index)*self.dx + self.min
+        if clip:
+            coords = np.clip(coords, self.min, self.max)
+        return coords
+
+class LogLinearCoordinatization(Coordinatization):
+    R = Column(Float)
+    __mapper_args__={
+        "polymorphic_identity":"loglinearcoordinatization"
+    }
+    
+    def __init__(self, coordinates=None, min=None, max=None, npts=None, R=None):
+        self._recalc_coords = True
+        if not (coordinates is None):
+            if not all([(val is None) for val in [min, max, npts, R]]):
+                raise ValueError("if coordinates are specified none of min, max, npts or R may be")
+            self._from_coord_vec(coordinates)
+        else:
+            if max is None:
+                if any([val is None for val in [min, npts, R]]):
+                    raise ValueError("three of min, max, npts, and dx must be specified")
+                raise NotImplementedError("haven't gotten to it yet")
+                self.min = min
+                #np.log(max/min)*R = npts
+                self.max = doot#
+                self.npts = npts
+                self.R = R
+            elif min is None:
+                raise NotImplementedError("haven't gotten to it yet")
+                if any([val is None for val in [max, npts, R]]):
+                    raise ValueError("three of min, max, npts, and dx must be specified")
+                self.max = max
+                self.min = self.max - np.abs(dx)*(npts-1)
+                self.npts = npts
+                self.R = R
+            elif npts is None:
+                if any([val is None for val in [min, max, R]]):
+                    raise ValueError("three of min, max, npts, and dx must be specified")
+                self.min = min
+                self.max = max
+                self.npts = int(round(np.log(self.max/self.min)*R))
+                if self.npts <= 1:
+                    self.npts = 2
+                self.R = (self.npts -1)/np.log(self.max/self.min)
+            elif R is None:
+                if not all([not (val is None) for val in [min, max, npts]]):
+                    raise ValueError("three of min, max, npts, and dx must be specified")        
+                self.min = min
+                self.max = max
+                self.npts = npts
+                self.R = (self.npts -1)/np.log(self.max/self.min)
+    
+    def _from_coord_vec(self, coord_vec):
+        min, max = sorted([coord_vec[0], coord_vec[-1]])
+        npts = len(coord_vec)
+        if coord_vec[-1] > coord_vec[0]:
+            R = (npts-1)/np.log(max/min)
+        else:
+            R = (npts-1)/np.log(max/min)
+        self.min = min
+        self.max = max
+        self.npts = npts
+        self.R = R
+    
+    @property
+    def coordinates(self):
+        if self._recalc_coords:
+            self._coords = np.exp(np.linspace(np.log(self.min), np.log(self.max), self.npts))
+        return self._coords
+    
+    @coordinates.setter
+    def coordinates(self, value):
+        self._from_coord_vec(value)
+        self._recalc_coords = True
+    
+    def get_index(self, coord, clip=False, snap=False):
+        indexes = np.log(np.asarray(coord)/self.min)*self.R
+        if clip:
+            indexes = np.clip(0, len(self)-1)
+        if snap:
+            indexes = np.around(indexes).astype(int)
+        return indexes
+    
+    def get_coord(self, index, clip=False, snap=False):
+        if snap:
+            index = np.around(index).astype(int)
+        coords = np.exp(np.asarray(index)/self.R)*self.min
         if clip:
             coords = np.clip(coords, self.min, self.max)
         return coords

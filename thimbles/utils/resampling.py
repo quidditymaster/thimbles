@@ -1,5 +1,3 @@
-#Author: Timothy Anderton
-
 import numpy as np
 from scipy.interpolate import interp1d
 import scipy.sparse
@@ -7,73 +5,29 @@ from scipy.sparse.linalg import lsqr
 from scipy.sparse import lil_matrix
 import scipy.stats
 import time
-
-def centers_to_bins(coord_centers):
-    if len(coord_centers) == 0:
-        return np.zeros(0)
-    bins = np.zeros(len(coord_centers) + 1, dtype = float)
-    bins[1:-1] = 0.5*(coord_centers[1:] + coord_centers[:-1])
-    bins[0] = coord_centers[0] - (bins[1]-coord_centers[0])
-    bins[-1] = coord_centers[-1] + 0.5*(coord_centers[-1] - coord_centers[-2])
-    return bins
-
-#TODO: replace the interp1d calls with a modification of this binning class
-
-class Binning:
-    
-    def __init__(self, bins):
-        self.bins = bins
-        self.lb = bins[0]
-        self.ub = bins[-1]
-        self.n_bounds = len(self.bins)
-        self.last_bin = bins[0], bins[1]
-        self.last_bin_idx = 0
-    
-    def get_bin_index(self, xvec):
-        xv = np.array(xvec)
-        out_idxs = np.zeros(len(xv.flat), dtype = int)
-        for x_idx in xrange(len(xv.flat)):
-            #check if the last solution still works
-            if self.last_bin[0] <= xvec[x_idx] <= self.last_bin[1]:
-                out_idxs[x_idx] = self.last_bin_idx
-                continue
-            #make sure that the x value is inside the bin range
-            if self.lb > xvec[x_idx]:
-                out_idxs[x_idx] = -1
-            if self.ub > xvec[x_idx]:
-                out_idxs[x_idx] = -1
-            lbi, ubi = 0, self.n_bounds-1
-            #import pdb; pdb.set_trace()
-            while True:
-                mididx = (lbi+ubi)/2
-                midbound = self.bins[mididx]
-                if midbound <= xvec[x_idx]:
-                    lbi = mididx
-                else:
-                    ubi = mididx
-                if self.bins[lbi] <= xvec[x_idx] <= self.bins[lbi+1]:
-                    self.last_bin = self.bins[lbi], self.bins[lbi+1]
-                    self.last_bin_idx = lbi
-                    break
-            out_idxs[x_idx] = lbi
-        return out_idxs
+from thimbles.numba_support import double, jit
 
 n_delts = 1024
-z_scores = np.linspace(-6, 6, n_delts)
+min_z, max_z = -6, 6
+z_scores = np.linspace(min_z, max_z, n_delts)
 cdf_vals = scipy.stats.norm.cdf(z_scores)
-min_z = z_scores[0]
-max_z = z_scores[-1]
 z_delta = (z_scores[1]-z_scores[0])
 
-def approximate_gaussian_cdf(zscore):
-    if zscore > max_z-z_delta-1e-5:
-        return 1.0
-    elif zscore < min_z:
-        return 0
-    idx_val = (zscore-min_z)/z_delta
-    base_idx = int(idx_val)
-    alpha = idx_val-base_idx
-    return cdf_vals[base_idx]*(1-alpha) + cdf_vals[base_idx+1]*alpha
+@jit(double[:](double[:]))
+def approximate_normal_cdf(zscore):
+    cdf = np.zeros(zscore.shape)
+    for idx in range(zscore.shape[0]):
+        cur_score = zscore[idx]
+        if cur_score > max_z-z_delta-1e-5:
+            cdf[idx] = 1.0
+        elif cur_score < min_z:
+            cdf[idx] = 0.0
+        else:
+            z_idx = (cur_score-min_z)/z_delta
+            base_idx = int(z_idx)
+            alpha = z_idx-base_idx
+            cdf[idx] = cdf_vals[base_idx]*(1-alpha) + cdf_vals[base_idx+1]*alpha
+    return cdf
 
 class Density:
     
@@ -113,7 +67,7 @@ class Box_Density(Density):
         
     def get_coordinate_density_range(self, index):
         return self.bins[index], self.bins[index+1]
-    
+
 class Dirac_Density(Density):
     
     def __init__(self, coord_centers):

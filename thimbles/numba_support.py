@@ -3,10 +3,10 @@ from thimbles import _with_numba
 class DoubleDoppleganger(object):
     
     def __getitem__(self, index):
-        pass
+        return self
     
     def __call__(self, *args, **kwargs):
-        pass
+        return self
 
 if _with_numba:
     import numba

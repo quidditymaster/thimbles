@@ -1,4 +1,5 @@
 import unittest
+import thimbles as tmb
 from thimbles.thimblesdb import ThimblesTable, Base, ThimblesDB
 from thimbles.sqlaimports import *
 
@@ -9,7 +10,7 @@ class Dummy(ThimblesTable, Base):
     name  = Column(String)
     float_value = Column(Float)
     int_value = Column(Integer)
-    _array_columns = {"array_value":False}
+    array_value = Column(PickleType)
     
     def __init__(self, name=None, float_value=None, int_value=None, array_value=None):
         self.name = name
@@ -21,7 +22,7 @@ class TestCreate(unittest.TestCase):
     
     def setUp(self):
         base_path = os.path.abspath(os.path.dirname(__file__))
-        self.db_path = os.path.join(base_path, "test_db.tdb")
+        self.db_path = os.path.join(base_path, "junk_db.tdb")
     
     def delete_db(self):
         os.system( "rm -r {}".format(self.db_path))
@@ -31,17 +32,14 @@ class TestCreate(unittest.TestCase):
         self.delete_db()
         tdb = ThimblesDB(self.db_path)
         self.assertTrue(os.path.exists(self.db_path))
-        self.assertTrue(os.path.exists(os.path.join(self.db_path, "tdb.db")))
-        #interface with existing
-        tdb = ThimblesDB(self.db_path)
 
 class TestPersistence(unittest.TestCase):
     
     def setUp(self):
         base_path = os.path.abspath(os.path.dirname(__file__))
-        self.db_path = os.path.join(base_path, "test_db.tdb")
+        self.db_path = os.path.join(base_path, "junk_db.tdb")
         self.delete_db()
-        self.tdb = ThimblesDB(self.db_path)
+        self.make_db()
     
     def make_db(self):
         self.tdb = ThimblesDB(self.db_path)

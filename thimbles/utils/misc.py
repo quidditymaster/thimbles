@@ -27,7 +27,7 @@ except ImportError:
 # Internal
 import thimbles
 from thimbles import hydrogen
-from . import resampling
+from thimbles import resampling
 from . import partitioning
 from . import piecewise_polynomial
 from thimbles.profiles import voigt
@@ -923,6 +923,7 @@ def irls(A,
          resid_delta_thresh=1e-8,
          x_delta_thresh=1e-8,
          damp = 1e-5,
+         return_fit_dict=False,
          **reweighting_kwargs
          ):
     """
@@ -1007,7 +1008,10 @@ def irls(A,
         delta_x = solver(A_reweighted, resids_reweighted)[0]
         last_resids = cur_resids
         last_x = last_x + delta_x
-    return last_x
+    if not return_fit_dict:
+        return last_x
+    else:
+        return last_x, dict(weights=weights, iter_idx=iter_idx, resids_converged=resids_converged, x_converged=x_converged)
 
 @task()
 def l1_factor(input_matrix, input_weights, rank=3, n_iter=3):
@@ -1179,22 +1183,38 @@ def saturated_voigt_cog(gamma_ratio=0.1):
     #import pdb; pdb.set_trace()
     return cog
 
-
-def banded_approximate_inverse(A, k, gamma="neglect_lower"):
-    #cast to a sparse matrix
+def extract_banded_part(A, k):
     A = scipy.sparse.dia_matrix(A)
-    
-    if gamma=="neglect_lower":
-        gamma = scipy.sparse.linalg
+    offsets = A.offsets
+    off_mask = (offsets >= -k)*(offsets <= k)
+    clip_data = A.data[off_mask].copy()
+    clip_offs = offsets[off_mask]
+    return scipy.sparse.dia_matrix((clip_data, clip_offs), A.shape) 
 
+def banded_approximate_inverse(A, k, gamma=None, extract_bands=True):
+    #TODO: add the citation for the paper this is from
+    assert A.shape[0] == A.shape[1]
+    if extract_bands:
+        A = extract_banded_part(A)
+    else:
+        A = scipy.sparse.dia_matrix(A)
+    
+    if gamma is None:
+        gamma = 2.0/scipy.sparse.linalg.eigs(A, 1)[0][0] #neglegcting the minimal eigenvectors
+    
+    inv = scipy.sparse.identity(A.shape[0])
+    last_pow = inv
+    #TODO complete this 
+    
 
 def anti_smoothing_matrix(width, npts):
     max_width = int(max(1, 5*width))+1
     deltas = np.arange(-max_width, max_width+1)
     dvec = scipy.gradient(scipy.gradient(np.exp(-(deltas/width)**2)))
-    row_idxs = np.empty((max_width*2+1)*(npts-1)+2)
-    col_idxs = np.empty((max_width*2+1)*(npts-1)+2)
-    data = np.empty((max_width*2+1)*(npts-1)+2)
+    n_data = (max_width*2+1)*(npts-1)+2
+    row_idxs = np.zeros(n_data)
+    col_idxs = np.zeros(n_data)
+    data = np.zeros(n_data)
     count = 0
     for center_idx in range(npts):
         row_lb = max(0, center_idx-max_width)

@@ -1,10 +1,8 @@
 import time
 import warnings
 import numpy as np
-from .pixel_wavelength_functions import (NoSolution, LogLinear, Polynomial, 
-                                        Linear , ChebyshevPolynomial,
-                                        CubicSpline, LegendrePolynomial) 
-from .. import logger
+from thimbles.io.pixel_wavelength_functions import *
+from thimbles import logger
 
 # ########################################################################### #
 
@@ -48,8 +46,8 @@ def pixels_to_phys_pixels (pixels,bzero=1,bscale=1):
    
     """
     if bzero != 0 or bscale !=1:
-        raise ValueError(("I don't know exactly what to do with bzero!=1 "
-                             "or bscale!=0 :<{}><{}>".format(bzero,bscale)))
+        raise ValueError(("I don't know exactly what to do with bzero!=0 "
+                             "or bscale!=1 :<{}><{}>".format(bzero,bscale)))
     # should return [1,2,3,......,#pts]
     return  bzero + pixels*bscale    
 

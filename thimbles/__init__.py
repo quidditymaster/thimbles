@@ -34,11 +34,12 @@ from thimbles import flags
 from thimbles import hydrogen
 from thimbles import features
 from thimbles import profiles
-from thimbles import velocity
-from thimbles import stellar_atmospheres
 from thimbles import coordinatization
+from thimbles.spectrum import Spectrum, WavelengthSolution
+#from thimbles import velocity
+from thimbles import stellar_atmospheres
 from thimbles import continuum
 from thimbles import radtran
-from thimbles.spectrum import Spectrum
+from thimbles import resampling
 
 from thimbles.thimblesdb import ThimblesDB

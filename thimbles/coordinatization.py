@@ -2,6 +2,7 @@ import numpy as np
 import scipy
 
 from thimbles import logger
+from thimbles.thimblesdb import ThimblesTable, Base
 from thimbles.sqlaimports import *
 
 class CoordinatizationError(Exception):
@@ -81,14 +82,14 @@ def as_coordinatization(coordinates, delta_max=1e-10, force_linear=False, force_
     
     return ArbitraryCoordinatization(coordinates)
 
-class Coordinatization(object):
+class Coordinatization(ThimblesTable, Base):
     min = Column(Float)
     max = Column(Float)
     npts = Column(Integer)
-    coordinate_type = Column(String)
+    _coordinatization_type = Column(String)
     __mapper_args__ = {
         "polymorphic_identity":"coordinatization",
-        "polymorphic_on": coordinate_type
+        "polymorphic_on": _coordinatization_type
     }
     
     def get_index(self, coord):
@@ -124,6 +125,7 @@ class Coordinatization(object):
         return interp_mat
 
 class ArbitraryCoordinatization(Coordinatization):
+    _id = Column(Integer, ForeignKey("Coordinatization._id"), primary_key=True)
     coordinates = Column(PickleType)
     __mapper_args__={
         "polymorphic_identity":"arbitrarycoordinatization",
@@ -262,6 +264,7 @@ class ArbitraryCoordinatization(Coordinatization):
         return out_index.reshape(in_shape)
 
 class LinearCoordinatization(Coordinatization):
+    _id = Column(Integer, ForeignKey("Coordinatization._id"), primary_key=True)
     dx = Column(Float)
     __mapper_args__={
         "polymorphic_identity":"linearcoordinatization"
@@ -363,6 +366,7 @@ class LinearCoordinatization(Coordinatization):
         return coords
 
 class LogLinearCoordinatization(Coordinatization):
+    _id = Column(Integer, ForeignKey("Coordinatization._id"), primary_key=True)
     R = Column(Float)
     __mapper_args__={
         "polymorphic_identity":"loglinearcoordinatization"

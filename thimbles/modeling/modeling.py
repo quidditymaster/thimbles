@@ -233,11 +233,11 @@ class ParameterGroup(object):
 
 class Model(ParameterGroup, ThimblesTable, Base):
     model_type = Column(String)
-    parameters = relationship("Parameter", backref="model")
     __mapper_args__={
         "polymorphic_identity": "model",
         "polymorphic_on": model_type
     }
+    parameters = relationship("Parameter", backref="model")
     
     def __init__(self):
         if len(self.parameters) == 0:

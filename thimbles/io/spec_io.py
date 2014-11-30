@@ -20,8 +20,8 @@ import h5py
 # Internal
 from thimbles.tasks import task
 
-from ..utils.misc import var_2_inv_var
-from ..spectrum import Spectrum, WavelengthSolution
+from thimbles.utils.misc import var_2_inv_var
+from thimbles.spectrum import Spectrum, WavelengthSolution
 #from ..metadata import MetaData
 import wavelength_extractors
 

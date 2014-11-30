@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 # internal
 import thimbles as tmb
-from thimbles.utils import resampling
+from thimbles import resampling
 #from thimbles.utils.misc import inv_var_2_var, var_2_inv_var, clean_variances, clean_inverse_variances
 #from .metadata import MetaData
 from thimbles.flags import SpectrumFlags
@@ -20,7 +20,7 @@ from thimbles import logger
 #from thimbles.resolution import LineSpreadFunction, GaussianLSF, BoxLSF
 #from thimbles.binning import CoordinateBinning
 from scipy.interpolate import interp1d
-from thimbles.thimblesdb import ThimblesTable
+from thimbles.thimblesdb import ThimblesTable, Base
 from thimbles.modeling import Model, parameter
 from thimbles.coordinatization import Coordinatization, as_coordinatization
 from thimbles.sqlaimports import *
@@ -33,8 +33,10 @@ __all__ = ["WavelengthSolution","Spectrum"]
 
 speed_of_light = 299792.458 #speed of light in km/s
 
-class WavelengthSolution(ThimblesTable):
-    
+class WavelengthSolution(ThimblesTable, Base):
+    _indexer_id = Column(Integer, ForeignKey("Coordinatization._id"))
+    indexer = relationship("Coordinatization")
+    lsf = Column(PickleType)
     
     def __init__(self, wavelengths, rv=None, vhelio=None, shifted=True, lsf=None):
         """a class that encapsulates the manner in which a spectrum is sampled
@@ -84,7 +86,7 @@ class WavelengthSolution(ThimblesTable):
     @rv.setter
     def rv(self, value):
         new_wvs = self.indexer.coordinates*(1.0 - value/speed_of_light)
-        self.indexer
+        self.indexer.coordinates = new_wvs
         self._rv = value
     
     def set_rv(self, rv):
@@ -132,6 +134,9 @@ class Spectrum(Model):
     __mapper_args__={"polymorphic_identity":"Spectrum"}
     flux = Column(PickleType)
     _ivar = Column(PickleType)
+    _wv_soln_id = Column(Integer, ForeignKey("WavelengthSolution._id"))
+    wv_soln = relationship("WavelengthSolution")
+    #wv_soln = relationship("WavelengthSolution")    
     
     def __init__(self,
                  wavelengths, 
@@ -379,3 +384,4 @@ class Spectrum(Model):
     @ivar.setter
     def ivar(self, value):
         self._ivar = tmb.utils.misc.clean_inverse_variances(value)
+

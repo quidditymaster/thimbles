@@ -165,8 +165,7 @@ class Spectrum(Model):
             ivar = tmb.utils.misc.smoothed_mad_error(self, 1.0)
         self._ivar = tmb.utils.misc.clean_inverse_variances(ivar)
         
-        self._last_rebin_wv_soln_id = None
-        self._last_rebin_transform = None
+        Model.__init__(self)
         
         #TODO:allow for a spectrum context which includes the header.
         
@@ -175,6 +174,14 @@ class Spectrum(Model):
         else:
             flags = SpectrumFlags(int(flags))
         self.flags = flags
+    
+    @parameter(free=False)
+    def flux_p(self):
+        return self.flux
+    
+    @flux_p.setter
+    def set_flux(self, value):
+        self.flux = value
     
     def sample(wavelengths,
                valuation_mode="interp", 

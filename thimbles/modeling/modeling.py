@@ -173,6 +173,8 @@ class ParameterGroup(object):
                 else:
                     out_vec.append(np.repeat(pval, flat_size(pshape)))
             pvals = out_vec
+        if len(pvals) == 0:
+            return None
         return np.hstack(pvals)
     
     def set_pvec(self, pvec, attr=None, free_only=True, as_delta=False):
@@ -254,10 +256,10 @@ class Model(ParameterGroup, ThimblesTable, Base):
             if isinstance(val, ParameterFactory):
                 new_param = val.make_parameter()
                 new_param.set_model(self)
-                self.parameters.append(new_param)
                 if new_param.name is None:
                     new_param.name = attrib
                 new_param.validate()
+                setattr(self, attrib, new_param)
     
     def parameter_expansion(self, input_vec, **kwargs):
         parameters = self.free_parameters

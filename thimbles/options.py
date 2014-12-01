@@ -13,21 +13,17 @@ class EvalError(Exception):
 config_dir = os.environ.get("THIMBLESCONFIGPATH", os.path.join(os.environ["HOME"], ".config", "thimbles"))
 config_file = os.path.join(config_dir, "config.txt")
 
+        
 class OptionTree(object):
     
     def __init__(self, config_file=config_file):
         self.option_path = ""
         self.config_file=config_file
+        self.children = {}
         self.options = {}
     
-    @property
-    def children(self):
-        children = {}
-        for poss_opt_key in self.__dict__:
-            poss_opt = getattr(self, poss_opt_key)
-            if isinstance(poss_opt, Option):
-                children[poss_opt.name] = poss_opt
-        return children
+    def __getattr__(self, opt_name):
+        return self.children[opt_name]
     
     def traverse_tree(self, index):
         if not isinstance(index, basestring):
@@ -35,7 +31,7 @@ class OptionTree(object):
         spl = index.split(".")
         cur_opt = self
         for opt_name in spl:
-            cur_opt = getattr(cur_opt, opt_name)        
+            cur_opt = cur_opt.children[opt_name]
         return cur_opt
     
     def __getitem__(self, index):
@@ -136,6 +132,7 @@ class Option(object):
         dynamically at runtime using a string read from a config file or 
         specified on the command line
         """
+        self.children = {}
         self.name = name
         self.on_parse = on_parse
         self.option_style = option_style
@@ -164,14 +161,8 @@ class Option(object):
         self.option_tree = option_tree
         self.register_option(name, parent)
     
-    @property
-    def children(self):
-        children = {}
-        for poss_opt_key in self.__dict__:
-            poss_opt = getattr(self, poss_opt_key)
-            if isinstance(poss_opt, Option):
-                children[poss_opt.name] = poss_opt 
-        return children
+    def __getattr__(self, opt_name):
+        return self.children[opt_name]
     
     def set_runtime_str(self, value):
         if not isinstance(value, basestring):
@@ -212,21 +203,19 @@ class Option(object):
             parent = self.option_tree
         elif isinstance(parent, basestring):
             parent = opts.traverse_tree(parent)
-        if hasattr(parent, name):
-            raise OptionSpecificationError("option with name {} already specified!".format(self.name))
+        if name in parent.children.keys():
+            logger("overwriting option {} in {} with option of same name".format(name, parent))
         if not (isinstance(parent, Option) or isinstance(parent, OptionTree)):
             raise ValueError("parent option value of type {} not understood".format(type(parent)))
-        setattr(parent, name, self)
+        parent.children[name] = self
         self.parent = parent
-        self.option_tree.options[self.option_path] = self
-    
-    @property
-    def option_path(self):
-        parent_path = self.parent.option_path
+        parent_path  = self.parent.option_path
         if parent_path == "":
-            return self.name
+            option_path = self.name
         else:
-            return "{}.{}".format(parent_path, self.name)
+            option_path = "{}.{}".format(parent_path, name)
+        self.option_path = option_path
+        self.option_tree.options[self.option_path] = self
     
     def __repr__(self):
         val = "valuation failed"
@@ -259,8 +248,6 @@ _help=\
 to the central wavelength being displayed.
 """
 Option(name="window_width", default=-4.5, parent="spec_display", help_=_help)
-
-
 
 
 def print_option_help():

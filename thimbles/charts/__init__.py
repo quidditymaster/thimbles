@@ -1,0 +1,1 @@
+from mpl_canvas import MatplotlibCanvas

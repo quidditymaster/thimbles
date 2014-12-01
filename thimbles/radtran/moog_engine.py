@@ -158,7 +158,7 @@ class MoogEngine(RadiativeTransferEngine):
         tmb.io.moog_io.write_moog_linelist(line_file, linelist)
         out_fname = "result.tmp"
         f = open(os.path.join(self.working_dir, "batch.par"), "w")
-        #wavelengths = aswavelengthsolution(wavelengths)
+        wavelengths = as_wavelengthsolution(wavelengths)
         if opac_rad is None:
             opac_rad = opts["moog.opac_rad"]
         f.write(synth_template.format(model_in=photo_name,

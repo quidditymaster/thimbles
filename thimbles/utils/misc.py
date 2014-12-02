@@ -2,7 +2,7 @@
 # ########################################################################### #
 # Standard Library
 import os
-from copy import deepcopy
+from copy import deepcopy, copy
 
 # 3rd Party
 import scipy.ndimage.filters as filters
@@ -130,8 +130,8 @@ def clean_inverse_variances(inverse_variance):
     bad_mask = np.isnan(inverse_variance)
     bad_mask += inverse_variance < 0
     bad_mask += inverse_variance == np.inf
-    new_variance = np.where(bad_mask, np.inf, inverse_variance)
-    return new_variance
+    new_ivar = np.where(bad_mask, 0, inverse_variance)
+    return new_ivar
 
 def reduce_output_shape (arr):
     shape = arr.shape
@@ -1205,28 +1205,68 @@ def banded_approximate_inverse(A, k, gamma=None, extract_bands=True):
     inv = scipy.sparse.identity(A.shape[0])
     last_pow = inv
     #TODO complete this 
-    
 
-def anti_smoothing_matrix(width, npts):
-    max_width = int(max(1, 5*width))+1
-    deltas = np.arange(-max_width, max_width+1)
-    dvec = scipy.gradient(scipy.gradient(np.exp(-(deltas/width)**2)))
-    n_data = (max_width*2+1)*(npts-1)+2
+def sparse_row_circulant_matrix(vec, npts):
+    n_data = len(vec)*(npts-1)+2
+    n_half = len(vec)//2
     row_idxs = np.zeros(n_data)
     col_idxs = np.zeros(n_data)
     data = np.zeros(n_data)
     count = 0
     for center_idx in range(npts):
-        row_lb = max(0, center_idx-max_width)
-        row_ub = min(npts-1, center_idx+max_width)
+        row_lb = max(0, center_idx-n_half)
+        row_ub = min(npts-1, center_idx+n_half)
         cur_r_idxs = np.arange(row_lb, row_ub+1)
         row_idxs[count:count+len(cur_r_idxs)] = cur_r_idxs 
         col_idxs[count:count+len(cur_r_idxs)] = np.repeat(center_idx, len(cur_r_idxs))
         if center_idx > npts/2:
-            data[count:count+len(cur_r_idxs)] = dvec[:len(cur_r_idxs)]
+            data[count:count+len(cur_r_idxs)] = vec[:len(cur_r_idxs)]
         else:
-            data[count:count+len(cur_r_idxs)] = dvec[-len(cur_r_idxs):]
+            data[count:count+len(cur_r_idxs)] = vec[-len(cur_r_idxs):]
         count += len(cur_r_idxs)
-    return scipy.sparse.coo_matrix((data, (row_idxs, col_idxs)), shape=(npts, npts))
-    #import pdb; pdb.set_trace()
+    return scipy.sparse.coo_matrix((data, (row_idxs, col_idxs)), shape=(npts, npts))    
 
+def anti_smoothing_matrix(width, npts):
+    max_width = int(max(1, 5*width))+1
+    deltas = np.arange(-max_width, max_width+1)
+    dvec = scipy.gradient(scipy.gradient(np.exp(-(deltas/width)**2)))
+    return sparse_row_circulant_matrix(dvec, npts)
+
+def eval_multiplicative_models(model_mats, xvecs):
+    eval_mods = [np.dot(mod, xv) for mod, xv in zip(model_mats, xvecs)]
+    return reduce(lambda x, y: x*y, eval_mods)
+
+def multiplicative_iterfit(vec, fit_mats, start_vecs, filters=None, max_iter=10):
+    """attempt to iteratively fit for a solution of the form (A*x1)*(B*x2)*(C*x3)...
+    by fitting linearly for the best solution considering only one fit matrix at a time.
+    """
+    npts = len(vec)
+    n_mods = len(fit_mats)
+    for fm_idx in range(n_mods):
+        fit_mats[fm_idx] = np.asarray(fit_mats[fm_idx])
+    if filters is None:
+        filters = [scipy.sparse.identity(len(vec)) for _ in range(len(n_mods))]
+    
+    assert n_mods == len(start_vecs)
+    for svi, sv in enumerate(start_vecs):
+        assert len(sv) == fit_mats[svi].shape[1]
+    
+    cur_vecs = copy(start_vecs)
+    cur_resids = vec-eval_multiplicative_models(fit_mats, cur_vecs)
+    for iter_idx in range(max_iter):
+        for mod_idx in range(n_mods):
+            #evaluate the other models
+            other_mats = copy(fit_mats).pop(mod_idx)
+            other_vecs = copy(cur_vecs).pop(mod_idx)
+            other_mod_val = eval_multiplicative_models(other_mats, other_vecs)
+            #modify the rows of the fit matrix to reflect the other values
+            composite_fm = fit_mats[mod_idx]*other_mod_val.reshape((-1, 1))
+            composite_fm = filters[mod_idx]*composite_fm
+            #fit for the best result vector
+            filtered_resids = filters[mod_idx]*cur_resids
+            fit_res = scipy.linalg.lstsq(composite_fm, filtered_resids)
+            new_vec = cur_vecs[mod_idx] + fit_res[0]
+            cur_vecs[mod_idx] = new_vec
+            cur_resids = vec-eval_multiplicative_models(fit_mats, cur_vecs)
+    
+    return cur_vecs

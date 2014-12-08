@@ -5,4 +5,6 @@ class PeriodicTable(object):
         self._data = None
         #TODO: load data
 
-ptable = PeriodicTable()
+from thimbles.stellar_atmospheres import solar_abundance as ptable
+
+#ptable = PeriodicTable()

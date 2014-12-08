@@ -1,3 +1,4 @@
+from __future__ import print_function
 import time
 import threading
 
@@ -11,14 +12,18 @@ class Worker(threading.Thread):
     def __init__(self, work_queue):
         threading.Thread.__init__(self)
         self.work_queue = work_queue
-        self.setName("thimbles worker" + "@%d" % id(self))
+        wname = "thimbles worker @{}".format(id(self))
+        self.setName(wname)
         self._stop = threading.Event()
     
     def cleanup(self):
         pass
     
     def stop(self):
-        self.cleanup()
+        try:
+            self.cleanup()
+        except Exception as e:
+            print(e)
         self._stop.set()
     
     def stopped(self):

@@ -74,6 +74,9 @@ class LineList(object):
     def __setitem__(self, index, value):
         self._data[index] = value
     
+    def copy(self):
+        return LineList(self._data.copy())
+    
     @property
     def columns(self):
         return self._data.columns

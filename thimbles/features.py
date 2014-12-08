@@ -126,7 +126,7 @@ class SaturatedVoigtFeatureModel(Model):
           the ratio of the lorentz width to the thermal width at 5000 angstroms.
         """
         super(SaturatedVoigtFeatureModel, self).__init__()
-        self.fdat = transitions.copy()
+        self.fdat = transitions._data.copy()
         self.n_feat = len(self.fdat)
         self.min_wv = float(min_wv)
         self.max_wv = float(max_wv)
@@ -161,7 +161,7 @@ class SaturatedVoigtFeatureModel(Model):
         self.gamma = gamma
         self.model_resolution=model_resolution
         
-        self.parameterize()
+        self.generate_fit_groups()
         self.calc_all()
         self.npts = int(np.log(self.max_wv/self.min_wv)*self.model_resolution)
         self.model_wv = np.exp(np.linspace(np.log(self.min_wv), np.log(self.max_wv), self.npts))
@@ -229,12 +229,6 @@ class SaturatedVoigtFeatureModel(Model):
         self._recalc_feature_matrix = True
         self._recollapse_feature_matrix = True
     
-    def generate_fit_groups(self):
-        self.fdat.groupby("species_group", sort_by="wv")
-        
-        self.fdat["fit_group"]
-        #TODO:
-    
     #def calc_ew_errors(self):
     #    self.fdat["ew_error"] = np.ones(len(self.fdat))
     #    total_sig2 = self.fdat["ew"]
@@ -249,20 +243,57 @@ class SaturatedVoigtFeatureModel(Model):
             self.species_id_set = np.sort(unique)
         return species_nums
     
-    def parameterize(self, fit_state=None):
-        if fit_state is None:
-            #start with the most basic possible parameterization
-            self.group_species(overwrite=True)
-            species_gb = self.fdat.groupby("species_group")
-            species_groups = species_gb.groups
-            for species_key in species_groups:
-                species_ixs = species_groups[species_key]
-                self.fdat.ix[species_ixs, "fit_group"] = 0
-                exemplar_idx = np.random.randint(len(species_ixs))
-                grp_exemplar = np.zeros(len(species_ixs), dtype=int)
-                grp_exemplar[exemplar_idx] = 1
-                self.fdat.ix[species_ixs, "group_exemplar"] = grp_exemplar
-            self.exemplar_opac = 0.01*np.ones(len(species_groups))
+    def generate_fit_groups(self):
+        #import pdb; pdb.set_trace()
+        self.group_species(overwrite=True)
+        species_gb = self.fdat.groupby("species_group")
+        species_groups = species_gb.groups
+        n_total_groups = 0
+        for species_key in species_groups:
+            species_ixs = np.asarray(species_groups[species_key])
+            n_lines = len(species_ixs)
+            new_fit_groups = []
+            targ_n_group = 5
+            if n_lines < 2*targ_n_group:
+                new_fit_groups.append((species_ixs, 0))
+            else:
+                species_dat = self.fdat.ix[species_ixs]
+                cspecies_pnum = species_dat["Z"].iloc[0]
+                cabund = ptable[cspecies_pnum]["abundance"]
+                rel_strengths = cabund + species_dat["loggf"] - self.theta*species_dat["ep"]
+                strength_sorted_ixs = species_ixs[np.argsort(rel_strengths).values]
+                sorted_strengths = rel_strengths[strength_sorted_ixs]
+                cumulative_strength = np.zeros(len(sorted_strengths)+1)
+                cumulative_strength[1:] = np.cumsum(10**sorted_strengths)
+                targ_cum_strength = 18.0
+                sub_lb, sub_ub = 0, 0
+                grp_id = 0
+                accum_str = 0
+                while sub_ub < n_lines:
+                    while (accum_str < targ_cum_strength) and (sub_ub < n_lines):
+                        sub_delta = sub_ub-sub_lb
+                        if sub_delta < targ_n_group:
+                            sub_ub = min(sub_ub + targ_n_group, n_lines)
+                        else:
+                            sub_ub += 1
+                        accum_str = cumulative_strength[sub_ub]-cumulative_strength[sub_lb]
+                    if (n_lines - sub_ub) <= targ_n_group:
+                        #we wont' be able to achieve the target number of lines just make this the end
+                        sub_ub = n_lines
+                    new_fit_groups.append((strength_sorted_ixs[sub_lb:sub_ub], grp_id))
+                    grp_id += 1
+                    accum_str = 0
+                    sub_lb = sub_ub
+            #now process all the groups and generate a unique exemplar for each
+            for fg, fg_idx in new_fit_groups:
+                n_total_groups += 1
+                self.fdat.ix[fg, "fit_group"] = fg_idx 
+                exemplar_idx = np.random.randint(len(fg))
+                exemplar_vec = np.zeros(len(fg), dtype=int)
+                exemplar_vec[exemplar_idx] = 1
+                self.fdat.ix[fg, "group_exemplar"] = exemplar_vec 
+        
+        self.exemplar_opac = np.repeat(0.01, n_total_groups)
     
     def optimize_fit_groups(self, spectra):
         transforms_to_model = []
@@ -416,7 +447,7 @@ class SaturatedVoigtFeatureModel(Model):
                     if is_last_match:
                         if not add_group:
                             self.fdat.ix[potential_ixs[0], "fit_group"] = 0
-    
+        
     def get_index(self, wv, clip=False):
         idx = np.log(np.asarray(wv)/self.min_wv)/self.delta_log
         if clip:
@@ -472,6 +503,8 @@ class SaturatedVoigtFeatureModel(Model):
             #TODO: remove background features by detecting negative fit groups
             group_ldf = self.fdat.ix[groups[group_id]]
             rel_opacs = np.exp(group_ldf["x"])
+            opac_sum = np.sum(rel_opacs)
+            rel_opacs /= opac_sum
             opac_frac.ix[groups[group_id]] = rel_opacs
             group_feat_nums = self.fdat.ix[groups[group_id], "feature_num"].values
             n_group_feats = len(group_feat_nums)

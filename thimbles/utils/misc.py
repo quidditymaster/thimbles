@@ -1232,11 +1232,11 @@ def anti_smoothing_matrix(width, npts):
     dvec = scipy.gradient(scipy.gradient(np.exp(-(deltas/width)**2)))
     return sparse_row_circulant_matrix(dvec, npts)
 
-def eval_multiplicative_models(model_mats, xvecs):
-    eval_mods = [np.dot(mod, xv) for mod, xv in zip(model_mats, xvecs)]
+def eval_multiplicative_models(model_mats, xvecs, offsets):
+    eval_mods = [np.dot(mod, xv)+off for mod, xv, off in zip(model_mats, xvecs, offsets)]
     return reduce(lambda x, y: x*y, eval_mods)
 
-def multiplicative_iterfit(vec, fit_mats, start_vecs, filters=None, max_iter=10):
+def multiplicative_iterfit(vec, fit_mats, start_vecs, filters=None, offsets=None, max_iter=10):
     """attempt to iteratively fit for a solution of the form (A*x1)*(B*x2)*(C*x3)...
     by fitting linearly for the best solution considering only one fit matrix at a time.
     """
@@ -1252,13 +1252,15 @@ def multiplicative_iterfit(vec, fit_mats, start_vecs, filters=None, max_iter=10)
         assert len(sv) == fit_mats[svi].shape[1]
     
     cur_vecs = copy(start_vecs)
-    cur_resids = vec-eval_multiplicative_models(fit_mats, cur_vecs)
+    cur_resids = vec-eval_multiplicative_models(fit_mats, cur_vecs, offsets)
     for iter_idx in range(max_iter):
         for mod_idx in range(n_mods):
             #evaluate the other models
-            other_mats = copy(fit_mats).pop(mod_idx)
-            other_vecs = copy(cur_vecs).pop(mod_idx)
-            other_mod_val = eval_multiplicative_models(other_mats, other_vecs)
+            other_mats = copy(fit_mats)
+            other_mats.pop(mod_idx)
+            other_vecs = copy(cur_vecs)
+            other_vecs.pop(mod_idx)
+            other_mod_val = eval_multiplicative_models(other_mats, other_vecs, offsets)
             #modify the rows of the fit matrix to reflect the other values
             composite_fm = fit_mats[mod_idx]*other_mod_val.reshape((-1, 1))
             composite_fm = filters[mod_idx]*composite_fm
@@ -1267,6 +1269,6 @@ def multiplicative_iterfit(vec, fit_mats, start_vecs, filters=None, max_iter=10)
             fit_res = scipy.linalg.lstsq(composite_fm, filtered_resids)
             new_vec = cur_vecs[mod_idx] + fit_res[0]
             cur_vecs[mod_idx] = new_vec
-            cur_resids = vec-eval_multiplicative_models(fit_mats, cur_vecs)
+            cur_resids = vec-eval_multiplicative_models(fit_mats, cur_vecs, offsets)
     
     return cur_vecs

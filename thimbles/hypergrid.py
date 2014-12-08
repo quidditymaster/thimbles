@@ -27,6 +27,21 @@ class HyperGridInterpolator:
     
     def __call__(self, coord_vec, return_weights=False):
         coord_vec = np.atleast_2d(coord_vec)
+        continuous_idxs = self.indexer.get_index(coord_vec)
+        min_vec = np.ones(self.n_dims_in)
+        max_vec = np.asarray(self.indexer.shape) - 1
+        nearest_idxs = np.around(np.clip(continuous_idxs, min_vec, max_vec)).astype(int)
+        idx_deltas = continuous_idxs - nearest_idxs
+        delta_int = np.where(idx_deltas > 0, 1, -1)
+        neighbor_idxs = delta_int + nearest_idxs
+        alpha = np.abs(idx_deltas) #dimension by dimension alphas
+        
+        interped_data = self.grid_data[nearest_idxs]
+        for dim_idx in range(self.grid_data):
+            cur_iterp = nearest_idxs
+        
+        
+        coord_vec = np.atleast_2d(coord_vec)
         idx_val = self.indexer.get_index(coord_vec)
         min_idx = np.asarray(idx_val, dtype = int)
         alphas = idx_val-min_idx

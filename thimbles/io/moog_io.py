@@ -1,8 +1,11 @@
 import pandas as pd
 import numpy as np
+import re
 from datetime import datetime
 
+from thimbles import ptable
 from thimbles.linelists import LineList
+import pandas as pd
 
 
 def float_or_nan(val):
@@ -35,7 +38,7 @@ def read_moog_linelist(fname):
     ldf = pd.DataFrame(data=ldat)
     return LineList(ldf)
 
-def write_moog_linelist(fname, linelist, a_to_ma=True, comment=None):
+def write_moog_linelist(fname, linelist, comment=None):
     out_file = open(fname,'w')
     
     # write the header line if desired
@@ -44,39 +47,109 @@ def write_moog_linelist(fname, linelist, a_to_ma=True, comment=None):
         out_file.write(str(comment).rstrip()+"\n")
     
     fmt_string = "% 10.3f% 10.5f% 10.2f% 10.2f"
-    ew_scale_factor = 1.0
-    if a_to_ma: # convert from anstroms to milli angstroms
-        ew_scale_factor = 1000.0
-        for line_idx in range(len(linelist)):
-            cline = linelist.iloc[line_idx]
-            wv,species,ep,loggf = cline["wv"], cline["species"], cline["ep"], cline["loggf"]
-            out_str = fmt_string % (wv, species, ep, loggf)
-            for v_str in "moog_damp D0 ew".split():
-                bad_value = False
-                if not v_str in linelist.columns:
-                    bad_value = True
-                elif np.isnan(cline[v_str]):
-                    bad_value = True
-                if bad_value:
-                    out_str += 10*" "
-                else:
-                    if v_str == "ew":
-                        val = cline[v_str]*ew_scale_factor
-                    else:
-                        val = cline[v_str]
-                    out_str +="{: 10.4f}".format(val)
-            out_file.write(out_str)
-            out_file.write("\n")
-        out_file.close()
+    
+    for line_idx in range(len(linelist)):
+        cline = linelist.iloc[line_idx]
+        wv,species,ep,loggf = cline["wv"], cline["species"], cline["ep"], cline["loggf"]
+        out_str = fmt_string % (wv, species, ep, loggf)
+        for v_str in "moog_damp D0 ew".split():
+            bad_value = False
+            if not v_str in linelist.columns:
+                bad_value = True
+            elif np.isnan(cline[v_str]):
+                bad_value = True
+            if bad_value:
+                out_str += 10*" "
+            else:
+                val = cline[v_str]
+                out_str +="{: 10.4f}".format(val)
+        out_file.write(out_str)
+        out_file.write("\n")
+    out_file.close()
 
 
 def read_moog_ewfind_summary(fname):
-    pass
+    pass #TODO:
 
 def read_moog_abfind_summary(fname):
-    pass
+    header = {'info':None,
+              'teff':None,
+              'logg':None,
+              'feh':None,
+              'vt':None}
+    
+    linedata = {}
+    infile = open(fname, "rb")
+    
+    # define the expressions to find
+    paramsexp = re.compile("(\d+\.[\d+, *]) +(\d*\.\d+) +([\ ,+,-]\d\.\d+) +(\d*\.\d+)") #teff,logg,feh,vt
+    elemidentexp = re.compile(r"Abundance Results for Species [A-Z][a-z]* +I+")
+    lineabexp = re.compile(r" *(\d+\.\d+) +(\d+\.\d+) +")
+    #statlineexp = re.compile(r"average abundance = +\d\.\d\d +std\. +deviation = +\d\.\d\d")
+    
+    # modellineexp = re.compile(r"\d+g\d\.\d\dm-?\d\.\d+\v\d")
+    currentspecies = None
+    
+    for i,line in enumerate(infile):
+        p = paramsexp.search(line)
+        if p is not None:
+            teff,logg,feh,vt = [float(st) for st in p.groups()]
+            header['teff'] = teff
+            header['logg'] = logg 
+            header['feh'] = feh 
+            header['vt'] = vt 
+            continue
+        
+        if i == 0:
+            header['info'] = line.rstrip()
+            continue
+        
+        _l = lineabexp.match(line)
+        if _l is not None:
+            #print "new linedata", line
+            #line is ordered like wv ep logGF EW logrw, abund, del avg
+            linedatum = [float(st) for st in line.split()]
+            linedata[currentspecies].append(linedatum)
+            continue
+        
+        m = elemidentexp.search(line)
+        if m is not None:
+            #print "new element", line
+            elemline = m.group().split()
+            currentspecies = elemline[-2] + " " + elemline[-1]
+            #species_id_num = float(elemline[-2]) + 0.1*(int(elemline[-1])-1)
+            linedata[currentspecies] = []
+            continue
+    
+    infile.close()
+    out_ldat = dict(wv=[],
+                    species=[],
+                    ep=[],
+                    loggf=[],
+                    ew=[],
+                    abund=[],
+                    )
+    #batom = Batom()
+    
+    import pdb; pdb.set_trace()
+    for cspecies in linedata.keys():
+        species_parts = cspecies.split()
+        species_pnum = ptable[species_parts[0]]["z"]
+        species_id = int(species_pnum) + 0.1*(len(species_parts[1])-1)
+        for lidx in range(len(linedata[cspecies])):
+            ldm = linedata[cspecies][lidx]
+            #output line list format Wv, species, ep, logGF, EW, logRW, Abundance, del_avg
+            out_ldat["wv"].append(ldm[0])
+            out_ldat["species"].append(species_id)
+            out_ldat["ep"].append(ldm[1])
+            out_ldat["loggf"].append(ldm[2])
+            out_ldat["ew"].append(ldm[3])
+            out_ldat["abund"].append(ldm[5])
+    out_ldat = LineList(pd.DataFrame(data=out_ldat))
+    
+    return out_ldat
 
 def read_moog_synth_summary(fname):
-    pass
+    pass #TODO:
 
 

@@ -19,7 +19,7 @@ def float_or_nan(val):
 def read_vald_linelist(fname):
     lines = open(fname).readlines()
     input_re = re.compile("'[A-Z][a-z] [12]', ")
-    col_names = "wv species ep loggf D0 stark_damp rad_damp waals_damp".split()
+    col_names = "wv species ep loggf D0 stark_damp rad_damp waals_damp moog_damp".split()
     ldat = {cname:[] for cname in col_names}
     for line in lines:
         m = input_re.match(line)

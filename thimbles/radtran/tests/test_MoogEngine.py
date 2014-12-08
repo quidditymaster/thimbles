@@ -36,13 +36,14 @@ class TestRadTranEngine(unittest.TestCase):
     #    ctm = self.engine.continuum(stellar_params=self.sun_mod_file) #
     #    #TODO: compare against a precalculated continuum
     
-    def test_abundance_to_ew(self):
-        abres = self.engine.abundance_to_ew(self.ll, stellar_params=self.sun_mod_file)
-        import pdb; pdb.set_trace()
-        
+    #def test_abundance_to_ew(self):
+    #    abres = self.engine.abundance_to_ew(self.ll, stellar_params=self.sun_mod_file)
+    #    import pdb; pdb.set_trace()
     
-    #def test_line_abundance (self):
-    #    llabs = self.engine.line_abundance(linelist=self.ll,stellar_params=self.sun_mod_file)
+    def test_line_abundance (self):
+        import pdb; pdb.set_trace()
+        llabs = self.engine.line_abundance(linelist=self.ll,stellar_params=self.sun_mod_file)
+        import pdb; pdb.set_trace()
     
     #def test_abund_to_ew_and_back (self):
     #    """ From abundances to ew and back again, a hobbit's tale by Bilbo Baggins

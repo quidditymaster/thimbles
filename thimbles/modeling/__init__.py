@@ -2,4 +2,6 @@
 #from spectral_models import *
 #from predictors import *
 
-from thimbles.modeling.modeling import Model, Parameter, parameter
+from thimbles.modeling.parameters import Parameter, ParameterGroup
+from thimbles.modeling.models import Model
+from thimbles.modeling.distributions import ParameterDistribution

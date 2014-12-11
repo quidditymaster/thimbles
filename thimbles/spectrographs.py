@@ -4,13 +4,8 @@ import scipy.sparse
 from thimbles.utils.partitioning import partitioned_polynomial_model
 from thimbles.utils import piecewise_polynomial as ppol 
 from thimbles.thimblesdb import Base, ThimblesTable
-from thimbles.modeling.modeling import parameter, Model
-
-from sqlalchemy import create_engine, ForeignKey
-from sqlalchemy import Column, Date, Integer, String, Float
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.ext.declarative import declared_attr
-from sqlalchemy.orm import relationship, backref
+from thimbles.modeling import Model
+from thimbles.sqlaimports import *
 
 class Spectrograph(Base, ThimblesTable):
     name = Column(String)
@@ -51,15 +46,15 @@ class PiecewisePolynomialSpectrographEfficiencyModel(Model):
     def blaze(self):
         return np.dot(self._basis, self.coefficients)
     
-    @parameter(free=True, scale=10.0, min=-np.inf, max=np.inf)
+    #@parameter(free=True, scale=10.0, min=-np.inf, max=np.inf)
     def poly_coeffs_p(self):
         return self.coefficients
     
-    @poly_coeffs_p.setter
+    #@poly_coeffs_p.setter
     def set_poly_coeffs(self, value):
         self.coefficients = value
     
-    @poly_coeffs_p.expander
+    #@poly_coeffs_p.expander
     def parameter_expansion(self, input, **kwargs):
         return scipy.sparse.csc_matrix((self._basis*input.reshape((-1, 1))))
     

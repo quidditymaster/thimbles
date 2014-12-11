@@ -1,3 +1,4 @@
+import sqlalchemy as sa
 from sqlalchemy import ForeignKey
 from sqlalchemy import Column, Date, Integer, String, Float
 from sqlalchemy import PickleType

@@ -26,6 +26,7 @@ except ImportError:
 
 # Internal
 import thimbles
+from thimbles.spectrum import as_wavelength_solution
 from thimbles import hydrogen
 from thimbles import resampling
 from . import partitioning
@@ -220,7 +221,6 @@ def local_gaussian_fit(yvalues, peak_idx=None, fit_width=2, xvalues=None):
     peak_y_value = np.dot(center_p_vec, poly_coeffs)
     return center, sigma, np.exp(peak_y_value)
 
-@task()
 def get_local_maxima(arr):
     # http://stackoverflow.com/questions/3684484/peak-detection-in-a-2d-asarray/3689710#3689710
     """
@@ -1232,6 +1232,7 @@ def anti_smoothing_matrix(width, npts):
     dvec = scipy.gradient(scipy.gradient(np.exp(-(deltas/width)**2)))
     return sparse_row_circulant_matrix(dvec, npts)
 
+
 def eval_multiplicative_models(model_mats, xvecs, offsets):
     eval_mods = [np.dot(mod, xv)+off for mod, xv, off in zip(model_mats, xvecs, offsets)]
     return reduce(lambda x, y: x*y, eval_mods)
@@ -1270,5 +1271,32 @@ def multiplicative_iterfit(vec, fit_mats, start_vecs, filters=None, offsets=None
             new_vec = cur_vecs[mod_idx] + fit_res[0]
             cur_vecs[mod_idx] = new_vec
             cur_resids = vec-eval_multiplicative_models(fit_mats, cur_vecs, offsets)
-    
     return cur_vecs
+
+
+def get_natural_breaks(
+        df, 
+        grouping_vecs=None, 
+        merge_scale=0.1, 
+        split_threshold=1.0,
+    ):
+    if grouping_vecs is None:
+        grouping_vecs = df.columns
+    n_pts = len(df)
+    n_cascade = len(grouping_vecs)
+    
+    merge_scale = np.ones(n_cascade)*np.asarray(merge_scale)
+    split_threshold = np.ones(n_cascade)*np.asarray(split_threshold)
+    
+    grouping_id = np.zeros((n_pts, n_cascade), dtype=int)
+    for cascade_idx in range(n_cascade):
+        gvec = grouping_vecs[cascade_idx]
+        if isinstance(gvec, basestring):
+            gvec = df[gvec].values
+        mscale = merge_scale[cascade_idx]
+        gvec = np.around(gvec/mscale)*mscale
+        gvres, gvidxs = np.unique(gvec, return_inverse=True)
+        gvres = (gvres - gvres[0]) % split_threshold[cascade_idx]
+        crossovers = get_local_maxima(gvres).astype(int)
+        grouping_id[:, cascade_idx] = np.cumsum(crossovers)[gvidxs]
+    return grouping_id

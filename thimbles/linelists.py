@@ -89,3 +89,9 @@ class LineList(object):
     def ix(self):
         return self._data.ix
     
+    def groupby(self, *args, **kwargs):
+        return self._data.groupby(*args, **kwargs)
+    
+    @property
+    def index(self):
+        return self._data.index

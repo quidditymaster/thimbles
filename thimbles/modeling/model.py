@@ -7,7 +7,7 @@ from copy import copy
 
 from thimbles.sqlaimports import *
 from thimbles.thimblesdb import ThimblesTable, Base
-from thimbles.modeling import ParameterGroup, Parameter
+
 
 class Model(ParameterGroup, ThimblesTable, Base):
     model_type = Column(String)
@@ -78,3 +78,12 @@ class Model(ParameterGroup, ThimblesTable, Base):
     
     def as_linear_op(self, input_vec, **kwargs):
         return scipy.sparse.identity(len(input_vec))#implicitly allowing additive model passthrough
+
+
+class IdentityPlaceHolder(object):
+    
+    def __mul__(self, other):
+        return other
+    
+    def __rmul__(self, other):
+        return other

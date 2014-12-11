@@ -17,8 +17,8 @@ class ForkDiagram(object):
                  spread_height=0.05, 
                  handle_locator=None, 
                  text="", 
-                 indexes=None,
-                 ax=None):
+                 ax=None,
+    ):
         if ax is None:
             fig, ax = plt.subplots()
         self.ax = ax
@@ -120,6 +120,8 @@ class ForkDiagram(object):
             self.xvals = np.asarray(xvals)
             if self.depths is None:
                 self.depths = np.zeros(xvals.shape)
+            elif self.depths.shape != self.xvals.shape:
+                self.depths = np.zeros(xvals.shape)
             self._initialize_plots()
             if update:
                 self.update()
@@ -133,3 +135,4 @@ class ForkDiagram(object):
         self.depths = depths
         if update:
             self.update()
+    

@@ -2,7 +2,7 @@ import threading
 import numpy as np
 import matplotlib
 
-from matplotlib.backends.backend_qt4agg import NavigationToolbar2QTAgg as NavigationToolbar
+from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT as NavigationToolbar
 
 from PySide.QtGui import *
 from PySide.QtCore import *

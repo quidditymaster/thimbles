@@ -352,7 +352,7 @@ class LinearCoordinatization(Coordinatization):
     def get_index(self, coord, clip=False, snap=False):
         indexes = (np.asarray(coord) - self.min)/self.dx
         if clip:
-            indexes = np.clip(0, len(self)-1)
+            np.clip(indexes, 0, len(self)-1, out=indexes)
         if snap:
             indexes = np.around(indexes).astype(int)
         return indexes
@@ -439,7 +439,7 @@ class LogLinearCoordinatization(Coordinatization):
     def get_index(self, coord, clip=False, snap=False):
         indexes = np.log(np.asarray(coord)/self.min)*self.R
         if clip:
-            indexes = np.clip(0, len(self)-1)
+            np.clip(indexes, 0, len(self)-1, out=indexes)
         if snap:
             indexes = np.around(indexes).astype(int)
         return indexes

@@ -21,7 +21,7 @@ from thimbles import logger
 #from thimbles.binning import CoordinateBinning
 from scipy.interpolate import interp1d
 from thimbles.thimblesdb import ThimblesTable, Base
-from thimbles.modeling import Model, parameter
+from thimbles.modeling import Model
 from thimbles.coordinatization import Coordinatization, as_coordinatization
 from thimbles.sqlaimports import *
 
@@ -127,15 +127,15 @@ def as_wavelength_solution(wavelengths):
     else:
         return WavelengthSolution(wavelengths)
 
-class Spectrum(Model):
+class Spectrum(object): #Model):
     """A representation of a collection of relative flux measurements
     """
-    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
-    __mapper_args__={"polymorphic_identity":"Spectrum"}
-    flux = Column(PickleType)
-    _ivar = Column(PickleType)
-    _wv_soln_id = Column(Integer, ForeignKey("WavelengthSolution._id"))
-    wv_soln = relationship("WavelengthSolution")
+    #_id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    #__mapper_args__={"polymorphic_identity":"Spectrum"}
+    #flux = Column(PickleType)
+    #_ivar = Column(PickleType)
+    #_wv_soln_id = Column(Integer, ForeignKey("WavelengthSolution._id"))
+    #wv_soln = relationship("WavelengthSolution")
     #wv_soln = relationship("WavelengthSolution")    
     
     def __init__(self,
@@ -165,7 +165,7 @@ class Spectrum(Model):
             ivar = tmb.utils.misc.smoothed_mad_error(self, 1.0)
         self._ivar = tmb.utils.misc.clean_inverse_variances(ivar)
         
-        Model.__init__(self)
+        #Model.__init__(self)
         
         #TODO:allow for a spectrum context which includes the header.
         
@@ -175,11 +175,11 @@ class Spectrum(Model):
             flags = SpectrumFlags(int(flags))
         self.flags = flags
     
-    @parameter(free=False)
+    #@parameter(free=False)
     def flux_p(self):
         return self.flux
     
-    @flux_p.setter
+    #@flux_p.setter
     def set_flux(self, value):
         self.flux = value
     

@@ -13,7 +13,7 @@ class EvalError(Exception):
 config_dir = os.environ.get("THIMBLESCONFIGPATH", os.path.join(os.environ["HOME"], ".config", "thimbles"))
 config_file = os.path.join(config_dir, "config.txt")
 
-        
+
 class OptionTree(object):
     
     def __init__(self, config_file=config_file):

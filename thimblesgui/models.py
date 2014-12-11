@@ -273,6 +273,12 @@ class TreeNode(object):
                     continue
                 val = self._obj.__dict__[key]
                 self._children.append(TreeNode(key, val, self, self.max_depth, self.depth+1))
+        elif isinstance(self._obj, dict):
+            for key in self._obj:
+                self._children.append(TreeNode(str(key), self._obj[key], self, self.max_depth, self.depth+1))
+        elif isinstance(self._obj, list):
+            for key in range(len(self._obj)):
+                self._children.append(TreeNode(str(key), self._obj[key], self, self.max_depth, self.depth+1))
     
     def __repr__(self):
         return "node:"+repr(self._obj)
@@ -283,7 +289,7 @@ class TreeNode(object):
 
 class ObjectTree(QAbstractItemModel):
     
-    def __init__(self, obj, max_depth=3):
+    def __init__(self, obj, max_depth=15):
         super(ObjectTree, self).__init__()
         self.root_item = TreeNode("root node", obj, None, max_depth=max_depth)
     

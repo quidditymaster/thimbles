@@ -10,19 +10,15 @@ from flags import FeatureFlags
 from thimbles.stellar_atmospheres import solar_abundance as ptable
 from thimbles.profiles import voigt
 from thimbles import resource_dir
-from thimbles.modeling.modeling import parameter, Model
+from thimbles.modeling import Model
 from thimbles.utils.misc import smooth_ppol_fit
 import thimbles.utils.piecewise_polynomial as ppol
 from thimbles import logger
 from thimbles import hydrogen
 from latbin import matching
+from thimbles import as_wavelength_solution
 from thimbles.utils.misc import saturated_voigt_cog
-
-from sqlalchemy import create_engine, ForeignKey
-from sqlalchemy import Column, Date, Integer, String, Float
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.ext.declarative import declared_attr
-from sqlalchemy.orm import relationship, backref
+from thimbles.sqlaimports import *
 
 def indicator_factory(indval, tolerance):
     return lambda x: np.abs(x-indval) < tolerance
@@ -82,6 +78,37 @@ class SpeciesGrouper(object):
                 cur_group_num = len(self.group_indicators)-1
             grp_nums[input_sp_idx] = cur_group_num
         return grp_nums[recon_idxs]
+
+
+def voigt_feature_matrix(wv_soln, centers, sigmas, gammas=None):
+    wv_soln = as_wavelength_solution(wv_soln)
+    indexes = []
+    profiles = []
+    n_features = len(centers)
+    if gammas is None:
+        gammas = np.zeros(n_features)
+    assert len(sigmas) == n_features
+    assert len(gammas) == n_features
+    window_deltas = 35.0*gammas
+    alt_wid = 5.0*np.sqrt(sigmas**2 + gammas**2)
+    window_deltas = np.where(window_deltas > alt_wid, window_deltas, alt_wid)
+    wavelengths = wv_soln.get_wvs()
+    for col_idx in range(n_features):
+        ccent = centers[col_idx]
+        csig = sigmas[col_idx]
+        cgam = gammas[col_idx]
+        cdelt = window_deltas[col_idx]
+        lb, ub = wv_soln.get_index([ccent-cdelt, ccent+cdelt], clip=True, snap=True)
+        prof = voigt(wavelengths[lb:ub+1], ccent, csig, cgam)
+        indexes.append(np.array([np.arange(lb, ub+1), np.repeat(col_idx, len(prof))]))
+        profiles.append(prof)
+    indexes = np.hstack(indexes)
+    profiles = np.hstack(profiles)
+    npts = len(wavelengths)
+    mat = scipy.sparse.csc_matrix((profiles, indexes), shape=(npts, n_features))
+    return mat
+
+
 
 class SaturatedVoigtFeatureModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
@@ -203,25 +230,25 @@ class SaturatedVoigtFeatureModel(Model):
         ret_val = self.cfm*self.exemplar_opac_p.get()
         return ret_val
     
-    @parameter(free=True, scale=1.0, min=0.0001, max=1000.0, step_scale=1.0)
+    #@parameter(free=True, scale=1.0, min=0.0001, max=1000.0, step_scale=1.0)
     def exemplar_opac_p(self, ):
         return self.exemplar_opac
     
-    @exemplar_opac_p.setter
+    #@exemplar_opac_p.setter
     def set_exemplar_opac(self, exemplar_opacities):            
         self.exemplar_opac = exemplar_opacities
         per_feature_opacities = self.opac_matrix*exemplar_opacities
         self.fdat["opac_strength"] = per_feature_opacities
     
-    @exemplar_opac_p.expander
+    #@exemplar_opac_p.expander
     def expand_exemplar_effects(self, input_vec, **kwargs):
         return self.cfm
     
-    @parameter(free=True, min=0.001, max=1.2, step_scale=0.1)
+    #@parameter(free=True, min=0.001, max=1.2, step_scale=0.1)
     def gamma_p(self):
         return self.gamma
     
-    @gamma_p.setter
+    #@gamma_p.setter
     def set_gamma(self, value):
         #import pdb; pdb.set_trace()
         self.gamma = value
@@ -464,25 +491,10 @@ class SaturatedVoigtFeatureModel(Model):
     
     def calc_feature_matrix(self, overwrite=True):
         print "generating full feature matrix"
-        indexes = [] #arrays of the row indexes belonging to each column
-        profiles = []
-        target_sigma_widths = self.sigma_widths()
-        target_gamma_widths = self.gamma_widths()
-        for feat_idx in range(self.n_feat):
-            column_idx = int(self.fdat["feature_num"].iloc[feat_idx])
-            feat_wv = self.fdat["wv"].iloc[feat_idx]
-            target_sig_width = target_sigma_widths.iloc[feat_idx]
-            target_gam_width = target_gamma_widths.iloc[feat_idx]
-            window_size = max(target_gam_width*35, np.sqrt(target_sig_width**2 + target_gam_width**2)*5.0)
-            lb = int(np.around(self.get_index(feat_wv-window_size, clip=True)))
-            ub = int(np.around(self.get_index(feat_wv+window_size, clip=True)))
-            prof = voigt(self.model_wv[lb:ub+1], feat_wv, target_sig_width, target_gam_width)
-            indexes.append(np.array([np.arange(lb, ub+1), np.repeat(column_idx, len(prof))])) 
-            profiles.append(prof)
-        indexes = np.hstack(indexes)
-        profiles = np.hstack(profiles)
-        npts = len(self.model_wv)
-        full_matrix = scipy.sparse.csc_matrix((profiles, indexes), shape=(npts, self.n_feat))
+        wvs = self.fdat["wv"].values
+        sigmas = self.sigma_widths().values
+        gammas = self.gamma_widths().values
+        full_matrix = voigt_feature_matrix(self.model_wv, wvs, sigmas, gammas)
         if overwrite:
             self.feature_matrix = full_matrix
             self._recalc_feature_matrix = False 
@@ -566,11 +578,11 @@ class SaturatedVoigtFeatureModel(Model):
         self._recalc_feature_matrix=True
         self._recollapse_feature_matrix = True
     
-    @parameter(free=True, min=0.01, max=10.0, step_scale=0.1)
+    #@parameter(free=True, min=0.01, max=10.0, step_scale=0.1)
     def vmicro_p(self):
         return self.vmicro
     
-    @vmicro_p.setter
+    #@vmicro_p.setter
     def set_vmicro(self, value):
         self.vmicro = value
     
@@ -582,11 +594,11 @@ class SaturatedVoigtFeatureModel(Model):
     def theta(self, value):
         self.teff = 5040.0/value
     
-    @parameter(free=False, min=0.2, max=3.0, step_scale=0.1)
+    #@parameter(free=False, min=0.2, max=3.0, step_scale=0.1)
     def theta_p(self):
         return self.theta
     
-    @theta_p.setter
+    #@theta_p.setter
     def set_theta(self, value):
         self.theta = value
     
@@ -700,11 +712,11 @@ class SimpleMatrixOpacityModel(Model):
         assert len(opac_matrix)==len(model_wvs)
         self.opac_strength = opac_strength
     
-    @parameter(free=True, min=0.0001)
+    #@parameter(free=True, min=0.0001)
     def opac_strength_p(self):
         return self.opac_strength
     
-    @opac_strength_p.setter
+    #@opac_strength_p.setter
     def opac_strength(self, value):
         self.opac_strength = value
     

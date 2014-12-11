@@ -1,7 +1,10 @@
+import time
+import threading
+
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
-class MatplotlibCanvas (FigureCanvas):
+class MatplotlibCanvas(FigureCanvas):
     """
     Class to represent the FigureCanvas widget
     
@@ -43,7 +46,7 @@ class MatplotlibCanvas (FigureCanvas):
         self.nrows = nrows
         self.ncols = ncols
         ax_num = 1
-        self._axes = []
+        self.axes = []
         #import pdb; pdb.set_trace()
         for col_idx in range(nrows):
             for row_idx in range(ncols):
@@ -55,14 +58,14 @@ class MatplotlibCanvas (FigureCanvas):
                     if row_idx == 0:
                         x_share_ax = None
                     else:
-                        x_share_ax = self._axes[-col_idx]
+                        x_share_ax = self.axes[-col_idx]
                 elif sharex == "columns":
                     if col_idx == 0:
                         x_share_ax = None
                     else:
-                        x_share_ax = self._axes[-row_idx*ncols]
+                        x_share_ax = self.axes[-row_idx*ncols]
                 elif sharex == "all":
-                    x_share_ax = self._axes[0]
+                    x_share_ax = self.axes[0]
                 else:
                     raise Exception("don't recognize sharex behavior")
                 if sharey == "none":
@@ -71,21 +74,21 @@ class MatplotlibCanvas (FigureCanvas):
                     if col_idx == 0:
                         y_share_ax = None
                     else:
-                        y_share_ax = self._axes[-col_idx]
+                        y_share_ax = self.axes[-col_idx]
                 elif sharey == "columns":
                     if row_idx == 0:
                         y_share_ax = None
                     else:
-                        y_share_ax = self._axes[-row_idx*ncols]
+                        y_share_ax = self.axes[-row_idx*ncols]
                 elif sharey == "all":
-                    y_share_ax = self._axes[0]
+                    y_share_ax = self.axes[0]
                 else:
                     raise Exception("don't recognize sharey behavior")
-                self._axes.append(self.fig.add_subplot(nrows, ncols, ax_num, sharex=x_share_ax, sharey=y_share_ax))
+                self.axes.append(self.fig.add_subplot(nrows, ncols, ax_num, sharex=x_share_ax, sharey=y_share_ax))
                 ax_num += 1
         
         #set the current axis to the first axis
-        self.ax = self._axes[0]
+        self.ax = self.axes[0]
         self._lock = threading.RLock()
         
         #import pdb; pdb.set_trace()
@@ -101,7 +104,7 @@ class MatplotlibCanvas (FigureCanvas):
     
     def axis(self, row_idx, col_idx):
         ax_num = self.ncols*row_idx + col_idx
-        return self._axes[ax_num]
+        return self.axes[ax_num]
     
     def set_ax(self, row_idx, col_idx):
         """change which axis .ax refers to"""

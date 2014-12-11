@@ -5,17 +5,12 @@ import os
 import scipy.sparse
 import warnings
 import thimbles as tmb
-from thimbles.modeling.modeling import parameter, Model
+from thimbles.modeling import Model
 from thimbles import resource_dir
 from profiles import convolved_stark
 from spectrum import Spectrum
 from thimbles.tasks import task
-
-from sqlalchemy import ForeignKey
-from sqlalchemy import Column, Date, Integer, String, Float
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.ext.declarative import declared_attr
-from sqlalchemy.orm import relationship, backref
+from thimbles.sqlaimports import *
 
 data_cols = np.loadtxt(os.path.join(resource_dir, "transition_data", "Hydrogen_lines.txt"), usecols=[0, 1, 2, 3, 5])
 hlines = pd.DataFrame(data=dict(wv=data_cols[:, 0], 
@@ -169,15 +164,15 @@ class HydrogenForegroundOpacityModel(Spectrum):
         self._strength = np.clip(value, 0.01, np.inf)
         self.calc_opac()
     
-    @parameter(free=True, min=0.01, max=5.0, scale=1.0, step_scale=0.01)
+    #@parameter(free=True, min=0.01, max=5.0, scale=1.0, step_scale=0.01)
     def strength_p(self):
         return self.strength
     
-    @strength_p.setter
+    #@strength_p.setter
     def set_strength(self, value):
         self.strength = value
     
-    @strength_p.expander
+    #@strength_p.expander
     def strength_expansion(self, input):
         return self.opac_matrix
     

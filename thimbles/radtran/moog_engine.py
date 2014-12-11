@@ -19,6 +19,7 @@ import subprocess
 import numpy as np
 
 import thimbles as tmb
+from thimbles import as_wavelength_solution
 from thimbles.radtran.engines import RadiativeTransferEngine
 from thimbles.radtran.marcs_engine import MarcsInterpolator
 from thimbles.options import Option,opts
@@ -37,22 +38,27 @@ Option("working_dir",
 #TODO: make a default strong lines file to crop to wavelengths and use always.
 
 # =========================================================================== #
-core_template=\
+default_par_template=\
 """damping        1
-flux/int       0
 freeform       0
 gfstyle        1
 atmosphere     1
 molecules      2
+"""
+common_par_components=\
+"""
+flux/int       {flux_int}
 lines_in     {lines_in}
 standard_out {outfile}.std
 summary_out  {outfile}.sum
 model_in     {model_in}
 """
 
-abfind_template="abfind\n"+core_template
-ewfind_template="ewfind\n"+core_template
-synth_template= "synth\n" + core_template +\
+Option("par_template", option_style="raw_string", parent="moog", default=default_par_template)
+
+abfind_template="abfind\n"+opts["moog.par_template"] + common_par_components
+ewfind_template="ewfind\n"+opts["moog.par_template"] + common_par_components
+synth_template= "synth\n" +opts["moog.par_template"] + common_par_components +\
 """synlimits
           {min_wv: 10.5f} {max_wv: 10.5f} {delta_wv: 10.5f} {opac_rad: 10.5f}  
 """
@@ -80,7 +86,7 @@ class MoogEngine(RadiativeTransferEngine):
         #change back to the original directory
         os.chdir(cur_dir)
     
-    def ew_to_abundance(self, linelist, stellar_params):
+    def ew_to_abundance(self, linelist, stellar_params, central_intensity=False):
         """generate abundances on the basis of equivalent widths
         by performing a fit to predicted ew's instead of inverting
         the line by line abundances.
@@ -90,7 +96,7 @@ class MoogEngine(RadiativeTransferEngine):
         """
         self._not_implemented()
     
-    def line_abundance(self, linelist, stellar_params, inject_as=None):
+    def line_abundance(self, linelist, stellar_params, inject_as=None, central_intensity=False):
         """line by line abundances for the given linelist (with an ew column)
         and stellar_params.
         
@@ -110,10 +116,14 @@ class MoogEngine(RadiativeTransferEngine):
         line_file = os.path.join(self.working_dir, line_name)
         tmb.io.moog_io.write_moog_linelist(line_file, linelist)
         out_fname = "result.tmp"
+        flux_int = 0
+        if central_intensity:
+            flux_int = 1 
         f = open(os.path.join(self.working_dir, "batch.par"), "w")
         f.write(abfind_template.format(model_in=self._photosphere_fname,
                                lines_in=line_name,
-                               outfile=out_fname
+                               outfile=out_fname,
+                               flux_int=flux_int
         ))
         f.flush()
         f.close()
@@ -122,17 +132,21 @@ class MoogEngine(RadiativeTransferEngine):
         result = tmb.io.moog_io.read_moog_abfind_summary(summary_fname)
         return result
     
-    def abundance_to_ew(self, linelist, stellar_params, abundances=None):
+    def abundance_to_ew(self, linelist, stellar_params, abundances=None, central_intensity=True):
         self._make_photo_file(stellar_params)
         #write out the linelist in moog format
         line_name = "templines.ln.tmp"
         line_file = os.path.join(self.working_dir, line_name)
         tmb.io.moog_io.write_moog_linelist(line_file, linelist)
         out_fname = "result.tmp"
+        flux_int = 0
+        if central_intensity:
+            flux_int = 1 
         f = open(os.path.join(self.working_dir, "batch.par"), "w")
         f.write(ewfind_template.format(model_in=self._photosphere_fname,
                                lines_in=line_name,
-                               outfile=out_fname
+                               outfile=out_fname,
+                               flux_int=flux_int,
         ))
         f.flush()
         f.close()
@@ -147,7 +161,8 @@ class MoogEngine(RadiativeTransferEngine):
                  wavelengths, 
                  normalized=True, 
                  delta_wv=None,
-                 opac_rad=None
+                 opac_rad=None,
+                 central_intensity=False,
     ):
         if not normalized:
             self._not_implemented("moog only generates the normalized spectrum")
@@ -157,8 +172,11 @@ class MoogEngine(RadiativeTransferEngine):
         line_file = os.path.join(self.working_dir, line_name)
         tmb.io.moog_io.write_moog_linelist(line_file, linelist)
         out_fname = "result.tmp"
+        flux_int = 0
+        if central_intensity:
+            flux_int = 1 
         f = open(os.path.join(self.working_dir, "batch.par"), "w")
-        wavelengths = as_wavelengthsolution(wavelengths)
+        wavelengths = as_wavelength_solution(wavelengths)
         if opac_rad is None:
             opac_rad = opts["moog.opac_rad"]
         f.write(synth_template.format(model_in=photo_name,
@@ -168,6 +186,7 @@ class MoogEngine(RadiativeTransferEngine):
                                       max_wv=wavelengths.max,
                                       delta_wv=0.01, #make this depend on the wavelength being synthesized
                                       opac_rad=opac_rad,
+                                      flux_int=flux_int
                                       
         ))
         f.flush()

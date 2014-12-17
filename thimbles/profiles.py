@@ -1,5 +1,7 @@
-import scipy.special
+
 import numpy as np
+import scipy
+import scipy.special
 import scipy.optimize
 import scipy.ndimage
 import scipy.fftpack as fftpack
@@ -66,13 +68,31 @@ def rotational(wvs, center, vsini, limb_darkening = 0):
 
 profile_functions["rotational"] = rotational
 
-def radial_tangential_macroturbulence(wvs, center, eta_rt, n_comp=256):
-    fft_freqs = fftpack.fftfreq(n_comp, 1.0)
-    centering_phase = np.exp(-1j*np.pi*np.arange(n_comp))
-    to_trans = 1.0-np.exp(eta_rt*fft_freqs**2)
-    full_profile = fftpack.ifft(centering_phase*to_trans)
-    import pdb; pdb.set_trace()
+def _calc_prototype_rt_profile(frac_width, n_freqs=1024):
+    eta_rt = frac_width * n_freqs
+    fft_freqs = fftpack.fftfreq(n_freqs, 1.0)
+    #replace zero frequency with very small non-zero freq
+    fft_freqs[0] = 1.0/n_freqs**2
+    macro_fft = 1.0-np.exp(-(np.pi*eta_rt*fft_freqs)**2)
+    macro_fft /= (np.pi*eta_rt*fft_freqs)**2
+    full_profile = (fftpack.ifft(macro_fft).real).copy()
+    #reorder the fft to put the peak at the center
+    ordering_indexes = np.argsort(fft_freqs)
     
+    fft_freqs[0] = 0.0
+    fft_freqs = fft_freqs[ordering_indexes]/frac_width
+    return fft_freqs, full_profile[ordering_indexes].copy()
+
+
+_prototype_rt_freqs, _prototype_rt_prof = _calc_prototype_rt_profile(0.05, 1024)
+_prototype_rt_interper = scipy.interpolate.interp1d(_prototype_rt_freqs, _prototype_rt_prof, fill_value=0.0, bounds_error=False)
+
+def radial_tangential_macroturbulence(wvs, center, eta_rt, n_freqs=1024):
+    delta_lam = (eta_rt/299792.458)*center
+    delta_freqs = (wvs - center)/delta_lam
+    return _prototype_rt_interper(delta_freqs)
+
+profile_functions["radial_tangential_macroturbulence"] = radial_tangential_macroturbulence
 
 #def voigt_rotational(wvs, center, g_width, l_width, vsini, limb_darkening): #this routine has edge problems with the convolution
 #    "generates a voigt profile convolved with a rotational broadening profile"

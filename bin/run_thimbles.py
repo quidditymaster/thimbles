@@ -59,6 +59,8 @@ class MainApplication(QtGui.QApplication):
 if __name__ == "__main__":
     opts.parse_options()
     
+    QtGui.QApplication.setLibraryPaths([])
+    
     if not opts["no_window"]:
         print "starting main app"
         try:

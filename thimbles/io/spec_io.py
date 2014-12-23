@@ -449,12 +449,15 @@ def detect_spectrum_file_type(fname):
 
 pass
 # ############################################################################# #
-# This is a swiss army knife spectrum read in function
-@task()
+@task(
+    sub_kwargs=dict(
+    fname={"option_style":"existing_file"},
+    file_type={"option_style":"raw_string"},
+))
 def read_spec(fname, file_type="detect", extra_kwargs=None):
     """
-    a swiss army knife read in function for spectra, attempts to read in 
-    a large variety of formats.
+    a swiss army knife read in function for spectra, attempts to detect 
+    and read in a large variety of formats.
     
     file type: string
       "detect"    attempt to determine the file type automatically

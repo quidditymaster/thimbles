@@ -136,7 +136,7 @@ class Option(object):
         self.name = name
         self.on_parse = on_parse
         self.option_style = option_style
-        opt_style_poss = "parent_dict flag raw_string".split()
+        opt_style_poss = "parent_dict flag raw_string existing_file new_file".split()
         if not option_style is None:
             if not option_style in opt_style_poss:
                 raise ValueError("option_sytle must be one of {} received {}".format(opt_style_poss, option_style))
@@ -175,6 +175,13 @@ class Option(object):
             try:
                 if self.option_style == "raw_string":
                     res = self.runtime_str
+                elif self.option_style == "existing_file":
+                    if os.path.exists(self.runtime_str):
+                        res = self.runtime_str
+                    else:
+                        raise OptionSpecificationError("file {} does not exist".format(self.runtime_str))
+                elif self.option_style == "new_file":
+                    res = self.runtime_str
                 else:
                     res = eval(self.runtime_str, self.eval_ns)
                 self._value = res
@@ -182,6 +189,8 @@ class Option(object):
                 return res
             except SyntaxError as e:
                 raise OptionSpecificationError("Evaluation of string:\n{}\nfailed with error {}".format(self.runtime_str, e))
+            except OptionSpecificationError as ose:
+                raise ose
             except Exception as e:
                 raise OptionSpecificationError("Unknown valuation error {}".format(e))
         else:

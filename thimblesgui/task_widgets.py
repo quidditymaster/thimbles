@@ -16,48 +16,134 @@ import re
 import time
 import numpy as np  
 from PySide import QtCore,QtGui
+from PySide.QtCore import Qt
 
 # ########################################################################### #
 from thimbles.options import OptionSpecificationError
 import thimbles.workingdataspace as wds
 
-# define default widget for a given key?
-class OptionValueSpecifierWidget(QtGui.QWidget):
+class LineEditor(QtGui.QWidget):
     
-    def __init__(self,option,parent=None):
-        QtGui.QWidget.__init__(self,parent)
-        self.option = option  
-        self.initUI()
-    
-    def initUI (self):          
-        # argname  [ argstring ]
-        label_row = 0
-        rstr_row = 1
-        val_row = 2
-        label_col = 0
-        le_col = 0
-        btn_col = 1
-        
-        layout = QtGui.QGridLayout()
-        layout.addWidget(QtGui.QLabel(self.option.name), label_row, label_col, 1, 1)
-        
-        #runtime string widget line
+    def __init__(self, option, parent=None):
+        QtGui.QWidget.__init__(self, parent=parent)
+        self.option = option
         runtime_str = self.option.runtime_str
         if runtime_str is None:
             runtime_str = ""
-        self.runtime_le = QtGui.QLineEdit(runtime_str, parent=self)
-        self.runtime_le.editingFinished.connect(self.on_eval)
-        layout.addWidget(self.runtime_le, rstr_row, le_col, 1, 1)
-        self.eval_btn = QtGui.QPushButton("eval")
-        self.eval_btn.clicked.connect(self.on_eval)
-        layout.addWidget(self.eval_btn, rstr_row, btn_col, 1, 1)
+        self.le = QtGui.QLineEdit(runtime_str)
+        self.le.editingFinished.connect(self.set_option_value)
         
-        #value repr widget line
-        value_repr = self.get_value_repr()
-        self.value_le = QtGui.QLabel(value_repr, parent=self)
-        layout.addWidget(self.value_le, val_row, le_col, 1, 1)
+        layout = QtGui.QHBoxLayout()
+        layout.addWidget(self.le)
+        self.setLayout(layout)
+    
+    def set_option_value(self):
+        self.option.set_runtime_str(self.le.text())
+
+
+class StringRepresentation(QtGui.QWidget):
+    
+    def __init__(self, option, parent=None):
+        QtGui.QWidget.__init__(self, parent=parent)
+        self.option = option
+        self.label = QtGui.QLabel("", parent=self)
+        
+        layout = QtGui.QHBoxLayout()
+        layout.addWidget(self.label)
+        self.setLayout(layout)
+        self.update_representation()
+    
+    def update_representation(self):
+        try:
+            val = self.option.value
+            repr_str = repr(val)
+        except OptionSpecificationError as ose:
+            repr_str = "Specification Invalid"
+        self.label.setText(repr_str)
+
+
+# define default widget for a given key?
+class OptionValueSpecifierWidget(QtGui.QWidget):
+    _label_row = 0
+    _label_col = 0
+    _editor_row = _label_row + 1
+    _editor_col = 0
+    _editor_row_span = 2
+    _editor_col_span = 2
+    _repr_row = _editor_row + _editor_row_span
+    _repr_col = 0
+    _repr_row_span = 2
+    _repr_col_span = 2
+    _set_btn_row = _editor_row
+    _set_btn_col = _editor_col + _editor_col_span
+    _set_btn_row_span = 1
+    _set_btn_col_span = 1
+    _fetch_btns_row = _repr_row
+    _fetch_btns_col = _repr_col + _repr_col_span
+    _fetch_btns_row_span = 1
+    _fetch_btns_col_span = 1
+    
+    def __init__(self,option,parent=None):
+        QtGui.QWidget.__init__(self,parent=parent)
+        self.option = option  
+        self.initUI()
+    
+    def _make_label(self):
+        return QtGui.QLabel(self.option.name, parent=self)
+    
+    def _make_editor(self):
+        return LineEditor(self.option, parent=self)
+    
+    def _make_representer(self):
+        return StringRepresentation(self.option, parent=self)
+    
+    def _make_set_btn(self):
+        return QtGui.QPushButton("Set")
+    
+    def _make_fetch_btns(self):
+        return QtGui.QPushButton("WDS")
+    
+    def label_rect(self):
+        return (self._label_row, self._label_col, 1, 1)
+    
+    def editor_rect(self):
+        return (self._editor_row, self._editor_col, self._editor_row_span, self._editor_col_span)
+    
+    def representer_rect(self):
+        return (self._repr_row, self._repr_col, self._repr_row_span, self._repr_col_span)
+    
+    def set_btn_rect(self):
+        return (self._set_btn_row, self._set_btn_col, self._set_btn_row_span, self._set_btn_col_span)
+    
+    def fetch_btns_rect(self):
+        return (self._fetch_btns_row, self._fetch_btns_col, self._fetch_btns_row_span, self._fetch_btns_col_span)
+    
+    def initUI (self):
+        layout = QtGui.QGridLayout()
+        
+        label = self._make_label()
+        layout.addWidget(label, *self.label_rect())
+        
+        self.op_editor = self._make_editor()
+        layout.addWidget(self.op_editor, *self.editor_rect())
+        
+        self.op_representer = self._make_representer()
+        layout.addWidget(self.op_representer, *self.representer_rect())
+        
+        self.fetch_btns = self._make_fetch_btns()
+        layout.addWidget(self.fetch_btns, *self.fetch_btns_rect())
+        
+        self.set_btn = self._make_set_btn()
+        layout.addWidget(self.set_btn, *self.set_btn_rect())
+        self.set_btn.clicked.connect(self.on_set)
         
         self.setLayout(layout)
+    
+    def keyPressEvent(self, event):
+        ekey = event.key()
+        if (ekey == Qt.Key_Enter) or (ekey == Qt.Key_Return):
+            return
+        super(OptionValueSpecifierWidget, self).keyPressEvent(event)
     
     def get_value_repr(self):
         try:
@@ -67,22 +153,31 @@ class OptionValueSpecifierWidget(QtGui.QWidget):
         value_repr = repr(val)
         return value_repr
     
-    def on_eval(self):
-        print("running on_eval")
+    def on_set(self):
+        print("running on_set")
         try:
-            runtime_str = self.runtime_le.text()
-            self.option.set_runtime_str(runtime_str)
-            value_repr = self.get_value_repr()
-            self.value_le.setText(value_repr)
+            self.op_editor.set_option_value()
+            self.op_representer.update_representation()
         except Exception as e:
             print(e)
             pass #TODO: give feedback to the user somehow
+
+
+def ExistingFileOptionWidget(OptionValueSpecifierWidget):
+    
+    def __init__(self, option, parent=None):
+        QtGui.QWidget.__init__(self, parent=parent)
+        self.option = option
+        self.initUI()
+        
+    
 
 def task_runner_factory(task, parent=None):
     def setup_and_run_task():
         rtd = RunTaskDialog(task, parent=parent)
         rtd.exec_()
-        time.sleep(0.01)
+        if parent is None:
+            time.sleep(0.01)
     return setup_and_run_task
 
 class RunTaskDialog(QtGui.QDialog):

@@ -224,10 +224,11 @@ class RunTaskDialog(QtGui.QDialog):
         
         child_options = self.task.children
         opt_list = child_options.values()
+        n_opt = len(child_options)
         for opt_idx, option in enumerate(opt_list):
             #print("in option iter", option)
             opt_wid = OptionValueSpecifierWidget(option, parent=self)
-            self.scroll_layout.addWidget(opt_wid, opt_idx, 0)
+            self.scroll_layout.addWidget(opt_wid, n_opt-opt_idx, 0)
         
         self.scroll.setWidget(self.scroll_box)
         #TODO: figure out what the hell is the problem with adding the scroll widget

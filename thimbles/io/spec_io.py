@@ -451,8 +451,8 @@ pass
 # ############################################################################# #
 @task(
     sub_kwargs=dict(
-    fname={"option_style":"existing_file"},
-    file_type={"option_style":"raw_string"},
+        fname=dict(option_style="existing_file", editor_style="file"),
+        file_type={"option_style":"raw_string"},
 ))
 def read_spec(fname, file_type="detect", extra_kwargs=None):
     """

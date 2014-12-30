@@ -126,6 +126,7 @@ class Option(object):
                  help_="",
                  use_cached=True, 
                  option_tree=opts,
+                 editor_style=None,
                  **kwargs):
         """an option which can be variously specified either by a default value
         in the code, set using the value of a environment variable, evaluated
@@ -136,6 +137,7 @@ class Option(object):
         self.name = name
         self.on_parse = on_parse
         self.option_style = option_style
+        self.editor_style = editor_style
         opt_style_poss = "parent_dict flag raw_string existing_file new_file".split()
         if not option_style is None:
             if not option_style in opt_style_poss:

@@ -7,8 +7,6 @@ DATE: Mon Aug 25 14:44:30 2014
 """
 # ########################################################################### #
 
-# import modules 
-
 from __future__ import print_function, division
 import os 
 import sys 
@@ -22,7 +20,36 @@ from PySide.QtCore import Qt
 from thimbles.options import OptionSpecificationError
 import thimbles.workingdataspace as wds
 
-class LineEditor(QtGui.QWidget):
+class FilePathOptionEditor(QtGui.QWidget):
+    
+    def __init__(self, option, parent=None):
+        QtGui.QWidget.__init__(self, parent=parent)
+        self.option = option
+        
+        layout = QtGui.QHBoxLayout()
+        self.setLayout(layout)
+        try:
+            start_fname = self.option.value
+        except:
+            start_fname = ""
+        self.file_line_edit = QtGui.QLineEdit(start_fname, parent=self)
+        layout.addWidget(self.file_line_edit)
+        
+        self.browse_btn = QtGui.QPushButton("browse", parent=self)
+        layout.addWidget(self.browse_btn)
+        
+        self.browse_btn.clicked.connect(self.on_browse)
+    
+    def on_browse(self):
+        fname, filters = QtGui.QFileDialog.getOpenFileName(self, "select file")
+        if fname:
+            self.file_line_edit.setText(fname)
+        self.set_option_value()
+    
+    def set_option_value(self):
+        self.option.set_runtime_str(self.file_line_edit.text())
+
+class LineOptionEditor(QtGui.QWidget):
     
     def __init__(self, option, parent=None):
         QtGui.QWidget.__init__(self, parent=parent)
@@ -92,7 +119,10 @@ class OptionValueSpecifierWidget(QtGui.QWidget):
         return QtGui.QLabel(self.option.name, parent=self)
     
     def _make_editor(self):
-        return LineEditor(self.option, parent=self)
+        if self.option.editor_style == "file":
+            return FilePathOptionEditor(self.option, parent=self)
+        else:
+            return LineOptionEditor(self.option, parent=self)
     
     def _make_representer(self):
         return StringRepresentation(self.option, parent=self)
@@ -163,15 +193,6 @@ class OptionValueSpecifierWidget(QtGui.QWidget):
             pass #TODO: give feedback to the user somehow
 
 
-def ExistingFileOptionWidget(OptionValueSpecifierWidget):
-    
-    def __init__(self, option, parent=None):
-        QtGui.QWidget.__init__(self, parent=parent)
-        self.option = option
-        self.initUI()
-        
-    
-
 def task_runner_factory(task, parent=None):
     def setup_and_run_task():
         rtd = RunTaskDialog(task, parent=parent)
@@ -204,7 +225,7 @@ class RunTaskDialog(QtGui.QDialog):
         child_options = self.task.children
         opt_list = child_options.values()
         for opt_idx, option in enumerate(opt_list):
-            print("in option iter", option)
+            #print("in option iter", option)
             opt_wid = OptionValueSpecifierWidget(option, parent=self)
             self.scroll_layout.addWidget(opt_wid, opt_idx, 0)
         

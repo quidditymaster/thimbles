@@ -9,8 +9,9 @@ import cPickle
 # 3rd party packages
 import matplotlib
 matplotlib.use('Qt4Agg')
-from PySide.QtCore import *
-from PySide.QtGui import *
+from PySide import QtCore
+Qt = QtCore.Qt
+from PySide import QtGui
 matplotlib.rcParams['backend.qt4'] = 'PySide'
 import matplotlib.pyplot as plt
 import numpy as np
@@ -32,33 +33,39 @@ _resources_dir = os.path.join(os.path.dirname(__file__),"resources")
 
 # ########################################################################### #
 
-class AppForm(QMainWindow):
+class AppForm(QtGui.QMainWindow):
     
     def __init__(self):
         super(AppForm, self).__init__()
         self.setWindowTitle("Thimbles")
-        self.main_frame = QWidget()
-        self.layout = QGridLayout()
-        self.main_frame.setLayout(self.layout)
-        self.setCentralWidget(self.main_frame)
+        #self.main_frame = QtGui.QWidget()
+        
+        self.splitter = QtGui.QSplitter(Qt.Horizontal)
+        layout = QtGui.QGridLayout()
+        self.setCentralWidget(self.splitter)
+        #self.main_frame.setLayout(layout)
+        #self.setCentralWidget(self.main_frame)
         
         #make working data space view 
         self.wds_widget = ObjectTreeWidget(wds, parent=self)
-        self.layout.addWidget(self.wds_widget, 0, 1, 1, 1)
+        self.splitter.addWidget(self.wds_widget)
+        #layout.addWidget(self.wds_widget, 0, 1, 1, 1)
         
         #make the tasks launching buttons widget
-        self.tasks_box = QGroupBox("Tasks Launcher")
-        self.tasks_layout = QVBoxLayout()
+        self.tasks_box = QtGui.QGroupBox("Tasks Launcher")
+        self.tasks_layout = QtGui.QVBoxLayout()
         self.tasks_box.setLayout(self.tasks_layout)
-        self.task_scroll = QScrollArea(parent=self)
+        self.task_scroll = QtGui.QScrollArea(parent=self)
         task_buttons = []
         for cur_task in task_registry.registry.values():
-            cbutton = QPushButton(cur_task.name)
+            cbutton = QtGui.QPushButton(cur_task.name)
             self.tasks_layout.addWidget(cbutton)
-            task_runner_func = task_runner_factory(cur_task)
+            task_runner_func = task_runner_factory(cur_task, parent=self)
             cbutton.clicked.connect(task_runner_func)
         self.task_scroll.setWidget(self.tasks_box)
-        self.layout.addWidget(self.task_scroll, 0, 2, 1, 1)
+        
+        self.splitter.addWidget(self.task_scroll)
+        #self.layout.addWidget(self.task_scroll, 0, 2, 1, 1)
         #op_gb = self._init_operations_groups()
         #self.layout.addWidget(op_gb)
         

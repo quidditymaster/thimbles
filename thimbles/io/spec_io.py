@@ -450,6 +450,7 @@ def detect_spectrum_file_type(fname):
 pass
 # ############################################################################# #
 @task(
+    result_name="spec_list",
     sub_kwargs=dict(
         fname=dict(option_style="existing_file", editor_style="file"),
         file_type={"option_style":"raw_string"},
@@ -466,8 +467,8 @@ def read_spec(fname, file_type="detect", extra_kwargs=None):
       "ascii"     read a file with ascii columns for wavelength and flux
       "file_list" file is actually a list of files to read in.
     extra_kwargs: dictionary
-      a dictionary to unpack into the readin function that gets called on
-      the basis of the file_type.
+      a dictionary to unpack into the readin function as keyword arguments
+      that gets called on the basis of the file_type.
     """
     if extra_kwargs is None:
         extra_kwargs = {}

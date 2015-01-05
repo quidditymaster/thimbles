@@ -277,7 +277,9 @@ class TreeNode(object):
             for key in self._obj:
                 self._children.append(TreeNode(str(key), self._obj[key], self, self.max_depth, self.depth+1))
         elif isinstance(self._obj, list):
-            for key in range(len(self._obj)):
+            #TODO: make a ... child for long lists
+            list_max_n = min(100, len(self._obj))
+            for key in range(list_max_n):
                 self._children.append(TreeNode(str(key), self._obj[key], self, self.max_depth, self.depth+1))
     
     def __repr__(self):

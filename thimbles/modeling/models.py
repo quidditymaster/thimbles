@@ -9,33 +9,33 @@ from thimbles.sqlaimports import *
 from thimbles.thimblesdb import ThimblesTable, Base
 from thimbles.modeling import ParameterGroup, Parameter
 
+mp_assoc = sa.Table(
+    "mp_assoc", 
+    Base.metadata,
+    Column("model_id", Integer, ForeignKey("Model._id")),
+    Column("parameter_id", Integer, ForeignKey("Parameter._id")),
+)
+
 class Model(ParameterGroup, ThimblesTable, Base):
-    model_type = Column(String)
+    model_class = Column(String)
     __mapper_args__={
-        "polymorphic_identity": "model",
-        "polymorphic_on": model_type
+        "polymorphic_identity": "Model",
+        "polymorphic_on": model_class
     }
-    parameters = relationship("Parameter", backref="model")
+    parameters = relationship("Parameter", secondary=mp_assoc, backref="models")
+    _output_parameter_id = Column(Integer, ForeignKey("Parameter._id"))
+    output_p = relationship("Parameter", backref="mapped_models", foreign_keys=_output_parameter_id)
+    
+    #class attributes
+    _derivative_helpers = {} #maps a Parameter subclass as a key to a method of this model that calculates the derivative matrix
     
     def __init__(self):
-        if len(self.parameters) == 0:
-            self.attach_parameters()
-        ThimblesTable.__init__(self)
+        #if len(self.parameters) == 0:
+        #    self.attach_parameters()
+        ThimblesTable.__init__(self) 
     
-    def attach_parameters(self):
-        self.parameters = []
-        for attrib in dir(self):
-            try:
-                val = getattr(self, attrib)
-            except Exception:
-                continue
-            if isinstance(val, ParameterFactory):
-                new_param = val.make_parameter()
-                new_param.set_model(self)
-                if new_param.name is None:
-                    new_param.name = attrib
-                new_param.validate()
-                setattr(self, attrib, new_param)
+    def __call__(self, *args, **kwargs):
+        raise NotImplementedError("Abstract Class")
     
     def parameter_expansion(self, input_vec, **kwargs):
         parameters = self.free_parameters

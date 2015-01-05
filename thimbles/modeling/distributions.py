@@ -10,16 +10,16 @@ from thimbles.thimblesdb import ThimblesTable, Base
 from thimbles.modeling import ParameterGroup
 
 dist_assoc = sa.Table("distribution_assoc", Base.metadata,
-    Column("distribution_id", Integer, ForeignKey("ParameterDistribution._id")),
+    Column("distribution_id", Integer, ForeignKey("Distribution._id")),
     Column("parameter_id", Integer, ForeignKey("Parameter._id")),
 )
 
-class ParameterDistribution(ParameterGroup, ThimblesTable, Base):
+class Distribution(ParameterGroup, ThimblesTable, Base):
     relationship("Parameters", secondary=dist_assoc)
-    distribution_type = Column(String)
+    distribution_class = Column(String)
     __mapper_args__={
-        "polymorphic_identity":"ParameterDistribution",
-        "polymorphic_on":distribution_type
+        "polymorphic_identity":"Distribution",
+        "polymorphic_on":distribution_class
     }
     
     def log_likelihood(self, value):
@@ -31,6 +31,21 @@ class ParameterDistribution(ParameterGroup, ThimblesTable, Base):
     def realize(self):
         raise NotImplementedError("Abstract Class")
 
+
+class NormalDistribution(Distribution):
+    _id = Column(Integer, ForeignKey("Distribution._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"NormalDistribution",
+    }
+    mean = Column(PickleType)
+    ivar = Column(PickleType)
+    
+    def __init__(self, mean, ivar, parameters=None):
+        if parameters is None:
+            parameters = []
+        self.parameters=parameters
+        self.mean = np.asarray(mean)
+        self.ivar = np.asarray(ivar)
 
 class SumOfGaussians:#(ParameterDistribution):
     _relative_probs = Column(PickleType) #(n_gauss,) numpy array

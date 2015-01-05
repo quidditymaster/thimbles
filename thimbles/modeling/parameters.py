@@ -16,16 +16,16 @@ def flat_size(shape_tup):
 
 class ParameterGroup(object):
     
-    def __init__(self, parameters):
-        self._parameters = parameters
-    
-    @property
-    def parameters(self):
-        return self._parameters
+    #def __init__(self, parameters):
+    #    self._parameters = parameters
+    #
+    #@property
+    #def parameters(self):
+    #    return self._parameters
     
     @property
     def free_parameters(self):
-        return [param for param in self.parameters if param.is_free]
+        return [param for param in self.parameters if param.free]
     
     def parameter_index(self, parameter):
         return self.parameters.index(parameter)
@@ -110,8 +110,11 @@ class ParameterGroup(object):
                 setattr(p, attr, val_dict[p])
 
 
+class FixedParameterException(Exception):
+    pass
+
 class Parameter(ThimblesTable, Base):
-    _value = Column(Float) #a handle for storing and loading our model values
+    #_value = Column(Float) #a handle for storing and loading our model values
     model_id = Column(Integer, ForeignKey("Model._id"))
     
     parameter_type = Column(String)
@@ -120,37 +123,55 @@ class Parameter(ThimblesTable, Base):
         "polymorphic_on": parameter_type
     }
     
+    free = Column(Boolean)
+    propagate = Column(Boolean)
+    
+    #class attributes
+    name = "base parameter class"
+    scale = 1.0
+    #step_scale = 1.0
+    #derivative_scale = 1e-4
+    #convergence_scale = 1e-2
+    min=-np.inf
+    max=np.inf
+    
     def __init__(self, 
-                 getter,
-                 setter,
-                 expander=None,
                  free = False,
-                 name = None,
-                 scale= 1.0,
-                 step_scale=1.0,
-                 derivative_scale=1e-4,
-                 convergence_scale=1e-2,
-                 min=-np.inf, 
-                 max=np.inf, 
-                 history_max=10,
+                 propagate=True,
                  ):
-        self._getter=getter
-        self._setter=setter
-        self._expander=expander
-        self.model=None
-        self.name = name
-        self.scale=scale
-        self.step_scale = step_scale
-        self.derivative_scale=derivative_scale
-        self.convergence_scale = convergence_scale
-        self.min = min
-        self.max = max
-        self._free=free
-        self._dist=None
-        #self._parameterizer = None
-        #self._contextualizer = None
-        
-        self.history = ValueHistory(self, history_max)   
+        self.free = free
+        self.propagate=propagate
+        #self.history = ValueHistory(self, history_max)   
+    
+    @property
+    def value(self):
+        return self._value
+    
+    @value.setter
+    def value(self, value):
+        self.set(value, clip=True, propagate=self.propagate)
+    
+    def get(self):
+        return self.value
+    
+    def set(self, value, clip=True, propagate=None):
+        if not self.free:
+            raise FixedParameterException("attempted to set the value of a non-free parameter")
+        if clip:
+            value = np.clip(value, self.min, self.max)
+        self._value = value
+        mod_set = set()
+        if propagate is None:
+            propagate = self.propagate
+        if propagate:
+            mods = []
+            mods.extend(self.models)
+            while len(mods) > 0:
+                mod = mods.pop(0)
+                mod_set.add(mod)
+                val = mod()
+                mod.output_p.value = val
+                mods.extend([nmod for nmod in mod.output_p.models if nmod not in mod_set])
     
     def __repr__(self):
         val = None
@@ -161,64 +182,20 @@ class Parameter(ThimblesTable, Base):
         return "Parameter: name={}, value={}".format(self.name, val)
     
     @property
-    def dist(self):
-        return self._dist
-    
-    @dist.setter
-    def dist(self, value):
-        if isinstance(value, ParameterDistribution):
-            self._dist=value
-            self._dist.set_parameter(self)
-        else:
-            asndarr = np.asarray(value, dtype=float)
-            if asndarr.shape == tuple():
-                asndarr=np.ones(self.value().shape)*asndarr
-            self._dist = NormalDeltaDistribution(asndarr, parameter=self)
-    
-    @property
     def shape(self):
         return np.asarray(self.get()).shape
-    
-    @property
-    def is_free(self):
-        return self._free
     
     def remember(self, value_id=None):
         self.history.remember(value_id=value_id)
     
     def revert(self, value_id, pop=False):
         self.history.revert(value_id=value_id, pop=pop)
-        
-    def set_model(self, model):
-        self.model = model
-    
-    def set(self, value, **kwargs):
-        min_respected = np.atleast_1d(value) >= self.min
-        max_respected = np.atleast_1d(value) <= self.max
-        self._setter(self.model, np.clip(value, self.min, self.max), **kwargs) 
-        if np.all(min_respected*max_respected):
-            return True
-        else:
-            return False
-    
-    def expand(self, input_vec, **kwargs):
-        return self._expander(self.model, input_vec, **kwargs)
-    
-    def get(self):
-        return self._getter(self.model)
-    
-    def validate(self):
-        if self.model is None:
-            raise ModelingError("parameter.model is None")
-        if self._setter is None:
-            raise ModelingError("parameter has no setter")
-    
-    def weight(self, offset=None):
-        return self.dist.weight(offset)
 
-class VectorParameter(Parameter):
-    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
-    _value = Column(String)
-    __mapper_args__={
-        "polymorphic_identity": "vectorparameter"
-    }
+
+#class ParameterPrototype(Parameter):
+#    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
+#    _value = Column(Float)
+#    __mapper_args__={
+#        "polymorphic_identity": "Parameter"
+#    }
+

@@ -26,6 +26,7 @@ except ImportError:
 
 # Internal
 import thimbles
+import thimbles as tmb
 from thimbles.spectrum import as_wavelength_solution
 from thimbles import hydrogen
 from thimbles import resampling
@@ -431,7 +432,7 @@ def detect_features(values,
     min_stats: MinimaStatistics 
         if the minima statistics have already been calculated you can pass it in
         and it will not be recalculated.
-
+    
     returns:
     a tuple of 
     left_idxs, min_idxs, right_idxs, feature_mask
@@ -461,38 +462,63 @@ def detect_features(values,
         feature_mask[max(0, left_idx+mask_back_off):right_idx-mask_back_off+1] = False 
     return msres, feature_mask
 
-@task()
-def smoothed_mad_error(spectrum, 
+
+def smoothed_mad_error(values, 
                        smoothing_scale=3.0, 
-                       error_scale = 200,
+                       median_scale = 200,
                        apply_poisson=True, 
-                       overwrite_error=False):
-    cinv_var = spectrum.ivar
-    good_mask = (cinv_var > 0)*(spectrum.flux > 0)
-    #detect and reject perfectly flat regions
-    flux_der = scipy.gradient(spectrum.flux)
-    flux_sec_der = scipy.gradient(flux_der)
-    good_mask *= np.abs(flux_sec_der) > 0
-    #smfl ,= wavelet_transform(spectrum.flux, [smoothing_scale], inv_mask)
-    smfl = filters.gaussian_filter(spectrum.flux, smoothing_scale)
+                       post_smooth=5.0,
+                       max_snr=1000.0,
+    ):
+    """estimate the noise characteristics of an input data vector under the assumption
+    that the underlying "true" value is slowly varying and the high frequency fluctuations
+    are representative of the level of the noise.
+    """
+    good_mask = np.ones(len(values), dtype=bool)
+    if isinstance(values, tmb.Spectrum):
+        if not values.ivar is None:
+            good_mask *= values.ivar > 0
+        good_mask *= values.flux > 0
+        values = values.flux
+    
+    #detect and reject perfectly flat regions and 2 pixels outside them
+    der = scipy.gradient(values)
+    sec_der = scipy.gradient(der)
+    good_mask *= filters.uniform_filter(np.abs(sec_der) > 0, 3) > 0
+    
+    #smooth the flux accross the accepted fluxes
+    smfl = values.copy()
+    smfl[good_mask] = filters.gaussian_filter(values[good_mask], smoothing_scale)
+    diffs = values - smfl
+    
+    #use the running median change to protect ourselves from outliers
+    mad = filters.median_filter(np.abs(diffs), median_scale)
     eff_width = 2.0*smoothing_scale #effective filter width
     #need to correct for loss of variance from the averaging
     correction_factor = eff_width/max(1, (eff_width-1))
-    diffs = (spectrum.flux - smfl)
-    #use the running median change to protect ourselves from outliers
-    mad = filters.median_filter(np.abs(diffs), error_scale)
-    char_sigma = correction_factor*1.48*mad
+    char_sigma = correction_factor*1.48*mad #the characteristic noise level
+    #smooth the running median filter so we don't have wildly changing noise levels
+    char_sigma = filters.gaussian_filter(char_sigma, post_smooth)
     if apply_poisson:
-        var = (smfl/np.median(smfl[good_mask])*char_sigma)**2
+        #scale the noise at each point to be proportional to its value
+        var = (smfl/np.median(smfl[good_mask]))*char_sigma**2
     else:
         var = char_sigma**2
     #put an upper limit on detected snr
-    var += spectrum.flux*1e-3
+    var += np.clip(var, 0.0, (values*max_snr)**2)
     new_inv_var = np.where(good_mask, 1.0/var, 0.0)
     new_inv_var = clean_inverse_variances(new_inv_var)
-    if overwrite_error:
-        spectrum.ivar = new_inv_var
     return new_inv_var
+
+@task()
+def estimate_noise(spectrum, 
+                   smoothing_scale=3.0,
+                   median_scale=200,
+                   apply_poisson=True,
+                   post_smooth=5.0,
+                   max_snr=1000.0,
+):
+    smoothed_mad_error
 
 @task()
 def min_delta_bins(x, min_delta, target_n=1, forced_breaks=None):
@@ -1067,38 +1093,8 @@ def vac_to_air_apogee(vac_wvs, a=0.0, b1=5.792105e-2, b2=1.67917e-3, c1=238.0185
     return vac_wvs/refractive_index
 
 
-def load_star_fits(fname):
-    hdul = fits.open(fname)
-    wvs = np.asarray(hdul[1].data)
-    flux = np.asarray(hdul[2].data)
-    inv_var = np.asarray(hdul[3].data)
-    #TODO: add proper handling of resolution on readin
-    spec = thimbles.Spectrum(wvs, flux, inv_var)
-    return spec
-    
-def write_star_fits(star ,fname):
-    #make the HDU's
-    if star.coadd == None:
-        print "there is no coadd, cannot write out"
-        return
-    wvs = star.coadd.get_wvs()
-    wv_hdr = fits.Header()
-    wv_hdu = fits.ImageHDU(wvs, name="wavelengths")
-    flux = star.coadd.flux
-    flux_hdu = fits.ImageHDU(flux, name="flux")
-    inv_var = star.coadd.get_inv_var()
-    inv_var_hdu = fits.ImageHDU(inv_var, name="inverse variance")
-    resolution = np.ones(len(wvs))
-    res_hdr = fits.Header()
-    res_hdr["dip_type"] = "gaussian"
-    res_hdu = fits.ImageHDU(resolution, header=res_hdr, name="resolution")
-    phdu = fits.PrimaryHDU()
-    hdul = fits.HDUList([phdu, wv_hdu, flux_hdu, inv_var_hdu, res_hdu])
-    hdul.writeto(fname)
-
 hcoverk = 1.4387751297851e8
 blconst = 1.191074728e24
-
 def blam(wavelength, temperature):
     """blackbody intensity for wavelengths in angstroms note this does not
     take into account the sampling derivative"""

@@ -4,4 +4,4 @@
 
 from thimbles.modeling.parameters import Parameter, ParameterGroup
 from thimbles.modeling.models import Model
-from thimbles.modeling.distributions import ParameterDistribution
+from thimbles.modeling.distributions import Distribution

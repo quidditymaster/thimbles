@@ -1,4 +1,4 @@
-from thimbles.abundances import AbundanceVector
+#from thimbles.abundances import Abundance
 from thimbles.stellar_parameters import StellarParameters
 import os
 import shutil

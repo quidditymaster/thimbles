@@ -144,20 +144,22 @@ class FluxParameter(Parameter):
         self.free=free
         self.propagate=propagate
 
+
 class Spectrum(ThimblesTable, Base):
     """A representation of a collection of relative flux measurements
     """
-    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     _flux_p_id = Column(Integer, ForeignKey("FluxParameter._id"))
     flux_p = relationship("FluxParameter")
     _obs_prior_id = Column(Integer, ForeignKey("Distribution._id"))
     _obs_prior = relationship("Distribution")
+    info = Column(PickleType)
     
     def __init__(self,
                  wavelengths, 
                  flux, 
                  ivar=None,
-                 flags=None
+                 flags=None,
+                 info=None,
              ):
         """makes a spectrum
         wavelengths: ndarray or WavelengthSolution
@@ -184,15 +186,15 @@ class Spectrum(ThimblesTable, Base):
         #treat the observed flux as a piror on the flux parameter values
         self._obs_prior = NormalDistribution(flux, ivar)
         
-        #Model.__init__(self)
-        
-        #TODO:allow for a spectrum context which includes the header.
-        
         if flags is None:
             flags = SpectrumFlags()
         else:
             flags = SpectrumFlags(int(flags))
         self.flags = flags
+        
+        if info is None:
+            info = {}
+        self.info = info
     
     @property
     def wv_soln(self):

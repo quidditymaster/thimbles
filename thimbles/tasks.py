@@ -26,19 +26,7 @@ from thimbles.options import Option, opts, EvalError
 
 # ########################################################################### #
 
-class TaskRegister(object):
-    
-    def __init__(self):
-        self.registry = {}
-    
-    def register_task(self, task):
-        self.registry[task.name] = task
-    
-    def __getitem__(self, index):
-        return self.registry[index]
-
-task_registry = TaskRegister()
-
+task_registry = {}
 def task(name=None, result_name="return_value", option_tree=opts, registry=task_registry, sub_kwargs=None):
     new_task = Task(name=name, result_name=result_name, option_tree=option_tree, registry=registry, sub_kwargs=sub_kwargs)
     return new_task.set_func
@@ -86,7 +74,7 @@ class Task(Option):
                 self.name = self.func.__name__
             super(Task, self).__init__(self.name, default=func)
             self._generate_child_options()
-            self.registry.register_task(self)
+            self.registry[self.name] = self
         return func
     
     def _generate_child_options(self):

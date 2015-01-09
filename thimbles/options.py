@@ -1,8 +1,10 @@
 import sys
+import os
+from collections import OrderedDict
+from copy import copy
+
 from thimbles import thimbles_header_str
 from thimbles import workingdataspace as wds
-import os
-from copy import copy
 
 class OptionSpecificationError(Exception):
     pass
@@ -19,8 +21,8 @@ class OptionTree(object):
     def __init__(self, config_file=config_file):
         self.option_path = ""
         self.config_file=config_file
-        self.children = {}
-        self.options = {}
+        self.children = OrderedDict()
+        self.options = OrderedDict()
     
     def __getattr__(self, opt_name):
         return self.children[opt_name]
@@ -133,7 +135,7 @@ class Option(object):
         dynamically at runtime using a string read from a config file or 
         specified on the command line
         """
-        self.children = {}
+        self.children = OrderedDict()
         self.name = name
         self.on_parse = on_parse
         self.option_style = option_style

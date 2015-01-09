@@ -57,7 +57,7 @@ class AppForm(QtGui.QMainWindow):
         self.tasks_box.setLayout(self.tasks_layout)
         self.task_scroll = QtGui.QScrollArea(parent=self)
         task_buttons = []
-        for cur_task in task_registry.registry.values():
+        for cur_task in task_registry.values():
             cbutton = QtGui.QPushButton(cur_task.name)
             self.tasks_layout.addWidget(cbutton)
             task_runner_func = task_runner_factory(cur_task, parent=self)

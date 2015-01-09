@@ -172,6 +172,7 @@ class OptionValueSpecifierWidget(QtGui.QWidget):
     def keyPressEvent(self, event):
         ekey = event.key()
         if (ekey == Qt.Key_Enter) or (ekey == Qt.Key_Return):
+            self.on_set()
             return
         super(OptionValueSpecifierWidget, self).keyPressEvent(event)
     
@@ -228,7 +229,7 @@ class RunTaskDialog(QtGui.QDialog):
         for opt_idx, option in enumerate(opt_list):
             #print("in option iter", option)
             opt_wid = OptionValueSpecifierWidget(option, parent=self)
-            self.scroll_layout.addWidget(opt_wid, n_opt-opt_idx, 0)
+            self.scroll_layout.addWidget(opt_wid, opt_idx, 0)
         
         self.scroll.setWidget(self.scroll_box)
         #TODO: figure out what the hell is the problem with adding the scroll widget

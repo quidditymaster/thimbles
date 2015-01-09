@@ -7,7 +7,6 @@ from thimbles import ptable
 from thimbles.linelists import LineList
 import pandas as pd
 
-
 def float_or_nan(val):
     try:
         return float(val)
@@ -69,7 +68,7 @@ def write_moog_linelist(fname, linelist, comment=None):
 
 
 def read_moog_ewfind_summary(fname):
-    pass #TODO:
+    raise NotImplementedError("TODO:")
 
 def read_moog_abfind_summary(fname):
     header = {'info':None,
@@ -134,7 +133,7 @@ def read_moog_abfind_summary(fname):
     import pdb; pdb.set_trace()
     for cspecies in linedata.keys():
         species_parts = cspecies.split()
-        species_pnum = ptable[species_parts[0]]["z"]
+        species_pnum = atomic_number[species_parts[0]]
         species_id = int(species_pnum) + 0.1*(len(species_parts[1])-1)
         for lidx in range(len(linedata[cspecies])):
             ldm = linedata[cspecies][lidx]

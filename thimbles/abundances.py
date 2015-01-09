@@ -116,4 +116,3 @@ class Abundance(Parameter):
     def species(self):
         return self.ion.species
 
-#solar_abundances = AbundanceVector(ptable.logeps)

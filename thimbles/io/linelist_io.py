@@ -8,8 +8,7 @@ from thimbles.linelists import LineList
 from thimbles.io.moog_io import read_moog_linelist
 from thimbles.io.moog_io import write_moog_linelist
 from thimbles.transitions import Transition
-
-from thimbles.stellar_atmospheres import solar_abundance as ptable
+from thimbles import ptable, atomic_number
 
 def float_or_nan(val):
     try:
@@ -30,7 +29,7 @@ def read_vald_linelist(fname):
         spl = line.rstrip().split(",")
         species_name, ion_number = spl[0].replace("'", "").split()
         charge = int(ion_number) - 1
-        proton_number = ptable[species_name]["z"]
+        proton_number = atomic_number[species_name]
         wv, loggf, elow, jlo, eup, jup = map(float, spl[1:7])
         l_lande, u_lande, m_lande = map(float_or_nan, spl[8:11])
         rad_damp, stark_damp, waals_damp = map(float_or_nan, spl[12:15])

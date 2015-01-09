@@ -7,7 +7,7 @@ import scipy
 import scipy.integrate as integrate
 import scipy.sparse
 from flags import FeatureFlags
-from thimbles.stellar_atmospheres import solar_abundance as ptable
+from thimbles import ptable
 from thimbles.profiles import voigt
 from thimbles import resource_dir
 from thimbles.modeling import Model
@@ -286,7 +286,7 @@ class SaturatedVoigtFeatureModel(Model):
             else:
                 species_dat = self.fdat.ix[species_ixs]
                 cspecies_pnum = species_dat["Z"].iloc[0]
-                cabund = ptable[cspecies_pnum]["abundance"]
+                cabund = ptable["abundance"].ix[(cspecies_pnum, 0)]
                 rel_strengths = cabund + species_dat["loggf"] - self.theta*species_dat["ep"]
                 strength_sorted_ixs = species_ixs[np.argsort(rel_strengths).values]
                 sorted_strengths = rel_strengths[strength_sorted_ixs]
@@ -603,7 +603,7 @@ class SaturatedVoigtFeatureModel(Model):
         self.theta = value
     
     def calc_solar_ab(self):
-        self.fdat["solar_ab"] = ptable[self.fdat.species.values]["abundance"]
+        self.fdat["solar_ab"] = ptable["abundance"].ix[(self.fdat.z, 0)]
     
     def calc_therm_widths(self):
         #TODO: use real atomic weight

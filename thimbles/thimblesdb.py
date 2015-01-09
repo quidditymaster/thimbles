@@ -16,20 +16,13 @@ class ThimblesTable(object):
     def __tablename__(cls):
         return cls.__name__
 
-
-class ModelingTemplate(ThimblesTable, Base):
-    template_class = Column(String)
-    __mapper_args__={
-        "polymorphic_identity":"ModelingTemplate",
-        "polymorphic_on":template_class
-    }
-
-
-template_registry = {}
-def register_template(template_name, template_class):
-    global template_registry
-    template_registry[template_name] = template_class
-
+#class ModelingTemplate(ThimblesTable, Base):
+#    pass
+#
+#template_registry = {}
+#def register_template(template_name, template_class):
+#    global template_registry
+#    template_registry[template_name] = template_class
 
 class ThimblesDB(object):
     """a wrapper for a database containing our data and our fit-models and parameters

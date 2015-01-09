@@ -16,6 +16,7 @@ def _load_lodders():
     return lod_abs
 
 def _load_isotopes():
+    atomic_number = {}
     isolines = open(os.path.join(resource_dir, "isotopes", "isotopic_weights.txt")).readlines()
     isolines = [line for line in isolines if (len(line) >  1) and (line[0] != "#")]
     weights = {}
@@ -27,7 +28,7 @@ def _load_isotopes():
     for line in isolines:
         try:
             cur_z = int(line[:2])
-            cur_symbol = line[4:6]
+            cur_symbol = line[4:6].strip()
         except ValueError:
             pass
         cur_mass_num = int(line[8:11])
@@ -45,14 +46,16 @@ def _load_isotopes():
             weights[(cur_z, 0)] = mstand
             fracs[(cur_z, 0)] = 1.0
             symbols[(cur_z, 0)] = cur_symbol
+            atomic_number[cur_symbol] = cur_z
         except ValueError:
             pass
-    return dict(symbol=symbols, weight=weights, fraction=fracs)
+    return dict(symbol=symbols, weight=weights, fraction=fracs, atomic_number=atomic_number)
 
 def _load_ptable():
     data_dict = _load_isotopes()
+    atomic_number = data_dict.pop("atomic_number")
     data_dict["abundance"] = _load_lodders()
-    return pd.DataFrame(data=data_dict)
+    return pd.DataFrame(data=data_dict), atomic_number
 
-ptable = _load_ptable()
+ptable, atomic_number = _load_ptable()
 #from thimbles.stellar_atmospheres import solar_abundance as ptable

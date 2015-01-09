@@ -24,7 +24,7 @@ resource_dir = os.path.join(os.path.dirname(__file__), "resources")
 from thimbles import dependencies
 from thimbles.verbosity import logger
 from thimbles import modeling
-from thimbles.ptable import ptable
+from thimbles.periodictable import ptable
 from thimbles import io
 from thimbles.io import *
 from thimbles import sources

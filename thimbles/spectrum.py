@@ -131,6 +131,9 @@ def as_wavelength_solution(wavelengths):
 
 class FluxParameter(Parameter):
     _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"FluxParameter"
+    }
     _value = Column(PickleType)
     _wv_soln_id = Column(Integer, ForeignKey("WavelengthSolution._id"))
     wv_soln = relationship("WavelengthSolution")

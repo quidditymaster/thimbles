@@ -9,7 +9,7 @@ class TeffParameter(Parameter):
         "polymorphic_identity":"TeffParameter",
     }
     _value = Column(Float)
-
+    
     def __init__(self, value):
         self._value = value
 
@@ -64,7 +64,7 @@ class StellarParameters(ThimblesTable, Base):
     vmicro_p = relationship("VmicroParameter", foreign_keys=_vmicro_id)
     _mass_id = Column(Integer, ForeignKey("MassParameter._id"))
     mass_p = relationship("MassParameter", foreign_keys=_mass_id)
-    abundances = relationship("Abundance")
+    #abundances = relationship("Abundance")
     
     def __init__(self, teff, logg, metalicity, vmicro=2.0, mass=1.0, abundances=None):
         if not isinstance(teff, TeffParameter):
@@ -139,6 +139,7 @@ class StellarParameters(ThimblesTable, Base):
 
 solar_abundances = []
 #TODO: fill in the solar abundance table
+
 solar_parameters = StellarParameters(teff=5777.0, 
                                      logg=4.44, 
                                      metalicity=0.0, 

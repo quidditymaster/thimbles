@@ -84,9 +84,9 @@ class HydrogenLineOpacity(tmb.profiles.LineProfile):
         interped_profile += alpha_profile[np.clip(min_indexes+1, 0, len(alpha_profile)-1)]*mixing_ratio
         return np.exp(interped_profile)
 
-class HydrogenForegroundOpacityModel(Spectrum):
-    _id = Column(Integer, ForeignKey("Spectrum._id"), primary_key=True)
-    __mapper_args__={"polymorphic_identity":"HydrogenForegroundOpacity"}
+class HydrogenForegroundOpacityModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__={"polymorphic_identity":"HydrogenForegroundOpacityModel"}
     
     def __init__(self, wvs, strength, temperature, electron_density):
         Model.__init__(self)

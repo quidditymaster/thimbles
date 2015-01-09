@@ -115,12 +115,10 @@ class FixedParameterException(Exception):
 
 class Parameter(ThimblesTable, Base):
     #_value = Column(Float) #a handle for storing and loading our model values
-    model_id = Column(Integer, ForeignKey("Model._id"))
-    
-    parameter_type = Column(String)
+    parameter_class = Column(String)
     __mapper_args__={
         "polymorphic_identity":"parameter",
-        "polymorphic_on": parameter_type
+        "polymorphic_on": parameter_class
     }
     
     free = Column(Boolean)

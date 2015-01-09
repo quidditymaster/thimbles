@@ -5,8 +5,8 @@ from sqlalchemy.ext.declarative import declared_attr
 from sqlalchemy import create_engine
 from thimbles.options import Option, opts, OptionSpecificationError
 from sqlalchemy.orm import sessionmaker
-Session = sessionmaker()
 
+Session = sessionmaker()
 Base = declarative_base()
 
 class ThimblesTable(object):
@@ -17,14 +17,15 @@ class ThimblesTable(object):
         return cls.__name__
 
 
-class ModelingTemplate(object):
-    
-    def __init__(self, data, tdb, **kwargs):
-        raise NotImplementedError
-    
+class ModelingTemplate(ThimblesTable, Base):
+    template_class = Column(String)
+    __mapper_args__={
+        "polymorphic_identity":"ModelingTemplate",
+        "polymorphic_on":template_class
+    }
+
 
 template_registry = {}
-
 def register_template(template_name, template_class):
     global template_registry
     template_registry[template_name] = template_class
@@ -56,7 +57,9 @@ class ThimblesDB(object):
     def close(self):
         self.session.close()
     
-    def templatize(self, data, template, **kwargs):
+    def incorporate(self, data, template, **kwargs):
         global template_registry
         if isinstance(template, basestring):
             template = template_registry[template]
+        temp_instance = template(data, self, **kwargs)
+        self.add(temp_instance)

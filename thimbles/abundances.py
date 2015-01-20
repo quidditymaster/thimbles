@@ -11,6 +11,7 @@ class Atom(ThimblesTable, Base):
     isotope = Column(Integer)
     _weight = None
     _symbol = None
+    _solar_ab = None
     
     def __init__(self, z, isotope=None):
         self.z = z
@@ -26,6 +27,12 @@ class Atom(ThimblesTable, Base):
         if self._weight is None:
             self._weight = ptable.ix[(self.z, self.isotope), "weight"]
         return self._weight
+    
+    @property
+    def solar_ab(self):
+        if self._solar_ab is None:
+            self._solar_ab = ptable.ix[(self.z, self.isotope), "abundance"]
+        return self._solar_ab
     
     @property
     def symbol(self):
@@ -64,8 +71,22 @@ class Molecule(ThimblesTable, Base):
             self.heavy_atom = z[1]
     
     @property
+    def z(self):
+        if self.monatomic:
+            return self.light_atom.z
+        else:
+            return self.light_atom.z*100 + self.heavy_atom.z
+    
+    @property
     def monatomic(self):
         return self.heavy_atom is None
+    
+    @property
+    def solar_ab(self):
+        if self.monatomic:
+            return self.light_atom.solar_ab
+        else:
+            return min(self.light_atom.solar_ab, self.heavy_atom.solar_ab)
     
     @property
     def weight(self):
@@ -81,6 +102,8 @@ class Molecule(ThimblesTable, Base):
         if self._symbol is None:
             self._symbol = "{}{}".format(self.light_atom.symbol, self.heavy_atom.symbol)
         return self._symbol
+    
+    
 
 class Ion(ThimblesTable, Base):
     _species_id = Column(Integer, ForeignKey("Molecule._id"))
@@ -109,7 +132,7 @@ class Abundance(Parameter):
     }
     _ion_id = Column(Integer, ForeignKey("Ion._id"))
     ion = relationship("Ion")
-    #_stellar_parameters_id = Column(Integer, ForeignKey("StellarParameters._id"))
+    _stellar_parameters_id = Column(Integer, ForeignKey("StellarParameters._id"))
     _value = Column(Float) #log(epsilon)
     
     @property

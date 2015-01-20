@@ -281,7 +281,6 @@ def wavelet_transform_fft(values, g_widths):
         out_dat[g_width_idx] = wvtrans[:n_pts].real
     return out_dat
 
-@task()
 def wavelet_transform(values, g_widths, mask):
     """create a grid of gaussian line profiles and perform a wavelet transform
     over the grid. (a.k.a. simply convolve the data with all line profiles
@@ -602,7 +601,7 @@ def layered_median_mask(arr, n_layers=3, first_layer_width=31, last_layer_width=
         mask[mask] = masked_arr >= (filtered - rejection_sigma*1.4*local_mad)
     return mask
 
-@task()
+
 def smooth_ppol_fit(x, y, y_inv=None, order=3, mask=None, mult=None, partition="adaptive", partition_kwargs=None):
     if partition_kwargs == None:
         partition_kwargs = {}
@@ -729,7 +728,7 @@ def echelle_normalize(spectra, masks="layered median", partition="adaptive", mas
         norms.append(nmod)
     return norms
 
-@task()
+
 def approximate_normalization(spectrum,
                               partition_scale=500, 
                               poly_order=3,
@@ -1039,7 +1038,7 @@ def irls(A,
     else:
         return last_x, dict(weights=weights, iter_idx=iter_idx, resids_converged=resids_converged, x_converged=x_converged)
 
-@task()
+
 def l1_factor(input_matrix, input_weights, rank=3, n_iter=3):
     rows_in, cols_in = input_matrix.shape
     w = np.random.random((rows_in, rank))-0.5
@@ -1072,11 +1071,9 @@ def cache_decorator (cache,key):
         return inner
     return outer
 
-@task()
 def vac_to_air_sdss(vac_wvs):
     return vac_wvs/(1.0 + 2.735182e-4 + 131.4182 /vac_wvs**2 + 2.76249e8/vac_wvs**4)
 
-@task()
 def vac_to_air_apogee(vac_wvs, a=0.0, b1=5.792105e-2, b2=1.67917e-3, c1=238.0185, c2=57.362):
     """
     converts vaccuum wavelengths in angstroms to air wavelengths.
@@ -1104,7 +1101,6 @@ def blam(wavelength, temperature):
 #wien_constant = 2.8977721(26)e-3 in units of M*K
 wien_constant = 2.897772126e7 #in units of Angstrom*Kelvin
 
-@task()
 def blackbody_flux(sampling_wavelengths, temperature,  normalize = True):
     dlam_dx = scipy.gradient(sampling_wavelengths)
     bbspec = blam(sampling_wavelengths, temperature)/dlam_dx
@@ -1114,7 +1110,6 @@ def blackbody_flux(sampling_wavelengths, temperature,  normalize = True):
         bbspec /= peak_val
     return bbspec
 
-@task()
 def fit_blackbody_phirls(spectrum, start_teff=5000.0, gamma_frac=3.0):
     flux = spectrum.flux
     variance = spectrum.var
@@ -1270,11 +1265,12 @@ def multiplicative_iterfit(vec, fit_mats, start_vecs, filters=None, offsets=None
     return cur_vecs
 
 
-def get_natural_breaks(
+def running_box_segmentation(
         df, 
         grouping_vecs=None, 
         merge_scale=0.1, 
         split_threshold=1.0,
+        combine_breaks = True
     ):
     if grouping_vecs is None:
         grouping_vecs = df.columns
@@ -1295,4 +1291,32 @@ def get_natural_breaks(
         gvres = (gvres - gvres[0]) % split_threshold[cascade_idx]
         crossovers = get_local_maxima(gvres).astype(int)
         grouping_id[:, cascade_idx] = np.cumsum(crossovers)[gvidxs]
+    
+    if combine_breaks:
+        combined_group_id = np.zeros(n_pts)
+        g_dict = {}
+        next_group_idx = 0
+        for row_idx, g_vec in enumerate(grouping_id):
+            g_tup = tuple(g_vec)
+            gr_idx = g_dict.get(g_tup, None)
+            if gr_idx is None:
+                gr_idx = next_group_idx
+                g_dict[g_tup] = gr_idx
+                next_group_idx += 1
+            combined_group_id[row_idx] = gr_idx
+        grouping_id = combined_group_id
+        
     return grouping_id
+
+def attribute_df(obj_list, attrs, index_attr=None):
+    obj_dat = {attr:[] for attr in attrs}
+    for attr in attrs:
+        for obj in obj_list:
+            obj_dat[attr].append(getattr(obj, attr))
+    if index_attr is None:
+        obj_indexes = None
+    else:
+        obj_indexes = []
+        for obj in obj_list:
+            obj_indexes.append(getattr(obj, index_attr))
+    return pd.DataFrame(data=obj_dat, index=obj_indexes)

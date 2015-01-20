@@ -21,6 +21,8 @@ except ImportError:
 import os
 resource_dir = os.path.join(os.path.dirname(__file__), "resources")
 
+speed_of_light = 299792.458 #speed of light in km/s
+
 from thimbles import dependencies
 from thimbles.verbosity import logger
 from thimbles import modeling
@@ -42,5 +44,7 @@ from thimbles import stellar_atmospheres
 from thimbles import continuum
 from thimbles import radtran
 from thimbles import resampling
+from thimbles import transitions
 
 from thimbles.thimblesdb import ThimblesDB
+from thimbles.stellar_parameters import Star

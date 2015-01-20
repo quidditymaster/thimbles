@@ -109,7 +109,6 @@ def voigt_feature_matrix(wv_soln, centers, sigmas, gammas=None):
     return mat
 
 
-
 class SaturatedVoigtFeatureModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     
@@ -702,41 +701,41 @@ class SaturatedVoigtFeatureModel(Model):
         ax.set_xlabel("adjusted relative strength")
         ax.set_ylabel("log(EW/doppler_width)")
 
-class SimpleMatrixOpacityModel(Model):
+
+class FeatureGroup(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"FeatureGroup",
+    }
+    _wv_soln_id = Column(Integer, ForeignKey("WavelengthSolution._id"))
+    wv_soln = relationship("WavelengthSolution")
+    
+    def __init__(self, wv_soln):
+        self.wv_soln = as_wavelength_solution(wv_soln)
+        self.parameters = []
+    
+    def add_features(self, *features):
+        for feature in features:
+            self.parameters.append(feature.output_p)
+    
+    def remove_features(self, *features):
+        for feature in features:
+            feat_idx = self.parameters.index(feature.output_p)
+            self.parameters.pop(feat_idx)
+    
+    def update(self, *args):    
+        pass #TODO:
+
+class Feature(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     
-    def __init__(self, model_wvs, opac_matrix, opac_strength):
-        Model.__init__(self)
-        self.wv = model_wvs
-        self.opac_matrix = scipy.sparse.csr_matrix(opac_matrix)
-        assert len(opac_matrix)==len(model_wvs)
-        self.opac_strength = opac_strength
+    def __init__(self, transition):
+        self.transition = transition
+                 
+                 
     
-    #@parameter(free=True, min=0.0001)
-    def opac_strength_p(self):
-        return self.opac_strength
-    
-    #@opac_strength_p.setter
-    def opac_strength(self, value):
-        self.opac_strength = value
-    
-    def __call__(self, input_vec):
-        return self.opac_matrix*self.opac_strength + input_vec
 
-class OpacityToTransmission(Model):
-    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
-    
-    def __init__(self):
-        Model.__init__(self)
-    
-    def __call__(self, input_vec):
-        return np.exp(-input_vec)
-    
-    def as_linear_op(self, input_vec):
-        npts = len(input_vec)
-        return scipy.sparse.dia_matrix((-np.exp(-input_vec), 0), shape=(npts, npts))
-
-class Feature(object):
+class OldFeature(object):
     
     def __init__(self, 
                  profile, 

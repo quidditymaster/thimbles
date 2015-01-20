@@ -452,7 +452,7 @@ pass
 @task(
     result_name="spec_list",
     sub_kwargs=dict(
-        fname=dict(option_style="existing_file", editor_style="file"),
+        fname=dict(option_style="raw_string", editor_style="file"),
         file_type={"option_style":"raw_string"},
 ))
 def read_spec(fname, file_type="detect", extra_kwargs=None):

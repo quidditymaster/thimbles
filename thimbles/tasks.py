@@ -88,8 +88,9 @@ class Task(Option):
         if len(self.sub_kwargs) > 0:
             logger("Warning, not all sub_kwargs consumed! in Task.generate_child_options for task {} \n, {} left unconsumed".format(self.name, self.sub_kwargs))
     
-    def run(self):
+    def run(self, **kwargs):
         task_kwargs = {kw:getattr(self, kw).value for kw in self.task_kwargs}
+        task_kwargs.update(**kwargs)
         func_res = self.func(**task_kwargs)
         self.target_ns[self.result_name] = func_res
         return func_res

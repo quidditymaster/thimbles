@@ -1,5 +1,6 @@
 import os
 
+import numpy as np
 import pandas as pd
 from thimbles import resource_dir
 
@@ -55,6 +56,18 @@ def _load_ptable():
     data_dict = _load_isotopes()
     atomic_number = data_dict.pop("atomic_number")
     data_dict["abundance"] = _load_lodders()
+    #translate isotope fractions into isotopic abundances
+    iso_fracs = data_dict["fraction"]
+    for z, isotope in iso_fracs.keys():
+        if isotope == 0:
+            continue
+        else:
+            frac = iso_fracs[(z, isotope)]
+            tot_abund = data_dict["abundance"].get((z, 0))
+            if tot_abund is None:
+                tot_abund = -np.inf
+            iso_abund = tot_abund + np.log10(frac)
+            data_dict["abundance"][(z, isotope)] = iso_abund
     return pd.DataFrame(data=data_dict), atomic_number
 
 ptable, atomic_number = _load_ptable()

@@ -18,6 +18,7 @@ from PySide.QtCore import Qt
 
 # ########################################################################### #
 from thimbles.options import OptionSpecificationError
+from thimbles.tasks import task_registry
 import thimbles.workingdataspace as wds
 
 class FilePathOptionEditor(QtGui.QWidget):
@@ -270,3 +271,19 @@ class RunTaskDialog(QtGui.QDialog):
     def cancel (self):
         self.reject()
 
+
+class TaskLauncher(QtGui.QWidget):
+    
+    def __init__(self, parent):
+        super(TaskLauncher, self).__init__(parent)
+        layout = QtGui.QVBoxLayout()
+        self.setLayout(layout)
+        self.task_buttons = []
+        self.dialog_functions = []
+        for cur_task in task_registry.values():
+            cbutton = QtGui.QPushButton(cur_task.name)
+            layout.addWidget(cbutton)
+            task_runner_func = task_runner_factory(cur_task, parent=self)
+            cbutton.clicked.connect(task_runner_func)
+            self.dialog_functions.append(task_runner_func)
+            self.task_buttons.append(cbutton)

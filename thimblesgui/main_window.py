@@ -19,26 +19,107 @@ import scipy
 import scipy.optimize
 
 #internal imports
-from thimbles.options import opts
+from thimbles.options import Option, opts
 from thimbles.tasks import task_registry
 from thimbles import workingdataspace as wds
 
 import thimblesgui as tmbg
 from thimblesgui.views import ObjectTreeWidget
-from thimblesgui.task_widgets import task_runner_factory
+from thimblesgui.task_widgets import TaskLauncher 
 import thimbles as tmb
-import thimbles.io as io
+from thimbles import ThimblesDB
 
-_resources_dir = os.path.join(os.path.dirname(__file__),"resources")
+gui_resource_dir = os.path.join(os.path.dirname(__file__),"resources")
 
 # ########################################################################### #
 
-class AppForm(QtGui.QMainWindow):
+Option("GUI", option_style="parent_dict")
+
+def _startup_exec():
+    exec(opts["GUI.startup"], wds.__dict__)
+
+Option("startup", option_style="raw_string", default="", on_parse=_startup_exec, parent="GUI") 
+
+def _load_default_db():
+    db_path = opts["GUI.default_db"]
+    if db_path is None:
+        pass
+    else:
+        ld_tdb = tmb.tasks.task_registry["load_tdb"]
+        ld_tdb.run(fname = db_path)
+
+Option("default_db", 
+    option_style="raw_string", 
+    envvar="THIMBLESPROJECTDB", 
+    default=None, 
+    parent="GUI",
+)
+
+class ThimblesMainWindow(QtGui.QMainWindow):
+    tdb = None
+    
+    def __init__(self):
+        super(ThimblesMainWindow, self).__init__()
+        self.setWindowTitle("Thimbles")
+        
+        self.make_actions()
+        self.make_menus()
+        self.make_tool_bar()
+        self.make_status_bar()
+        self.make_dock_widgets()
+        
+    def make_actions(self):
+        #QtGui.QAction(QtGui.QIcon(":/images/new.png"), "&Attach Database", self)
+        self.attach_act = QtGui.QAction("&Attach Database", self)
+        #attach_act.setShortcut()
+        self.attach_act.setStatusTip("set the active database for this GUI")
+        self.attach_act.triggered.connect(self.on_attach_db)
+        self.attach_act.setShortcut("Ctrl+A")
+        
+        self.quit_act = QtGui.QAction("&Quit", self)
+        self.quit_act.setShortcut("Ctrl+Q")
+        self.quit_act.setStatusTip("Quit Thimbles")
+        self.quit_act.triggered.connect(self.close)
+    
+    def make_menus(self):
+        self.file_menu = self.menuBar().addMenu("&File")
+        self.file_menu.addAction(self.attach_act)
+        self.file_menu.addAction(self.quit_act)
+    
+    def make_tool_bar(self):
+        self.file_tool_bar = self.addToolBar("File")
+        self.file_tool_bar.addAction(self.attach_act)
+    
+    def make_status_bar(self):
+        self.statusBar().showMessage("Ready")
+    
+    def make_dock_widgets(self):
+        dock = QtGui.QDockWidget("working data space", self)
+        #dock.setAllowedAreas(Qt.AllDockWidgetAreas)
+        self.wds_widget = ObjectTreeWidget(wds, parent=dock)
+        dock.setWidget(self.wds_widget)
+        self.addDockWidget(Qt.LeftDockWidgetArea, dock)
+        #self.setCentralWidget(dock)
+        
+        dock = QtGui.QDockWidget("tasks", self)
+        self.task_launcher = TaskLauncher(parent=dock)
+        dock.setWidget(self.task_launcher)
+        self.addDockWidget(Qt.RightDockWidgetArea, dock)
+    
+    def on_attach_db(self):
+        self.set_db()
+
+class OldAppForm(QtGui.QMainWindow):
     
     def __init__(self):
         super(AppForm, self).__init__()
         self.setWindowTitle("Thimbles")
-        #self.main_frame = QtGui.QWidget()
+        
+        #self.tasks_box = self._make_task_box()
+        #self.createActions()
+        #self.createMenus()
+        #self.createToolBar()
+        #self.createStatusBar()
         
         self.splitter = QtGui.QSplitter(Qt.Horizontal)
         layout = QtGui.QGridLayout()
@@ -51,18 +132,7 @@ class AppForm(QtGui.QMainWindow):
         self.splitter.addWidget(self.wds_widget)
         #layout.addWidget(self.wds_widget, 0, 1, 1, 1)
         
-        #make the tasks launching buttons widget
-        self.tasks_box = QtGui.QGroupBox("Tasks Launcher")
-        self.tasks_layout = QtGui.QVBoxLayout()
-        self.tasks_box.setLayout(self.tasks_layout)
-        self.task_scroll = QtGui.QScrollArea(parent=self)
-        task_buttons = []
-        for cur_task in task_registry.values():
-            cbutton = QtGui.QPushButton(cur_task.name)
-            self.tasks_layout.addWidget(cbutton)
-            task_runner_func = task_runner_factory(cur_task, parent=self)
-            cbutton.clicked.connect(task_runner_func)
-        self.task_scroll.setWidget(self.tasks_box)
+
         
         self.splitter.addWidget(self.task_scroll)
         #self.layout.addWidget(self.task_scroll, 0, 2, 1, 1)

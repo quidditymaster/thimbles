@@ -26,20 +26,70 @@ from thimbles.modeling.distributions import NormalDistribution
 from thimbles.coordinatization import Coordinatization, as_coordinatization
 from thimbles.sqlaimports import *
 
+from thimbles import speed_of_light
+
 # ########################################################################### #
 
 __all__ = ["WavelengthSolution","Spectrum"]
 
 # ########################################################################### #
 
-speed_of_light = 299792.458 #speed of light in km/s
+class DeltaHelioParameter(Parameter):
+    """velocity correction for motion around the sun"""
+    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"DeltaHelioParameter"
+    }
+    _value = Column(Float)  #helio centric velocity in km/s
+    
+    #class attributes
+    name = "rv"
+    
+    def __init__(self, value):
+        self._value = value
+
+class RadialVelocityParameter(Parameter):
+    """ Radial Velocity Parameter"""
+    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"RadialVelocityParameter"
+    }
+    _value = Column(Float)  #helio centric velocity in km/s
+    
+    #class attribtues
+    name="delta_helio"
+    
+    def __init__(self, value):
+        self._value = value
+
+class WavelengthsParameter(Parameter):
+    """a parameter vector of wavelengths"""
+    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"WavelengthsParameter"
+    }
+    _value = Column(Float)  #helio centric velocity in km/s
+    
+    #class attributes
+    name = "wvs"
+    
+    def __init__(self, value):
+        self._value = value
 
 class WavelengthSolution(ThimblesTable, Base):
     _indexer_id = Column(Integer, ForeignKey("Coordinatization._id"))
     indexer = relationship("Coordinatization")
+    
+    #the parameters
+    _rv_id = Column(Integer, ForeignKey("Parameter._id"))
+    rv_p = relationship("RadialVelocityParameter", foreign_keys=_rv_id)
+    _delta_helio_id = Column(Integer, ForeignKey("Parameter._id"))
+    delta_helio_p = relationship("DeltaHelioParameter", foreign_keys=_delta_helio_id)
+    
+    #TODO: a polymorphic LSF table/class
     lsf = Column(PickleType)
     
-    def __init__(self, wavelengths, rv=None, vhelio=None, shifted=True, lsf=None):
+    def __init__(self, wavelengths, rv=None, delta_helio=None, shifted=True, lsf=None):
         """a class that encapsulates the manner in which a spectrum is sampled
         
         wavelengths: np.ndarray
@@ -50,7 +100,7 @@ class WavelengthSolution(ThimblesTable, Base):
           the projected velocity along the line of sight not including
           the contribution from the earths motion around the earth sun
           barycenter. [km/s]
-        vhelio: float
+        delta_helio: float
           the velocity around the earth sun barycenter projected onto the
           line of sight. [km/s]
         shifted: bool
@@ -59,22 +109,32 @@ class WavelengthSolution(ThimblesTable, Base):
           wavelengths = wavelengths*(1-(rv+vhelio)/c)
         lsf: ndarray
           the line spread function in units of pixel width.
-        """
+        """       
+        
+        #set up rv
         if rv is None:
             rv = 0.0
-        self._rv = rv
+        if not isinstance(rv, Parameter):
+            rv = RadialVelocityParameter(rv)
+        self.rv_p = rv
         
-        if vhelio is None:
-            vhelio = 0.0
-        self._vhelio = vhelio
+        #set up delta helio
+        if delta_helio is None:
+            delta_helio = 0.0
+        if not isinstance(delta_helio, Parameter):
+            delta_helio = RadialVelocityParameter(rv)
+        self.delta_helio_p = delta_helio
         
-        if not shifted:
-            wavelengths = wavelengths*(1.0-(rv+vhelio)/speed_of_light)
-        
-        self.indexer = as_coordinatization(wavelengths)
+        wavelengths = np.asarray(wavelengths)
+        if shifted:
+            #remove external wavelength corrections
+            correction = (1.0 + (rv+delta_helio)/speed_of_light)
+            wavelengths = wavelengths * correction
+        self.indexer = as_coordinatization(wavelengths) 
         
         if lsf is None:
             lsf = np.ones(len(self))
+        lsf = np.asarray(lsf)
         self.lsf = lsf
     
     def __len__(self):
@@ -82,13 +142,11 @@ class WavelengthSolution(ThimblesTable, Base):
     
     @property
     def rv(self):
-        return self._rv
+        return self.rv_p.value
     
     @rv.setter
     def rv(self, value):
-        new_wvs = self.indexer.coordinates*(1.0 - value/speed_of_light)
-        self.indexer.coordinates = new_wvs
-        self._rv = value
+        self.rv_p.value = value
     
     def set_rv(self, rv):
         self.rv = rv
@@ -97,14 +155,12 @@ class WavelengthSolution(ThimblesTable, Base):
         return self.rv
     
     @property
-    def vhelio(self):
-        return self._vhelio
+    def delta_helio(self):
+        return self.delta_helio_p.value
     
-    @vhelio.setter
-    def vhelio(self, value):
-        new_wvs = self.indexer.coordinates*(1.0 - value/speed_of_light)
-        self.indexer.coordinates = new_wvs
-        self._vhelio = value
+    @delta_helio.setter
+    def delta_helio(self, value):
+        self.delta_helio_p = value
     
     def get_wvs(self, pixels=None, clip=False, snap=False):
         if pixels is None:
@@ -112,7 +168,7 @@ class WavelengthSolution(ThimblesTable, Base):
         return self.indexer.get_coord(pixels, clip=clip, snap=snap)
     
     def get_index(self, wvs=None, clip=False, snap=False):
-        if wvs == None:
+        if wvs is None:
             return np.arange(len(self.indexer))
         return self.indexer.get_index(wvs, clip=clip, snap=snap)
     
@@ -120,7 +176,7 @@ class WavelengthSolution(ThimblesTable, Base):
         """generate an interpolation matrix which will transform from
         an input wavelength solution to this wavelength solution.
         """
-        #TODO:
+        #TODO: generate interpolation matrix
 
 def as_wavelength_solution(wavelengths):
     if isinstance(wavelengths, WavelengthSolution):
@@ -129,24 +185,27 @@ def as_wavelength_solution(wavelengths):
         return WavelengthSolution(wavelengths)
 
 
+#TODO: models carrying wavelengths to observational indexes for each of the telescope frame, sun frame, and object frame
+
 class FluxParameter(Parameter):
     _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
     __mapper_args__={
-        "polymorphic_identity":"FluxParameter"
+        "polymorphic_identity":"FluxParameter",
     }
-    _value = Column(PickleType)
+    #_value = Column(PickleType)
     _wv_soln_id = Column(Integer, ForeignKey("WavelengthSolution._id"))
     wv_soln = relationship("WavelengthSolution")
+    start_index = Column(Integer)
+    end_index = Column(Integer)
     
     #class attributes
     name = "flux"
     
     def __init__(self, wvs, value, free=True, propagate=True):
         self.wv_soln = as_wavelength_solution(wvs)
-        self._value=value
+        #self._value=value
         self.free=free
         self.propagate=propagate
-
 
 class Spectrum(ThimblesTable, Base):
     """A representation of a collection of relative flux measurements
@@ -154,8 +213,9 @@ class Spectrum(ThimblesTable, Base):
     _flux_p_id = Column(Integer, ForeignKey("FluxParameter._id"))
     flux_p = relationship("FluxParameter")
     _obs_prior_id = Column(Integer, ForeignKey("Distribution._id"))
-    _obs_prior = relationship("Distribution")
+    obs_prior = relationship("Distribution")
     info = Column(PickleType)
+    _source_id = Column(Integer, ForeignKey("Source._id"))
     
     def __init__(self,
                  wavelengths, 
@@ -163,6 +223,7 @@ class Spectrum(ThimblesTable, Base):
                  ivar=None,
                  flags=None,
                  info=None,
+                 source=None,
              ):
         """makes a spectrum
         wavelengths: ndarray or WavelengthSolution
@@ -187,7 +248,7 @@ class Spectrum(ThimblesTable, Base):
         ivar = tmb.utils.misc.clean_inverse_variances(ivar)
         
         #treat the observed flux as a piror on the flux parameter values
-        self._obs_prior = NormalDistribution(flux, ivar)
+        self.obs_prior = NormalDistribution(flux, ivar)
         
         if flags is None:
             flags = SpectrumFlags()

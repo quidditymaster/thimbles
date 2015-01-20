@@ -21,7 +21,7 @@ hlines = pd.DataFrame(data=dict(wv=data_cols[:, 0],
                       )
 
 @task()
-def get_H_mask(wvs, masking_radius=-4.8, nup_max=None):
+def get_H_mask(wvs, masking_radius=-3.0, nup_max=None):
     """generates a mask which is false close to hydrogen features
     
     inputs

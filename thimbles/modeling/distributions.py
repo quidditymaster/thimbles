@@ -15,7 +15,7 @@ dist_assoc = sa.Table("distribution_assoc", Base.metadata,
 )
 
 class Distribution(ParameterGroup, ThimblesTable, Base):
-    relationship("Parameters", secondary=dist_assoc)
+    parameters = relationship("Parameter", secondary=dist_assoc)
     distribution_class = Column(String)
     __mapper_args__={
         "polymorphic_identity":"Distribution",
@@ -25,14 +25,32 @@ class Distribution(ParameterGroup, ThimblesTable, Base):
     def log_likelihood(self, value):
         raise NotImplementedError("Abstract Class")
     
-    def as_sog(self, value=None, radius=None, embedding_space=None, n_max=10):
+    def as_sog(self, center=None, radius=None, embedding_space=None, n_max=10):
         raise NotImplementedError("Abstract Class")
     
     def realize(self):
         raise NotImplementedError("Abstract Class")
+    
+    def __add__(self, other):
+        raise NotImplementedError("Abstract Class")
 
 
 class NormalDistribution(Distribution):
+    _id = Column(Integer, ForeignKey("Distribution._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"NormalDistribution",
+    }
+    mean = Column(Float)
+    ivar = Column(Float)
+    
+    def __init__(self, mean, ivar, parameters=None):
+        if parameters is None:
+            parameters = []
+        self.parameters=parameters
+        self.mean = np.asarray(mean)
+        self.ivar = np.asarray(ivar)
+
+class VectorNormalDistribution(Distribution):
     _id = Column(Integer, ForeignKey("Distribution._id"), primary_key=True)
     __mapper_args__={
         "polymorphic_identity":"NormalDistribution",
@@ -46,15 +64,13 @@ class NormalDistribution(Distribution):
         self.parameters=parameters
         self.mean = np.asarray(mean)
         self.ivar = np.asarray(ivar)
+    
+    def realize(self):
+        return np.random.normal(size=self.var.shape)*self.var
 
 class SumOfGaussians:#(ParameterDistribution):
     _relative_probs = Column(PickleType) #(n_gauss,) numpy array
     _covariances = Column(PickleType) #(n_gauss, n_dims) numpy array for axis aligned or (n_gauss, n_dims, n_dims) for full covariance matrices
     
-
-class MultivariateNormalDistribution:#(ParameterDistribution):
-    _variance = Column(PickleType)
-        
-    def realize(self):
-        return np.random.normal(size=self._variance.shape)*self._variance
+    
     

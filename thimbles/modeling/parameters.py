@@ -16,16 +16,26 @@ def flat_size(shape_tup):
 
 class ParameterGroup(object):
     
-    #def __init__(self, parameters):
-    #    self._parameters = parameters
-    #
-    #@property
-    #def parameters(self):
-    #    return self._parameters
+    def __init__(self, parameters=None):
+        if parameters is None:
+            parameters = []
+        self.parameters = parameters
     
     @property
     def free_parameters(self):
-        return [param for param in self.parameters if param.free]
+        return [param for param in self.parameters if not param.fixed]
+    
+    def sliced_posterior(self, center=None, radius=None, n_max=100):
+        """estimate 
+        """
+        distribs = [p.distributions for p in self.parameters if len(p.distributions) > 0]
+        #TODO: check distributions for a modification time and cache value of sum
+        sum_dist = distribs.pop(0).as_sog(center=center, radius=radius, embedding_space=self)
+        while len(distribs) > 0:
+            cur_dist = distribs.pop(0)
+            cur_dist = cur_dist.as_sog(center=center, radius=radius, embedding_space=self)
+            sum_dist = combine_sog_distributions(sum_dist, cur_dist, n_max=n_max)
+        return sum_dist
     
     def parameter_index(self, parameter):
         return self.parameters.index(parameter)
@@ -109,7 +119,6 @@ class ParameterGroup(object):
             else:
                 setattr(p, attr, val_dict[p])
 
-
 class FixedParameterException(Exception):
     pass
 
@@ -121,7 +130,7 @@ class Parameter(ThimblesTable, Base):
         "polymorphic_on": parameter_class
     }
     
-    free = Column(Boolean)
+    fixed = Column(Boolean)
     propagate = Column(Boolean)
     
     #class attributes
@@ -134,7 +143,7 @@ class Parameter(ThimblesTable, Base):
     max=np.inf
     
     def __init__(self, 
-                 free = False,
+                 fixed = False,
                  propagate=True,
                  ):
         self.free = free

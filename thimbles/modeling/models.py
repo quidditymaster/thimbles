@@ -9,8 +9,8 @@ from thimbles.sqlaimports import *
 from thimbles.thimblesdb import ThimblesTable, Base
 from thimbles.modeling import ParameterGroup, Parameter
 
-mp_assoc = sa.Table(
-    "mp_assoc", 
+input_assoc = sa.Table(
+    "input_assoc", 
     Base.metadata,
     Column("model_id", Integer, ForeignKey("Model._id")),
     Column("parameter_id", Integer, ForeignKey("Parameter._id")),
@@ -22,21 +22,29 @@ class Model(ParameterGroup, ThimblesTable, Base):
         "polymorphic_identity": "Model",
         "polymorphic_on": model_class
     }
-    parameters = relationship("Parameter", secondary=mp_assoc, backref="models")
+    parameters = relationship(
+        "Parameter", 
+        secondary=input_assoc, 
+        backref="models"
+    )
     _output_parameter_id = Column(Integer, ForeignKey("Parameter._id"))
-    output_p = relationship("Parameter", backref="mapped_models", foreign_keys=_output_parameter_id)
+    output_p = relationship(
+        "Parameter",
+        foreign_keys=_output_parameter_id,
+        backref="mapped_models", 
+    )
     
     #class attributes
-    _derivative_helpers = {} #maps a Parameter subclass as a key to a method of this model that calculates the derivative matrix
+    #jacobian_columns =_derivative_helpers[key](model_instance)
+    _derivative_helpers = {} 
     
-    def __init__(self):
-        #if len(self.parameters) == 0:
-        #    self.attach_parameters()
-        ThimblesTable.__init__(self) 
+    def __init__(self, parameters=None, output_p=None):
+        self.parameters = parameters
+        self.output_p = output_p
     
     def __call__(self, *args, **kwargs):
         raise NotImplementedError("Abstract Class")
-    
+        
     def parameter_expansion(self, input_vec, **kwargs):
         parameters = self.free_parameters
         deriv_vecs = []
@@ -75,6 +83,3 @@ class Model(ParameterGroup, ThimblesTable, Base):
                 p.set(flat_pval.reshape(pshape))
         pexp_mat = scipy.sparse.hstack(deriv_vecs)
         return pexp_mat
-    
-    def as_linear_op(self, input_vec, **kwargs):
-        return scipy.sparse.identity(len(input_vec))#implicitly allowing additive model passthrough

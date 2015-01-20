@@ -1,12 +1,13 @@
 from copy import deepcopy
 import os
+from thimbles.tasks import task
 from thimbles.sqlaimports import *
 from sqlalchemy.ext.declarative import declared_attr
 from sqlalchemy import create_engine
 from thimbles.options import Option, opts, OptionSpecificationError
 from sqlalchemy.orm import sessionmaker
 
-Session = sessionmaker()
+Session = sessionmaker(expire_on_commit=False)
 Base = declarative_base()
 
 class ThimblesTable(object):
@@ -16,21 +17,18 @@ class ThimblesTable(object):
     def __tablename__(cls):
         return cls.__name__
 
-#class ModelingTemplate(ThimblesTable, Base):
-#    pass
-#
-#template_registry = {}
-#def register_template(template_name, template_class):
-#    global template_registry
-#    template_registry[template_name] = template_class
+Option("database", option_style="parent_dict")
+Option("dialect", option_style="raw_string", default="sqlite", parent="database")
 
 class ThimblesDB(object):
     """a wrapper for a database containing our data and our fit-models and parameters
     """
     
-    def __init__(self, path):
+    def __init__(self, path, dialect=None):
+        if dialect is None:
+            dialect = opts["database.dialect"]
         self.path = os.path.abspath(path)
-        self.db_url = "sqlite:///{}".format(self.path)
+        self.db_url = "{dialect}:///{path}".format(dialect=dialect, path=self.path)
         self.engine = create_engine(self.db_url)
         Base.metadata.create_all(self.engine)
         self.session = Session(bind=self.engine)
@@ -46,6 +44,7 @@ class ThimblesDB(object):
     
     def commit(self):
         self.session.commit()
+        self.session.close()
     
     def close(self):
         self.session.close()
@@ -56,3 +55,16 @@ class ThimblesDB(object):
             template = template_registry[template]
         temp_instance = template(data, self, **kwargs)
         self.add(temp_instance)
+
+
+@task(result_name="tdb",
+    sub_kwargs={"fname":dict(
+        option_style="raw_string",
+        editor_style="file")},
+)
+def load_tdb(fname):
+    print "running load_tdb"
+    return ThimblesDB(fname)
+
+
+

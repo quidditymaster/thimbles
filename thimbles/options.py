@@ -13,6 +13,8 @@ class EvalError(Exception):
     pass
 
 config_dir = os.environ.get("THIMBLESCONFIGPATH", os.path.join(os.environ["HOME"], ".config", "thimbles"))
+if not os.path.exists(config_dir):
+    os.makedirs(config_dir)
 config_file = os.path.join(config_dir, "config.txt")
 
 
@@ -113,7 +115,6 @@ class OptionTree(object):
                 option.on_parse()
 
 opts = OptionTree()
-wds.opts = opts
 
 class Option(object):
     eval_ns = wds.__dict__

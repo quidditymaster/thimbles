@@ -66,5 +66,8 @@ def load_tdb(fname):
     print "running load_tdb"
     return ThimblesDB(fname)
 
-
-
+@task(result_name="injection_success")
+def add_all(data, tdb):
+    if not isinstance(data, list):
+        data = [data]
+    tdb.add_all(data)

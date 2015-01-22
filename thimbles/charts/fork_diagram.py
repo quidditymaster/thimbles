@@ -8,16 +8,17 @@ from thimbles.charts import MatplotlibCanvas
 class ForkDiagram(object):
     _plots_initialized = False
     
-    def __init__(self, 
-                 xvals=None, 
-                 depths=None, 
-                 curve=None, 
-                 nub_height=0.01, 
-                 handle_height=0.05, 
-                 spread_height=0.05, 
-                 handle_locator=None, 
-                 text="", 
-                 ax=None,
+    def __init__(
+        self, 
+        xvals=None, 
+        depths=None, 
+        curve=None, 
+        nub_height=0.01, 
+        handle_height=0.05, 
+        spread_height=0.05, 
+        handle_locator=None, 
+        text="", 
+        ax=None,
     ):
         if ax is None:
             fig, ax = plt.subplots()

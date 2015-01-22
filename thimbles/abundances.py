@@ -100,7 +100,10 @@ class Molecule(ThimblesTable, Base):
     @property
     def symbol(self):
         if self._symbol is None:
-            self._symbol = "{}{}".format(self.light_atom.symbol, self.heavy_atom.symbol)
+            if self.monatomic:
+                self._symbol = self.light_atom.symbol
+            else:
+                self._symbol = "{}{}".format(self.light_atom.symbol, self.heavy_atom.symbol)
         return self._symbol
     
     

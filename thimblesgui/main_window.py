@@ -28,7 +28,6 @@ from thimblesgui.views import ObjectTreeWidget
 from thimblesgui.task_widgets import TaskLauncher 
 import thimbles as tmb
 from thimbles import ThimblesDB
-
 gui_resource_dir = os.path.join(os.path.dirname(__file__),"resources")
 
 # ########################################################################### #
@@ -37,8 +36,17 @@ Option("GUI", option_style="parent_dict")
 
 def _startup_exec():
     exec(opts["GUI.startup"], wds.__dict__)
-
 Option("startup", option_style="raw_string", default="", on_parse=_startup_exec, parent="GUI") 
+
+_help=\
+"""don't display a GUI window
+"""
+Option(name="no_window", option_style="flag", help=_help)
+
+_help=\
+"""suppress the splash screen
+"""
+Option(name="no-splash", option_style="flag", help=_help)
 
 def _load_default_db():
     db_path = opts["GUI.default_db"]
@@ -56,7 +64,6 @@ Option("default_db",
 )
 
 class ThimblesMainWindow(QtGui.QMainWindow):
-    tdb = None
     
     def __init__(self):
         super(ThimblesMainWindow, self).__init__()
@@ -67,7 +74,7 @@ class ThimblesMainWindow(QtGui.QMainWindow):
         self.make_tool_bar()
         self.make_status_bar()
         self.make_dock_widgets()
-        
+    
     def make_actions(self):
         #QtGui.QAction(QtGui.QIcon(":/images/new.png"), "&Attach Database", self)
         self.attach_act = QtGui.QAction("&Attach Database", self)
@@ -105,9 +112,7 @@ class ThimblesMainWindow(QtGui.QMainWindow):
         self.task_launcher = TaskLauncher(parent=dock)
         dock.setWidget(self.task_launcher)
         self.addDockWidget(Qt.RightDockWidgetArea, dock)
-    
-    def on_attach_db(self):
-        self.set_db()
+
 
 class OldAppForm(QtGui.QMainWindow):
     
@@ -131,8 +136,6 @@ class OldAppForm(QtGui.QMainWindow):
         self.wds_widget = ObjectTreeWidget(wds, parent=self)
         self.splitter.addWidget(self.wds_widget)
         #layout.addWidget(self.wds_widget, 0, 1, 1, 1)
-        
-
         
         self.splitter.addWidget(self.task_scroll)
         #self.layout.addWidget(self.task_scroll, 0, 2, 1, 1)

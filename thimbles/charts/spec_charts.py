@@ -1,0 +1,83 @@
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+
+import thimbles as tmb
+from thimbles.charts import MatplotlibCanvas
+from thimbles.options import Option, opts
+
+spectra_mpl_kwargs=Option("spectra_mpl_kwargs", option_style="parent_dict", parent="charts")
+Option("color", default="#55AAFF", parent=spectra_mpl_kwargs)
+Option("linewidth", default=2.0, parent=spectra_mpl_kwargs)
+Option("linestyle", default="steps-mid", parent=spectra_mpl_kwargs)
+
+class SpectrumChart(object):
+    _plots_initialized = False
+    
+    def __init__(
+        self, 
+        spectrum=None, 
+        wv_span=None,
+        normalize=False,
+        normalizer=None,
+        label_axes=True,
+        ax=None,
+        **kwargs
+    ):
+        if ax is None:
+            fig, ax = plt.subplots()
+        self.ax = ax
+        if label_axes:
+            self.ax.set_xlabel("Wavelength")
+            self.ax.set_ylabel("Flux")
+        
+        line_kwargs = kwargs
+        default_kwargs = opts["charts.spectra_mpl_kwargs"]
+        for key in default_kwargs:
+            line_kwargs.setdefault(key, default_kwargs[key])
+        self.line_kwargs = line_kwargs
+        self.wv_span = wv_span
+        self.normalize=normalize
+        
+        self.set_spectrum(spectrum)
+    
+    def set_spectrum(self, spectrum):
+        self.spectrum = spectrum
+        if not spectrum is None:
+            self._initialize_plots()
+            self.update()
+    
+    def set_normalize(self, normalize):
+        self.normalize = normalize
+        self.update
+    
+    def cropped_spectrum(self):
+        if not self.wv_span is None:
+            bspec = self.spectrum.sample(self.wv_span, mode="bounded")
+        else:
+            bspec = self.spectrum
+        return bspec
+    
+    def _initialize_plots(self):
+        if not self._plots_initialized:
+            bspec = self.cropped_spectrum()
+            if not bspec is None:
+                self.spec_line ,= self.ax.plot(bspec.wvs, bspec.flux, **self.line_kwargs)
+            elif bspec is None:
+                self.spec_line ,= self.ax.plot(self.spectrum.wvs, self.spectrum.flux)
+        self._plots_initialized = True
+    
+    def set_wv_span(self, wv_span):
+        self.wv_span = wv_span
+        self.update()
+    
+    def update(self):
+        bspec = self.cropped_spectrum()
+        if self.normalize:
+            bspec = bspec.normalized()
+        self.spec_line.set_data(bspec.wvs, bspec.flux)
+
+
+if __name__ == "__main__":
+    spec = tmb.Spectrum([0, 1, 2], [3, 5, 4])
+    schart = SpectrumChart(spec)
+    plt.show()

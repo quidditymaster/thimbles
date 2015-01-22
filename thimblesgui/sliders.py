@@ -8,8 +8,18 @@ from PySide.QtCore import Signal, Slot
 Qt = QtCore.Qt
 
 class FloatSlider(QtGui.QWidget):
+    valueChanged = Signal(float)
     
-    def __init__(self, name, hard_min, hard_max, n_steps=127, orientation=Qt.Vertical, format_str="{:5.3f}", parent=None):
+    def __init__(
+            self, 
+            name, 
+            hard_min, 
+            hard_max, 
+            n_steps=127, 
+            orientation=Qt.Vertical, 
+            format_str="{:5.3f}", 
+            parent=None
+    ):
         super(FloatSlider, self).__init__(parent)
         label = QtGui.QLabel(name, parent=self)
         if orientation == Qt.Horizontal:
@@ -31,11 +41,11 @@ class FloatSlider(QtGui.QWidget):
         self.min_lineedit = QtGui.QLineEdit()
         min_valid = QtGui.QDoubleValidator(self.hard_min, self.hard_max, 4, self.min_lineedit)
         self.min_lineedit.setValidator(min_valid)
-        self.min_lineedit.setText("{:10.4f}".format(self.c_min))
+        self.min_lineedit.setText("{:10.3g}".format(self.c_min))
         self.max_lineedit = QtGui.QLineEdit()
         max_valid = QtGui.QDoubleValidator(self.hard_min, self.hard_max, 4, self.max_lineedit)
         self.max_lineedit.setValidator(max_valid)
-        self.max_lineedit.setText("{:10.4f}".format(self.c_max))
+        self.max_lineedit.setText("{:10.3g}".format(self.c_max))
         self.slider.setRange(0, n_steps)
         lay.addWidget(label)
         lay.addWidget(self.value_indicator)
@@ -49,14 +59,15 @@ class FloatSlider(QtGui.QWidget):
         #connect up the line edit events
         self.min_lineedit.textChanged.connect(self.on_min_input)
         self.max_lineedit.textChanged.connect(self.on_max_input)
-        self.slider.valueChanged.connect(self.refresh_indicator)
+        self.slider.valueChanged.connect(self._value_changed)
+        #self.slider.valueChanged.connect(self.refresh_indicator)
+    
+    def _value_changed(self, value):
+        self.refresh_indicator()
+        self.valueChanged.emit(self.value())
     
     def refresh_indicator(self):
         self.value_indicator.setText(self.format_str.format(self.value()))
-    
-    @property
-    def valueChanged(self):
-        return self.slider.valueChanged
     
     def on_min_input(self):
         self.set_min(self.min_lineedit.text())

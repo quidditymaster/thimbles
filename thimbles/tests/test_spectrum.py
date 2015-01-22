@@ -4,72 +4,49 @@ try:
     import ipdb as pdb
 except ImportError:
     import pdb
-from thimbles.spectrum import LineSpreadFunction,GaussianLSF, BoxLSF
+from thimbles.spectrum import Spectrum, WavelengthSolution
 
 # ########################################################################### #
-
-# TODO: add more tests
-# np.testing.assert_array_almost_equal_nulp(x, y, nulp)
+# np.testing.assert_almost_equal(x, y, nulp)
 
 
 class TestSpectrum (unittest.TestCase):
     
     def setUp(self):
-        unittest.TestCase.setUp(self)
-       
-    def test_reference_frame (self):
-        pass 
+        npts = 100
+        self.npts = npts
+        self.wvs = np.linspace(0, 10, npts)
+        self.flux = np.random.random(npts)
+        self.ivar = np.ones(npts)
+        self.spec = Spectrum(self.wvs, self.flux, self.ivar)
     
-    def test_wv_solution (self):
-        pass
+    def test_properties(self):
+        spec = self.spec 
+        self.assertTrue(len(self.spec) == self.npts)
+        np.testing.assert_almost_equal(self.flux, spec.flux)
+        np.testing.assert_almost_equal(self.wvs, spec.wvs)
+        np.testing.assert_almost_equal(self.ivar, spec.ivar)
+        np.testing.assert_almost_equal(1.0/self.ivar, spec.var)
     
-    def test_spectrum (self):
-        pass
+    def test_repr(self):
+        repr(self.spec)
     
-    def test_continuum (self):
-        pass
+    def test_create_wo_ivar(self):
+        wvs = np.linspace(1, 1000, 100)
+        randvals = 5.0+np.random.normal(size=(100,))
+        spec = Spectrum(wvs, randvals)
+        var_mean = np.mean(spec.var)
+        #import pdb; pdb.set_trace()
+        #self.assertTrue(0.8 < var_mean < 1.2)
     
-class TestLSF (unittest.TestCase):
-    
-    def setUp(self):
-        unittest.TestCase.setUp(self)
-        np.random.seed(5)
-        self.dmsg = "({},{})"
-                
-    def test_gaussian_lsf (self):
-        kws = dict(widths = np.random.normal(10,5,10),
-                   max_sigma = 5,
-                   wv_soln = None)
-        glsf = GaussianLSF(**kws)
-        
-        value = glsf.get_integral(0,5)
-        correct = 0.65895878128927521
-        msg = self.dmsg.format(value,correct)+ " incorrect integral output"
-        self.assertAlmostEqual(value,correct,8,msg)
-        
-        correct = (-108.7692796751945, 112.7692796751945)
-        value = glsf.get_coordinate_density_range(2)
-        msg = self.dmsg.format(value,correct)+" get_coordinate_density"
-        self.assertEqual(value, correct,msg)
-        
-        correct = 22.153855935038898
-        value = glsf.get_rms_width(2)
-        msg = self.dmsg.format(value,correct)+" get_rms_width"
-        self.assertEqual(value, correct,msg)
-        
-    def test_box_lsf (self):
-        blsf = BoxLSF(None)
-        
-        values = [(blsf.get_integral(5,10),1),
-                  (blsf.get_integral(5,2),0),
-                  (blsf.get_integral(5,5.25),0.75)]
-        
-        for first,second in values:
-            msg = self.dmsg.format(first,second)+" wrong get_integral"
-            self.assertEqual(first, second, msg)
-        
-        
-        # TODO:  add more tests
-        
+    def test_bounded_view(self):
+        min_wv = 3.2
+        max_wv = 5.0
+        bspec = self.spec.sample([min_wv, max_wv], mode="bounded_view")
+        bwvs = bspec.wvs
+        xdelt = self.wvs[1]-self.wvs[0]
+        self.assertTrue((min_wv - xdelt) <= bwvs[0] <= (min_wv+xdelt))
+        self.assertTrue(max_wv-xdelt <= bwvs[-1] <= max_wv+xdelt)
+
 if __name__ == "__main__":
     unittest.main()

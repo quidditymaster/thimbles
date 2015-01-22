@@ -117,18 +117,20 @@ class WavelengthSolution(ThimblesTable, Base):
         if not isinstance(rv, Parameter):
             rv = RadialVelocityParameter(rv)
         self.rv_p = rv
+        del rv
         
         #set up delta helio
         if delta_helio is None:
             delta_helio = 0.0
         if not isinstance(delta_helio, Parameter):
-            delta_helio = RadialVelocityParameter(rv)
+            delta_helio = DeltaHelioParameter(delta_helio)
         self.delta_helio_p = delta_helio
+        del delta_helio
         
         wavelengths = np.asarray(wavelengths)
         if shifted:
             #remove external wavelength corrections
-            correction = (1.0 + (rv+delta_helio)/speed_of_light)
+            correction = 1.0/(1.0 + self.fractional_shift)
             wavelengths = wavelengths * correction
         self.indexer = as_coordinatization(wavelengths) 
         
@@ -162,21 +164,31 @@ class WavelengthSolution(ThimblesTable, Base):
     def delta_helio(self, value):
         self.delta_helio_p = value
     
+    @property
+    def fractional_shift(self):
+        rv_val = self.rv_p.value
+        dh_val = self.delta_helio_p.value
+        return (rv_val + dh_val)/speed_of_light
+    
     def get_wvs(self, pixels=None, clip=False, snap=False):
+        """get object restframe wavelengths from pixel number"""
         if pixels is None:
-            pixels = np.arange(len(self.indexer))            
+            pixels = np.arange(len(self.indexer))
         return self.indexer.get_coord(pixels, clip=clip, snap=snap)
     
     def get_index(self, wvs=None, clip=False, snap=False):
+        """get pixel number from object rest frame wavelengths"""
         if wvs is None:
             return np.arange(len(self.indexer))
         return self.indexer.get_index(wvs, clip=clip, snap=snap)
     
-    def interp_matrix(self, wv_soln, fill_mode="zeros"):
+    def interpolant_matrix(self, wv_soln, fill_mode="zeros"):
         """generate an interpolation matrix which will transform from
         an input wavelength solution to this wavelength solution.
         """
-        #TODO: generate interpolation matrix
+        wv_soln = as_wavelength_solution(wv_soln)
+        shifted_wvs = wv_soln.get_wvs()*(1.0 + self.fractional_shift)
+        return self.indexer.interpolant_matrix(shifted_wvs)
 
 def as_wavelength_solution(wavelengths):
     if isinstance(wavelengths, WavelengthSolution):
@@ -201,11 +213,19 @@ class FluxParameter(Parameter):
     #class attributes
     name = "flux"
     
-    def __init__(self, wvs, value, free=True, propagate=True):
+    def __init__(self, wvs, value, start_index=None, end_index=None,):
         self.wv_soln = as_wavelength_solution(wvs)
-        #self._value=value
-        self.free=free
-        self.propagate=propagate
+        self._value=value
+        if start_index is None:
+            start_index = 0
+        self.start_index = start_index
+        if end_index is None:
+            end_index = len(self.wv_soln)
+        self.end_index=end_index
+    
+    @property
+    def pixels(self):
+        return np.arange(self.start_index, self.end_index)
 
 class Spectrum(ThimblesTable, Base):
     """A representation of a collection of relative flux measurements
@@ -240,7 +260,10 @@ class Spectrum(ThimblesTable, Base):
         """
         flux = np.asarray(flux)
         
-        self.flux_p = FluxParameter(wavelengths, flux)
+        if isinstance(wavelengths, FluxParameter):
+            self.flux_p = wavelengths
+        else:
+            self.flux_p = FluxParameter(wavelengths, flux)
         #self.flux = np.asarray(flux)
         
         if ivar is None:
@@ -266,11 +289,11 @@ class Spectrum(ThimblesTable, Base):
     
     @property
     def flux(self):
-        return self._obs_prior.mean
+        return self.obs_prior.mean
     
     @flux.setter
     def flux(self, value):
-        self._obs_prior.mean = value
+        self.obs_prior.mean = value
     
     @flux.setter
     def flux(self, value):
@@ -278,11 +301,11 @@ class Spectrum(ThimblesTable, Base):
     
     @property
     def ivar(self):
-        return self._obs_prior.ivar
+        return self.obs_prior.ivar
     
     @ivar.setter
     def ivar(self, value):
-        self._obs_prior.ivar = value
+        self.obs_prior.ivar = value
     
     @property
     def var(self):
@@ -292,16 +315,58 @@ class Spectrum(ThimblesTable, Base):
     def var(self, value):
         self.ivar = tmb.utils.misc.inv_var_2_var(value)
     
-    def sample(wavelengths,
-               valuation_mode="interp", 
-               fill_mode="nearest",
-               ):
-        other_wv_soln = as_wavelength_solution(wavelengths)
-        interp_trans = self.wv_soln.interp_matrix(other_wv_soln)
+    def sample(self,
+            wavelengths,
+            mode="interpolate", 
+    ):
+        """generate a spectrum subsampled from this one.
         
-        if mode == "interp":
-            out_lsf = self._lsf
-            trans = self.wv_soln.interp_matrix(other_wv_soln)
+        parameters
+        
+        wavelengths: ndarray
+          the wavelengths to sample at
+        mode: string
+          the type of sampling to carry out.
+          "interpolate"  linearly interpolate onto the given wv
+          "bounded_view" return a wavelength sampled identically to 
+                         the current spectrum but bounded by the 
+                         first and last wavelengths given.
+          "rebin"        apply a flux preserving rebinning procedure.
+        """
+        if mode=="bounded_view":
+            bounds = sorted([wavelengths[0], wavelengths[-1]])
+            l_idx, u_idx = self.get_index(bounds, snap=True)
+            if u_idx-l_idx < 1:
+                return None
+            out_flux = self.flux[l_idx:u_idx+1]
+            fparam = FluxParameter(self.wv_soln, out_flux, start_index=l_idx, end_index=u_idx)
+            out_ivar = self.ivar[l_idx:u_idx+1]
+            sampled_spec = Spectrum(fparam, out_flux, out_ivar)
+        elif mode == "interpolate":
+            tmat = self.wv_soln.interpolant_matrix(wavelengths)
+            out_flux = tmat*self.flux
+            out_var = (tmat*self.var)*tmat.transpose()
+            out_var_collapse = out_var*np.ones(len(out_flux))
+            out_ivar = tmb.utils.var_2_inv_var(out_var_collapse)
+            sampled_spec = Spectrum(wavelengths, out_flux, out_ivar)
+        elif mode =="rebin":
+            #check if we have the transform stored
+            in_wvs = self.wvs
+            wavelengths = as_wavelength_solution(wavelengths)
+            out_wvs = wavelengths.get_wvs()
+            transform = resampling.get_resampling_matrix(in_wvs, out_wvs, preserve_normalization=True)
+            out_flux = transform*self.flux
+            var = self.get_var()
+            #TODO make this take into account the existing lsfs
+            covar = resampling.\
+                    get_transformed_covariances(transform, var)
+            covar_shape = covar.shape
+            #marginalize over the covariance
+            out_inv_var  = 1.0/(covar*np.ones(covar_shape[0]))
+            sampled_spec = Spectrum(wavelengths, out_flux, out_inv_var)
+        else:
+            raise ValueError("mode {} not a valid sampling mode".format(mode))
+        return sampled_spec
     
     def __add__(self, other):
         if isinstance(other, (float, int)):
@@ -325,10 +390,8 @@ class Spectrum(ThimblesTable, Base):
             raise NotImplementedError()
     
     def __repr__(self):
-        wvs = self.wv
-        last_wv = wvs[-1]
-        first_wv = wvs[0]
-        return "<`thimbles.Spectrum` ({0:8.3f},{1:8.3f})>".format(first_wv, last_wv)
+        wvs = self.wvs
+        return "<`thimbles.Spectrum` ({0:8.3f},{1:8.3f})>".format(wvs[0], wvs[-1])
     
     def __sub__(self, other):
         if isinstance(other, (float, int)):
@@ -341,8 +404,12 @@ class Spectrum(ThimblesTable, Base):
         return self.wv_soln.rv
     
     @property
-    def wv(self):
-        return self.wv_soln.get_wvs()
+    def pixels(self):
+        return self.flux_p.pixels
+    
+    @property
+    def wvs(self):
+        return self.wv_soln.get_wvs(self.pixels)
     
     def set_rv(self, rv):
         self.wv_soln.set_rv(rv)
@@ -351,37 +418,25 @@ class Spectrum(ThimblesTable, Base):
         return self.wv_soln.get_rv()
     
     def get_wvs(self, pixels=None, clip=False, snap=False):
+        if pixels is None:
+            pixels = self.flux_p.pixels
         return self.wv_soln.get_wvs(pixels, clip=clip, snap=snap)
     
     def get_index(self, wvs, clip=False, snap=False):
         return self.wv_soln.get_index(wvs, clip=clip, snap=snap)
     
-    #def get_inv_var(self):
-    #    return self.inv_var
-    #
-    #def get_var(self):
-    #    #TODO deal with zeros appropriately
-    #    return tmb.utils.misc.inv_var_2_var(self.inv_var)
-    
-    def normalize(self, **kwargs):
+    def pseudonorm(self, **kwargs):
         #TODO: put extra controls in here
-        norm_res = tmb.utils.misc.approximate_normalization(self, overwrite=True, **kwargs)    
+        norm_res = tmb.utils.misc.approximate_normalization(self, **kwargs)    
         return norm_res
     
-    def normalized(self):
-        nspec = Spectrum(self.wv_soln, self.flux/self.norm, self.ivar*self.norm**2)
+    def normalized(self, norm=None):
+        if norm is None:
+            norm = self.pseudonorm()
+        nspec = Spectrum(self.wv_soln, self.flux/norm, self.ivar*norm**2)
         nspec.flags["normalized"] = True
         return nspec
     
-    def sample(self, wavelengths, kind="interp", fill=np.nan):
-        if kind == "interp":
-            indexes = self.get_index(wavelengths)
-            int_part = np.around(indexes).astype(int)
-            alphas = indexes - int_part
-            return self.flux[int_part]*(1-alphas) + self.flux[int_part+1]*alphas
-        if kind =="rebin":
-            raise NotImplementedError()
-        
     def lsf_sampling_matrix(self, model_wvs):
         wv_widths = scipy.gradient(self.wv)*self.wv_soln.lsf
         #TODO: use faster interpolation
@@ -389,28 +444,6 @@ class Spectrum(ThimblesTable, Base):
         gdense = resampling.GaussianDensity(model_wvs, interper(model_wvs))
         transform = resampling.get_resampling_matrix(model_wvs, self.wv, preserve_normalization=True, pixel_density=gdense)    
         return transform
-        
-    def rebin(self, new_wv_soln, frame="emitter"):
-        #check if we have the transform stored
-        if self._last_rebin_wv_soln_id == id(new_wv_soln):
-            transform = self._last_rebin_transform
-        else:
-            in_wvs = self.get_wvs(frame=frame)
-            if not isinstance(new_wv_soln, WavelengthSolution):
-                new_wv_soln = WavelengthSolution(new_wv_soln)
-            out_wvs = new_wv_soln.get_wvs()
-            transform = resampling.get_resampling_matrix(in_wvs, out_wvs, preserve_normalization=True)
-            self._last_rebin_transform = transform
-            self._last_rebin_wv_soln_id = id(new_wv_soln)
-        out_flux = transform*self.flux
-        var = self.get_var()
-        #TODO make this take into account the existing lsfs
-        covar = resampling.\
-        get_transformed_covariances(transform, var)
-        covar_shape = covar.shape
-        #marginalize over the covariance
-        out_inv_var  = 1.0/(covar*np.ones(covar_shape[0]))
-        return Spectrum(new_wv_soln, out_flux, out_inv_var)
     
     def old_sample(self, wvs, frame="emitter"):
         """samples the spectrum at the provided wavelengths
@@ -430,47 +463,8 @@ class Spectrum(ThimblesTable, Base):
         sampled_var += var[lower_index]*(1-alphas)**2
         return Spectrum(wvs, interp_vals, tmb.utils.misc.var_2_inv_var(sampled_var))
     
-    def bounding_indexes(self, bounds, frame="emitter"):
-        bvec = np.asarray(bounds)
-        l_idx, u_idx = map(int, np.around(self.get_index(bvec, frame=frame)))
-        l_idx = min(max(0, l_idx), len(self.flux)-1)
-        u_idx = max(min(len(self.flux)-1, u_idx), 0)
-        return l_idx, u_idx
-    
-    def bounded_sample(self, bounds, frame="emitter", copy=True):
-        """returns the wavelengths and corresponding flux values of the 
-        spectrum which are greater than bounds[0] and less than bounds[1]
-        
-        inputs:
-        bounds: (lower_wv, upper_wv)
-        frame: the frame of the bounds
-        
-        outputs:
-        wvs, flux, inv_var
-        """
-        l_idx, u_idx = self.bounding_indexes(bounds, frame)
-        if u_idx-l_idx < 1:
-            return None
-        out_wvs = self.get_wvs(np.arange(l_idx, u_idx+1), frame=frame)
-        out_flux = self.flux[l_idx:u_idx+1]
-        out_invvar = self.inv_var[l_idx:u_idx+1]
-        out_norm = self.norm[l_idx:u_idx+1]
-        if copy:
-            out_flux = out_flux.copy()
-            out_invvar = out_invvar.copy()
-            out_norm = out_norm.copy()
-        return Spectrum(out_wvs, out_flux, out_invvar, norm=out_norm)
-    
-    def plot(self, axes=None, **mpl_kwargs):
-        plot_wvs = self.get_wvs(frame=frame)
-        plot_flux = self.flux
-        if axes == None:
-            axes = plt.figure().add_subplot(111)
-            xlabel = 'Wavelength'
-            axes.set_xlabel(xlabel)
-            axes.set_ylabel('Flux')
-        l, = axes.plot(plot_wvs, plot_flux, **mpl_kwargs)
-        return axes,l
+    def plot(self, ax=None, **mpl_kwargs):
+        return tmb.charts.SpectrumChart(self, ax=ax)
     
 
 

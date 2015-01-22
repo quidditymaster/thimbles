@@ -218,7 +218,7 @@ class Option(object):
         elif isinstance(parent, basestring):
             parent = opts.traverse_tree(parent)
         if name in parent.children.keys():
-            logger("overwriting option {} in {} with option of same name".format(name, parent))
+            print "overwriting option {} in {} with option of same name".format(name, parent)
         if not (isinstance(parent, Option) or isinstance(parent, OptionTree)):
             raise ValueError("parent option value of type {} not understood".format(type(parent)))
         parent.children[name] = self

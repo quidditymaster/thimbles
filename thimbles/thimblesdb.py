@@ -19,6 +19,7 @@ class ThimblesTable(object):
 
 Option("database", option_style="parent_dict")
 Option("dialect", option_style="raw_string", default="sqlite", parent="database")
+Option("echo_sql", option_style="flag", parent="database")
 
 class ThimblesDB(object):
     """a wrapper for a database containing our data and our fit-models and parameters
@@ -29,7 +30,7 @@ class ThimblesDB(object):
             dialect = opts["database.dialect"]
         self.path = os.path.abspath(path)
         self.db_url = "{dialect}:///{path}".format(dialect=dialect, path=self.path)
-        self.engine = create_engine(self.db_url)
+        self.engine = create_engine(self.db_url, echo=opts["database.echo_sql"])
         Base.metadata.create_all(self.engine)
         self.session = Session(bind=self.engine)
     

@@ -6,126 +6,70 @@ from sqlalchemy import Enum
 from thimbles.thimblesdb import Base, ThimblesTable
 from thimbles.modeling import Parameter
 
-class Atom(ThimblesTable, Base):
-    z = Column(Integer)
+class Ion(ThimblesTable, Base):
+    """representation of an Ion of either a single atom or a diatomic molecule.
+    
+    z represents proton number for an atom and light atom proton number *100 + heavier proton number for a molecule.
+    isotope represents mass number for an atom and 1000*atom1.mass + atom2.mass for a molecule.
+    """
+    
+    z = Column(Integer, nullable=False)
     isotope = Column(Integer)
-    _weight = None
-    _symbol = None
-    _solar_ab = None
-    
-    def __init__(self, z, isotope=None):
-        self.z = z
-        if isotope is None:
-            isotope = 0
-        self.isotope = isotope
-    
-    def __repr__(self):
-        return "{} isotope={}".format(self.symbol, self.isotope)
-    
-    @property
-    def weight(self):
-        if self._weight is None:
-            self._weight = ptable.ix[(self.z, self.isotope), "weight"]
-        return self._weight
-    
-    @property
-    def solar_ab(self):
-        if self._solar_ab is None:
-            self._solar_ab = ptable.ix[(self.z, self.isotope), "abundance"]
-        return self._solar_ab
-    
-    @property
-    def symbol(self):
-        if self._symbol is None:
-            self._symbol =  ptable.ix[(self.z, self.isotope)].symbol
-        return self._symbol
-
-class Molecule(ThimblesTable, Base):
-    _light_id = Column(Integer, ForeignKey("Atom._id"))
-    light_atom = relationship("Atom", foreign_keys=_light_id)
-    _heavy_id = Column(Integer, ForeignKey("Atom._id"))
-    heavy_atom = relationship("Atom", foreign_keys=_heavy_id)
+    charge = Column(Integer)
     d0 = Column(Float)
     
     _weight = None
     _symbol = None
+    _solar_ab = None
     
-    def __init__(self, z, d0=None, isotopes=None):
+    def __init__(self, z, charge=0, isotope=0, d0=None):
+        self.z = z
+        self.charge=charge
+        self.isotope = isotope
         self.d0 = d0
-        if not isinstance(z, (list, tuple)):
-            z = [z]
-        
-        if isotopes is None:
-            isotopes = [None for _ in range(len(z))]
-        
-        for atom_idx in range(len(z)):
-            if not isinstance(z[atom_idx], Atom):
-                z[atom_idx] = Atom(z[atom_idx], isotopes[atom_idx])
-        
-        if len(z) == 1:
-            self.light_atom = z[0]
-        elif len(z) == 2:        
-            if z[0].z > z[1].z:
-                raise ValueError("Molecules must be specified with the light element first")
-            self.light_atom = z[0]
-            self.heavy_atom = z[1]
-    
-    @property
-    def z(self):
-        if self.monatomic:
-            return self.light_atom.z
-        else:
-            return self.light_atom.z*100 + self.heavy_atom.z
     
     @property
     def monatomic(self):
-        return self.heavy_atom is None
+        return self.z < 100
+    
+    def split_z_iso(self):
+        z1 = self.z//100
+        z2 = self.z % 100
+        iso1 = self.isotope//1000
+        iso2 = self.isotope%1000
+        return (z1, iso1), (z2, iso2)
     
     @property
     def solar_ab(self):
-        if self.monatomic:
-            return self.light_atom.solar_ab
-        else:
-            return min(self.light_atom.solar_ab, self.heavy_atom.solar_ab)
+        if self._solar_ab is None:
+            if self.monatomic:
+                self._solar_ab = ptable.ix[(self.z, self.isotope), "abundance"]
+            else:
+                (z1, iso1), (z2, iso2) = self.split_z_iso()
+                ab1 = ptable.ix[(z1, iso1), "abundance"]
+                ab2 = ptable.ix[(z2, iso2), "abundance"]
+                self._solar_ab = min(ab1, ab2)
+        return self._solar_ab
     
     @property
     def weight(self):
         if self._weight is None:
             if self.monatomic:
-                self._weight = self.light_atom.weight
+                self._weight = ptable.ix[(self.z, self.isotope), "weight"]
             else:
-                self._weight = self.light_atom.weight + self.heavy_atom.weight
+                k1, k2 = self.split_z_iso()
+                self._weight = ptable.ix[k1, "weight"] + ptable.ix[k2, "weight"]
         return self._weight
     
     @property
     def symbol(self):
         if self._symbol is None:
             if self.monatomic:
-                self._symbol = self.light_atom.symbol
+                self._symbol = ptable.ix[(self.z, self.isotope), "symbol"]
             else:
-                self._symbol = "{}{}".format(self.light_atom.symbol, self.heavy_atom.symbol)
+                k1, k2 = self.split_z_iso()
+                self._symbol = "{}{}".format(*ptable.ix[[k1, k2], "symbol"])
         return self._symbol
-    
-    
-
-class Ion(ThimblesTable, Base):
-    _species_id = Column(Integer, ForeignKey("Molecule._id"))
-    species = relationship("Molecule")
-    charge = Column(Integer)
-    
-    def __init__(self, species, charge):
-        if not isinstance(species, Molecule):
-            species = Molecule(species)
-        self.species = species
-        self.charge = charge
-    
-    @property
-    def d0(self):
-        return self.species.d0
-    
-    @property
-    def weight(self):
-        return self.species.weight
 
 
 class Abundance(Parameter):
@@ -138,7 +82,4 @@ class Abundance(Parameter):
     _stellar_parameters_id = Column(Integer, ForeignKey("StellarParameters._id"))
     _value = Column(Float) #log(epsilon)
     
-    @property
-    def species(self):
-        return self.ion.species
 

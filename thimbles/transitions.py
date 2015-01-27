@@ -1,4 +1,5 @@
 
+import thimbles as tmb
 from thimbles.tasks import task
 from thimbles.sqlaimports import *
 from thimbles.thimblesdb import Base, ThimblesTable
@@ -33,12 +34,23 @@ class Transition(ThimblesTable, Base):
         self.loggf = loggf
         
         if not isinstance(ion, Ion):
-            if isinstance(ion, tuple):
-                speciesnum, charge = ion
+            if isinstance(ion, (tuple, list)):
+                if len(ion) == 2:
+                    speciesnum, charge = ion
+                    isotope = 0
+                elif len(ion) == 3:
+                    speciesnum, charge, isotope = ion
+                else:
+                    raise ValueError("Ion specification {} not understood".format(ion))
             else:
                 speciesnum = int(ion)
-                charge = int((ion-speciesnum)*10)
-            ion = Ion(speciesnum, charge)
+                charge = int(10*(ion%1))
+                if speciesnum > 100:
+                    iso_mult = 1e5
+                else:
+                    iso_mult = 1e3
+                isotope = int(iso_mult*(ion%0.1))
+            ion = Ion(speciesnum, charge, isotope)
         self.ion = ion
         
         if damp is None:
@@ -49,14 +61,14 @@ class Transition(ThimblesTable, Base):
     
     @property
     def z(self):
-        return self.ion.species.z
+        return self.ion.z
     
     @property
     def charge(self):
         return self.ion.charge
     
     def pseudo_strength(self, stellar_parameters=None):
-        solar_ab = self.ion.species.solar_ab
+        solar_ab = self.ion.solar_ab
         if stellar_parameters is None:
             theta = 1.0
             metalicity = 0.0
@@ -64,13 +76,18 @@ class Transition(ThimblesTable, Base):
             theta = stellar_parameters.theta
             metalicity = stellar_parameters.metalicity
         return solar_ab + metalicity + self.loggf - theta*self.ep
+    
+    @property
+    def x(self):
+        return self.pseudo_strength()
+
 
 transgroup_assoc = sa.Table("transgroup_assoc", Base.metadata,
     Column("transition_id", Integer, ForeignKey("Transition._id")),
     Column("transition_group_id", Integer, ForeignKey("TransitionGroup._id")),
 )
 
-class TransitionGroup(ThimblesTable, Base):
+class TransitionGroup(list, ThimblesTable, Base):
     transitions = relationship("Transition", secondary=transgroup_assoc)
     _grouping_standard_id = Column(Integer, ForeignKey("TransitionGroupingStandard._id"))
     
@@ -78,7 +95,7 @@ class TransitionGroup(ThimblesTable, Base):
         if transitions is None:
             transitions = []
         self.transitions = transitions
-
+    
     def __len__(self):
         return len(self.transitions)
     
@@ -88,7 +105,16 @@ class TransitionGroup(ThimblesTable, Base):
     def __setitem__(self, index, value):
         self.transitions[index] = value
 
-class TransitionGroupingStandard(ThimblesTable, Base):
+    def pop(self, index):
+        self.transitions.pop(index)
+    
+    def append(self, value):
+        self.transitions.append(value)
+    
+    def extend(self, in_list):
+        self.transitions.extend(in_list)
+
+class TransitionGroupingStandard(list, ThimblesTable, Base):
     name = Column(String)
     groups = relationship("TransitionGroup")
     
@@ -100,7 +126,7 @@ class TransitionGroupingStandard(ThimblesTable, Base):
                 group = TransitionGroup(group)
             tgroups.append(group)
         self.groups = tgroups
-
+    
     def __len__(self):
         return len(self.groups)
     
@@ -111,6 +137,12 @@ class TransitionGroupingStandard(ThimblesTable, Base):
         self.groups[index] = value
 
 
+def as_transition_group(tgroup):
+    if isinstance(tgroup, TransitionGroup):
+        return tgroup
+    else:
+        return TransitionGroup(tgroup)
+
 @task(result_name="grouping_standard")
 def make_grouping_standard(
         standard_name, 
@@ -118,11 +150,13 @@ def make_grouping_standard(
         transition_filters=None, 
         min_wv=None, 
         max_wv=None,
-        wv_split=10.0,
+        wv_split=100.0, #TODO: split on log wavelength instead
         ep_split=1.0, 
-        loggf_split=1.0, 
-        x_split=1.0, 
-        commit=False):
+        loggf_split=3.0, 
+        x_split=1.0,
+        split_charge=True,
+        auto_commit=False,
+    ):
     existing_standards = tdb.query(TransitionGroupingStandard)\
      .filter(TransitionGroupingStandard.name == standard_name).all()
     if len(existing_standards) > 0:
@@ -138,20 +172,31 @@ def make_grouping_standard(
         t_query.filter(t_filter)
     transitions = t_query.all()
     split_scales=[
+        ("z", 0.1),
         ("wv", wv_split),
         ("ep", ep_split),
         ("loggf", loggf_split),
+        ("x", x_split),
     ]
-    attr_list = split_scale_dict.keys()
-    split_vec = split_scale_dict.values()
-    trans_df = tmb.utils.misc.attribute_df(transitions, [])
+    if split_charge:
+        split_scales.append(("charge", 0.1))
+    attr_list, split_vec= zip(*split_scales)
+    trans_df = tmb.utils.misc.attribute_df(transitions, attr_list)
     grouping_vec = tmb.utils.misc.running_box_segmentation(
-        trans_df, ["z", ],
+        df=trans_df, 
+        grouping_vecs=attr_list,
+        split_threshold=split_vec,
+        combine_breaks=True,
     )
-    
-    
+    grouped_transitions = []
+    for t_idx, t in enumerate(transitions):
+        list_idx = grouping_vec[t_idx]
+        if list_idx >= len(grouped_transitions):
+            grouped_transitions.append([])
+        grouped_transitions[list_idx].append(t)
+    tstand = TransitionGroupingStandard(grouped_transitions)
+    if auto_commit:
+        tdb.add(tstand)
+        tdb.commit()
+    return tstand
 
-@task(result_name="grouping_standard")
-def edit_grouping_standard(grouping_standard, tdb):
-    pass
-    

@@ -34,9 +34,9 @@ gui_resource_dir = os.path.join(os.path.dirname(__file__),"resources")
 
 Option("GUI", option_style="parent_dict")
 
-def _startup_exec():
+def _exec_startup():
     exec(opts["GUI.startup"], wds.__dict__)
-Option("startup", option_style="raw_string", default="", on_parse=_startup_exec, parent="GUI") 
+Option("startup", option_style="raw_string", default="", on_parse=_exec_startup, parent="GUI") 
 
 _help=\
 """don't display a GUI window

@@ -111,9 +111,13 @@ class MatplotlibCanvas(FigureCanvas):
         self.ax = self.axis(row_idx, col_idx)
     
     def draw(self):
+        #print "in draw"
         self.lock()
+        #print "in lock"
         super(MatplotlibCanvas, self).draw()
+        #print "unlocking"
         self.unlock()
+        #print "unlocked"
     
     def blit(self, bbox=None):
         self.lock()

@@ -34,11 +34,12 @@ def read_vald_linelist(fname):
         l_lande, u_lande, m_lande = map(float_or_nan, spl[8:11])
         rad_damp, stark_damp, waals_damp = map(float_or_nan, spl[12:15])
         
-        trans = Transition(wv=wv, 
-                           ion=(proton_number, charge),
-                           ep=elow,
-                           loggf=loggf,
-                           damp=dict(stark=stark_damp, waals=waals_damp, rad=rad_damp),
+        trans = Transition(
+            wv=wv, 
+            ion=(proton_number, charge),
+            ep=elow,
+            loggf=loggf,
+            damp=dict(stark=stark_damp, waals=waals_damp, rad=rad_damp),
         )
         ldat.append(trans)
     return ldat

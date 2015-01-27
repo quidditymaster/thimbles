@@ -71,4 +71,40 @@ def _load_ptable():
     return pd.DataFrame(data=data_dict), atomic_number
 
 ptable, atomic_number = _load_ptable()
+atomic_symbol = {atomic_number[k]:k for k in atomic_number}
+
+def z_to_symbol(z):
+    try:
+        z = int(z)
+        if z < 100:
+            return atomic_symbol[z]
+        else:
+            z1 = z//100
+            z2 = z%100
+            return "{}{}".format(
+                atomic_symbol[z1],
+                atomic_symbol[z2],
+            )
+    except KeyError:
+        return None
+
+def symbol_to_z(symbol):
+    try:
+        lsym = len(symbol)
+        if lsym <= 2:
+            return atomic_number[symbol]
+        else:
+            if symbol[-1].isupper():
+                nback = 1
+            else:
+                nback = 2
+            z1 = atomic_number[symbol[:-nback]]
+            z2 = atomic_number[symbol[:lsym-nback]]
+            z1, z2 = sorted(z1, z2)
+            return z1*100+z2
+    except KeyError:
+        return None
+
+    
+
 #from thimbles.stellar_atmospheres import solar_abundance as ptable

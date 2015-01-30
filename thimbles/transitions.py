@@ -87,7 +87,7 @@ transgroup_assoc = sa.Table("transgroup_assoc", Base.metadata,
     Column("transition_group_id", Integer, ForeignKey("TransitionGroup._id")),
 )
 
-class TransitionGroup(list, ThimblesTable, Base):
+class TransitionGroup(ThimblesTable, Base):
     transitions = relationship("Transition", secondary=transgroup_assoc)
     _grouping_standard_id = Column(Integer, ForeignKey("TransitionGroupingStandard._id"))
     
@@ -104,7 +104,7 @@ class TransitionGroup(list, ThimblesTable, Base):
     
     def __setitem__(self, index, value):
         self.transitions[index] = value
-
+    
     def pop(self, index):
         self.transitions.pop(index)
     
@@ -114,7 +114,7 @@ class TransitionGroup(list, ThimblesTable, Base):
     def extend(self, in_list):
         self.transitions.extend(in_list)
 
-class TransitionGroupingStandard(list, ThimblesTable, Base):
+class TransitionGroupingStandard(ThimblesTable, Base):
     name = Column(String)
     groups = relationship("TransitionGroup")
     
@@ -194,7 +194,7 @@ def make_grouping_standard(
         if list_idx >= len(grouped_transitions):
             grouped_transitions.append([])
         grouped_transitions[list_idx].append(t)
-    tstand = TransitionGroupingStandard(grouped_transitions)
+    tstand = TransitionGroupingStandard(grouped_transitions, name=standard_name)
     if auto_commit:
         tdb.add(tstand)
         tdb.commit()

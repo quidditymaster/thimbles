@@ -29,6 +29,7 @@ from thimbles import modeling
 from thimbles.periodictable import ptable, atomic_number
 from thimbles import io
 from thimbles.io import *
+from thimbles import pseudonorms
 from thimbles import sources
 from thimbles import photometry
 from thimbles import spectrographs
@@ -45,6 +46,7 @@ from thimbles import continuum
 from thimbles import radtran
 from thimbles import resampling
 from thimbles import transitions
+from thimbles import charts
 
 from thimbles.thimblesdb import ThimblesDB
 from thimbles.stellar_parameters import Star

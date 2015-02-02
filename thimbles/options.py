@@ -46,11 +46,6 @@ class OptionTree(object):
         
     def parse_options(self):
         rt_str_dict = {}
-        #populate from environment variables
-        for option in self.options.values():
-            if not option.envvar is None:
-                if option.envvar in os.environ:
-                    rt_str_dict[option] = os.environ[option.envvar]
         #parse the config file
         parent_opt_path = None
         sub_path = None
@@ -162,6 +157,10 @@ class Option(object):
             self._value = default
             self._valuated = True
         self.envvar = envvar
+        #populate from environment variables
+        if not self.envvar is None:
+            if self.envvar in os.environ:
+                self.runtime_str = os.environ[self.envvar]
         self.help = help_
         self.option_tree = option_tree
         self.register_option(name, parent)

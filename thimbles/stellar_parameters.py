@@ -60,7 +60,6 @@ class Star(Source):
         "polymorphic_identity":"Star",
     }
     _stellar_parameters_id = Column(Integer, ForeignKey("StellarParameters._id"))
-    stellar_parameters = relationship("StellarParameters", backref="star")
 
 class StellarParameters(ThimblesTable, Base):
     _teff_id = Column(Integer, ForeignKey("TeffParameter._id"))
@@ -74,6 +73,7 @@ class StellarParameters(ThimblesTable, Base):
     _mass_id = Column(Integer, ForeignKey("MassParameter._id"))
     mass_p = relationship("MassParameter", foreign_keys=_mass_id)
     abundances = relationship("Abundance")
+    star = relationship("Star", backref="stellar_parameters", uselist=False)
     
     def __init__(self, 
                  teff, 

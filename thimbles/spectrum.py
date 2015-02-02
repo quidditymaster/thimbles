@@ -170,13 +170,13 @@ class WavelengthSolution(ThimblesTable, Base):
             return np.arange(len(self.indexer))
         return self.indexer.get_index(wvs, clip=clip, snap=snap)
     
-    def interpolant_matrix(self, wv_soln, fill_mode="zeros"):
+    def interpolant_sampling_matrix(self, wv_soln, fill_mode="zeros"):
         """generate an interpolation matrix which will transform from
         an input wavelength solution to this wavelength solution.
         """
         wv_soln = as_wavelength_solution(wv_soln)
         shifted_wvs = wv_soln.get_wvs()*(1.0 + self.fractional_shift)
-        return self.indexer.interpolant_matrix(shifted_wvs)
+        return self.indexer.interpolant_sampling_matrix(shifted_wvs)
 
 
 def as_wavelength_solution(wavelengths):
@@ -210,10 +210,11 @@ class WavelengthSample(ThimblesTable, Base):
     def wvs(self):
         return self.wv_soln.get_wvs(self.pixels)
     
-    def interpolant_matrix(self):
+    def interpolant_sampling_matrix(self, wavelengths):
         """calculate the sparse matrix which linearly interpolates"""
-        raise NotImplementedError("guess now is the time to make this work!")
-
+        full_mat = self.wv_soln.interpolant_sampling_matrix(wavelengths)
+        part_mat = full_mat.tocsc()[:, self.start:self.end].copy()
+        return part_mat
 
 def as_wavelength_sample(wvs):
     if isinstance(wvs, WavelengthSample):
@@ -251,16 +252,17 @@ class Spectrum(ThimblesTable, Base):
     info = Column(PickleType)
     _source_id = Column(Integer, ForeignKey("Source._id"))
     
-    def __init__(self,
-                 wavelengths, 
-                 flux, 
-                 ivar=None,
-                 flags=None,
-                 info=None,
-                 source=None,
-                 pseudonorm_func=None,
-                 pseudonorm_kwargs=None,
-             ):
+    def __init__(
+            self,
+            wavelengths, 
+            flux, 
+            ivar=None,
+            flags=None,
+            info=None,
+            source=None,
+            pseudonorm_func=None,
+            pseudonorm_kwargs=None,
+    ):
         """makes a spectrum
         wavelengths: ndarray or WavelengthSolution
           the wavelengths at each pixel, if more specific information
@@ -334,7 +336,7 @@ class Spectrum(ThimblesTable, Base):
     def sample(self,
             wavelengths,
             mode="interpolate", 
-            return_matrix=False,
+            return_matrix=None,
     ):
         """generate a spectrum subsampled from this one.
         
@@ -364,16 +366,15 @@ class Spectrum(ThimblesTable, Base):
             if u_idx-l_idx < 1:
                 return None
             out_flux = self.flux[l_idx:u_idx+1]
-            wv_sample = WavelengthSample(self.wv_soln, l_idx, u_idx)
+            wv_sample = WavelengthSample(self.wv_sample.wv_soln, l_idx, u_idx)
             out_ivar = self.ivar[l_idx:u_idx+1]
             sampling_matrix = scipy.sparse.identity(len(out_flux))
             sampled_spec = Spectrum(wv_sample, out_flux, out_ivar)
         elif mode == "interpolate":
-            tmat = self.wv_sample.interpolant_matrix(wavelengths)
+            tmat = self.wv_sample.interpolant_sampling_matrix(wavelengths)
             out_flux = tmat*self.flux
-            out_var = (tmat*self.var)*tmat.transpose()
-            out_var_collapse = out_var*np.ones(len(out_flux))
-            out_ivar = tmb.utils.var_2_inv_var(out_var_collapse)
+            out_var = tmat.transpose()*tmat*self.var
+            out_ivar = tmb.utils.misc.var_2_inv_var(out_var)
             sampled_spec = Spectrum(wavelengths, out_flux, out_ivar)
             sampling_matrix = tmat
         elif mode =="rebin":
@@ -477,7 +478,9 @@ class Spectrum(ThimblesTable, Base):
             else:
                 norm = np.ones(len(self))
         nspec = Spectrum(self.wv_sample, self.flux/norm, self.ivar*norm**2)
-        nspec.flux_p.value = self.flux_p.value/norm
+        flux_p_val = nspec.flux_p.value
+        if not flux_p_val is None:
+            nspec.flux_p.value = self.flux_p.value/norm
         nspec.flags["normalized"] = True
         return nspec
     

@@ -26,7 +26,7 @@ speed_of_light = 299792.458 #speed of light in km/s
 from thimbles import dependencies
 from thimbles.verbosity import logger
 from thimbles import modeling
-from thimbles.periodictable import ptable, atomic_number
+from thimbles.periodictable import ptable, atomic_number, atomic_symbol
 from thimbles import io
 from thimbles.io import *
 from thimbles import pseudonorms

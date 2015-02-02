@@ -43,8 +43,8 @@ default_par_template=\
 freeform       0
 gfstyle        1
 atmosphere     1
-molecules      2
-"""
+molecules      2"""
+
 common_par_components=\
 """
 flux/int       {flux_int}
@@ -79,12 +79,16 @@ class MoogEngine(RadiativeTransferEngine):
         """execute moog silent in this engines working directory"""
         cur_dir = os.getcwd()
         #change to the working directory and execute
+        if opts.moog.executable.runtime_str is None:
+            raise Exception("path to MOOG executable not found, set moog.executable in config file or set an environment variable called MOOGSILENT with the path.")
         os.chdir(self.working_dir)
-        x = opts['moog.executable']
-        p = subprocess.call(x),#stdout=PIPE,stdin=PIPE)
-        #p.wait()
-        #change back to the original directory
-        os.chdir(cur_dir)
+        try:
+            x = opts['moog.executable']
+            p = subprocess.call(x)
+        except Exception as e:
+            print(e)
+        finally:
+            os.chdir(cur_dir)
     
     def ew_to_abundance(self, linelist, stellar_params, central_intensity=False):
         """generate abundances on the basis of equivalent widths

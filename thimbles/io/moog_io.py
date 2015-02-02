@@ -3,7 +3,7 @@ import numpy as np
 import re
 from datetime import datetime
 
-from thimbles import ptable
+from thimbles import ptable, atomic_number, atomic_symbol
 from thimbles.linelists import LineList
 import pandas as pd
 
@@ -130,7 +130,7 @@ def read_moog_abfind_summary(fname):
                     )
     #batom = Batom()
     
-    import pdb; pdb.set_trace()
+    #import pdb; pdb.set_trace()
     for cspecies in linedata.keys():
         species_parts = cspecies.split()
         species_pnum = atomic_number[species_parts[0]]

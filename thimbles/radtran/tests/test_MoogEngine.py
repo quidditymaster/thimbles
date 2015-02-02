@@ -11,11 +11,8 @@ import unittest
 
 import thimbles as tmb
 from thimbles.stellar_parameters import StellarParameters
-from thimbles.stellar_parameters import solar_parameters
 from thimbles.radtran import MoogEngine
 from thimbles.radtran import MarcsInterpolator
-
-tmb.options.opts.parse_options()
 
 class TestRadTranEngine(unittest.TestCase):
     
@@ -41,9 +38,8 @@ class TestRadTranEngine(unittest.TestCase):
     #    import pdb; pdb.set_trace()
     
     def test_line_abundance (self):
-        import pdb; pdb.set_trace()
         llabs = self.engine.line_abundance(linelist=self.ll,stellar_params=self.sun_mod_file)
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
     
     #def test_abund_to_ew_and_back (self):
     #    """ From abundances to ew and back again, a hobbit's tale by Bilbo Baggins

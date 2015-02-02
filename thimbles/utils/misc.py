@@ -5,6 +5,7 @@ import os
 from copy import deepcopy, copy
 
 # 3rd Party
+import pandas as pd
 import scipy.ndimage.filters as filters
 import scipy.ndimage.morphology as morphology
 import scipy.fftpack as fftpack
@@ -509,15 +510,19 @@ def smoothed_mad_error(values,
     new_inv_var = clean_inverse_variances(new_inv_var)
     return new_inv_var
 
-@task()
-def estimate_noise(spectrum, 
-                   smoothing_scale=3.0,
-                   median_scale=200,
-                   apply_poisson=True,
-                   post_smooth=5.0,
-                   max_snr=1000.0,
+@task(result_name="noise_estimate")
+def estimate_spectrum_noise(
+        spectrum, 
+        smoothing_scale=3.0,
+        median_scale=200,
+        apply_poisson=True,
+        post_smooth=5.0,
+        max_snr=1000.0,
+        overwrite_noise=False,
 ):
-    smoothed_mad_error
+    sm_ivar = smoothed_mad_error(spectrum.flux, smoothing_scale=smoothing_scale, median_scale=median_scale, apply_poisson=apply_poisson, post_smooth=post_smooth, max_snr=max_snr)
+    if overwrite_noise:
+        spectrum.ivar = sm_ivar
 
 @task()
 def min_delta_bins(x, min_delta, target_n=1, forced_breaks=None):
@@ -728,127 +733,6 @@ def echelle_normalize(spectra, masks="layered median", partition="adaptive", mas
         norms.append(nmod)
     return norms
 
-
-def approximate_normalization(spectrum,
-                              partition_scale=500, 
-                              poly_order=3,
-                              mask_kwargs=None,
-                              smart_partition=False, 
-                              alpha=4.0,
-                              beta=4.0,
-                              H_mask_radius=2.0,
-                              norm_hints=None,
-                              overwrite=False,
-                              min_stats=None,
-                              ):
-    """estimates a normalization curve for the input spectrum.
-    spectrum: Spectrum
-        a Spectrum object
-    partition_scale: float
-        a rough scale of the smallest allowable level of structure to be fit
-        in pixels
-    reject_fraction: float
-        sets the feature detection cutoff at the value representing this fraction
-        of all the feature troughs.
-    poly_order: int
-        the local order of spline to use
-    mask_back_off: int
-        a number of pixels to reduce the size of the feature mask by -1 enlarges
-        the number of pixels excluded around a feature trough by 1 on each side
-        and +1 would reduce by 1 on each side.
-    smart_partition: bool
-        if true attempt to use the optimal piecewise polynomial partitioning
-        algorithm. If the smart partitioning fails we will automatically 
-        switch to the quick way.
-    alpha: float
-        used only if smart_partition == True
-        how expensive new partitions are
-        see partitioning.partitioned_polynomial_model
-    beta: float
-        used only if smart_partition == True
-        how expensive small block sizes are
-        see partitioning.partitioned_polynomial_model
-    norm_hints: None or tuple of arrays
-        some suggestions for the norm which are entered into the fit.
-        (but not the partitioning)
-        wvs, continuum_fluxes, continuum_weights = norm_hints
-    overwrite: bool
-        if True the normalization object in the input spectrum is replaced
-        with the calculated normalization estimate (it all goes into the efficiency)
-    min_stats: MinimaStatistics
-        if the minima statistics have already been you can pass them in here.
-    
-    returns
-    ApproximateNorm object
-    """
-    #import matplotlib.pyplot as plt
-    #import pdb; pdb.set_trace()
-    wavelengths = spectrum.get_wvs()
-    pix_delta = np.median(scipy.gradient(wavelengths))
-    pscale = partition_scale*pix_delta
-    flux = spectrum.flux
-    variance = spectrum.get_var()
-    inv_var = spectrum.get_inv_var()
-    hmask = hydrogen.get_H_mask(wavelengths, H_mask_radius)
-    good_mask = (inv_var > 0)*(flux > 0)*hmask
-    #min_stats, fmask = detect_features(flux, variance, 
-    #                                   reject_fraction=reject_fraction,
-    #                                   mask_back_off=mask_back_off, 
-    #                                   min_stats=min_stats)
-    #fmask *= good_mask
-    
-    #generate a layered median mask.
-    if mask_kwargs is None:
-        mask_kwargs = {'n_layers':3, 'first_layer_width':201, 'last_layer_width':11, 'rejection_sigma':1.5} 
-    fmask = layered_median_mask(flux, **mask_kwargs)*good_mask
-    
-    mwv = wavelengths[fmask].copy()
-    mflux = flux[fmask].copy()
-    minv = inv_var[fmask]
-    if smart_partition:
-        try:
-            opt_part, mvps = partitioning.partitioned_polynomial_model(mwv, mflux, minv, 
-                    poly_order=(poly_order,),
-                    grouping_column=0, 
-                    min_delta=pscale,
-                    alpha=alpha, beta=beta, beta_epsilon=0.01)
-            break_wvs = mwv[np.asarray(opt_part[1:-1], dtype=int)]
-            use_simple_partition = False
-        except:
-            #the smart partitioning failed use the simple one instead
-            use_simple_partition = True
-    else:
-        use_simple_partition = True
-    if use_simple_partition:
-        break_wvs = min_delta_bins(mwv, min_delta=pscale, target_n=20*(poly_order+1)+10)
-        #roughly evenly space the break points partition_scale apart
-    pp_gen = piecewise_polynomial.RCPPB(poly_order=poly_order, control_points=break_wvs)
-    if norm_hints:
-        hint_wvs, hint_flux, hint_inv_var = norm_hints
-        mwv = np.hstack((mwv, hint_wvs))
-        mflux = np.hstack((mflux, hint_flux))
-        minv = np.hstack((minv, hint_inv_var))
-    
-    ppol_basis = pp_gen.get_basis(mwv).transpose()
-    in_sig = 1.0/np.sqrt(minv)
-    med_sig = np.median(in_sig)
-    print med_sig, "med sig"
-    fit_coeffs = pseudo_huber_irls(ppol_basis, mflux, 
-                      sigma=in_sig, 
-                      gamma=2.0*med_sig, 
-                      max_iter=10, conv_thresh=1e-4)
-    n_polys = len(break_wvs) + 1
-    n_coeffs = poly_order+1
-    out_coeffs = np.zeros((n_polys, n_coeffs))
-    for basis_idx in xrange(pp_gen.n_basis):
-        c_coeffs = pp_gen.basis_coefficients[basis_idx].reshape((n_polys, n_coeffs))
-        out_coeffs += c_coeffs*fit_coeffs[basis_idx]
-    continuum_ppol = piecewise_polynomial.PiecewisePolynomial(out_coeffs, break_wvs, centers=pp_gen.centers, scales=pp_gen.scales, bounds=pp_gen.bounds)
-    approx_norm = continuum_ppol(wavelengths)
-    if overwrite:
-        spectrum.norm = approx_norm
-        spectrum.feature_mask = fmask
-    return approx_norm
 
 def lad_fit(A, y):
     """finds the least absolute deviations fit for Ax = y
@@ -1288,12 +1172,16 @@ def running_box_segmentation(
         mscale = merge_scale[cascade_idx]
         gvec = np.around(gvec/mscale)*mscale
         gvres, gvidxs = np.unique(gvec, return_inverse=True)
-        gvres = (gvres - gvres[0]) % split_threshold[cascade_idx]
-        crossovers = get_local_maxima(gvres).astype(int)
+        last_val = gvres[0]
+        crossovers = np.zeros(gvres.shape, dtype=int)
+        for i in range(1, len(gvres)):
+            if (gvres[i] - last_val) > split_threshold[cascade_idx]:
+                crossovers[i] = 1
+                last_val = gvres[i]
         grouping_id[:, cascade_idx] = np.cumsum(crossovers)[gvidxs]
     
     if combine_breaks:
-        combined_group_id = np.zeros(n_pts)
+        combined_group_id = np.zeros(n_pts, dtype=int)
         g_dict = {}
         next_group_idx = 0
         for row_idx, g_vec in enumerate(grouping_id):

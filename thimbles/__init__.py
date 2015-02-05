@@ -38,7 +38,7 @@ from thimbles import flags
 from thimbles import hydrogen
 from thimbles import profiles
 from thimbles import coordinatization
-from thimbles.spectrum import Spectrum, as_wavelength_solution
+from thimbles.spectrum import Spectrum, as_wavelength_sample
 from thimbles import features
 #from thimbles import velocity
 from thimbles import stellar_atmospheres

@@ -854,7 +854,7 @@ def from_spectre (header):
     if disp_type == 'no solution':
         return [NoSolution(pixels)]  
     elif disp_type == 'chebyshev poly':
-        return [ChebyshevPolynomial(pixels,coeffs)]
+        return [from_spectre_chebyshev(pixels,coeffs)]
     elif disp_type == 'legendre poly':   
         return [LegendrePolynomial(pixels,coeffs)]
     elif disp_type == 'spline3':

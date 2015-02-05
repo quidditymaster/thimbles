@@ -16,9 +16,9 @@ class SpectrumChart(object):
     def __init__(
         self, 
         spectrum=None, 
-        wv_span=None,
-        normalize=False,
-        normalizer=None,
+        bounds=None,
+        normalize=True,
+        auto_zoom=True,
         label_axes=True,
         ax=None,
         **kwargs
@@ -26,6 +26,9 @@ class SpectrumChart(object):
         if ax is None:
             fig, ax = plt.subplots()
         self.ax = ax
+        self.auto_zoom = auto_zoom
+        
+        self.ax.get_xaxis().get_major_formatter().set_useOffset(False)
         if label_axes:
             self.ax.set_xlabel("Wavelength")
             self.ax.set_ylabel("Flux")
@@ -35,7 +38,7 @@ class SpectrumChart(object):
         for key in default_kwargs:
             line_kwargs.setdefault(key, default_kwargs[key])
         self.line_kwargs = line_kwargs
-        self.wv_span = wv_span
+        self.bounds = bounds
         self.normalize=normalize
         
         self.set_spectrum(spectrum)
@@ -48,11 +51,11 @@ class SpectrumChart(object):
     
     def set_normalize(self, normalize):
         self.normalize = normalize
-        self.update
+        self.update()
     
     def cropped_spectrum(self):
-        if not self.wv_span is None:
-            bspec = self.spectrum.sample(self.wv_span, mode="bounded")
+        if not self.bounds is None:
+            bspec = self.spectrum.sample(self.bounds, mode="bounded")
         else:
             bspec = self.spectrum
         return bspec
@@ -60,20 +63,30 @@ class SpectrumChart(object):
     def _initialize_plots(self):
         if not self._plots_initialized:
             bspec = self.cropped_spectrum()
+            if self.normalize:
+                bspec = bspec.normalized()
             if not bspec is None:
                 self.spec_line ,= self.ax.plot(bspec.wvs, bspec.flux, **self.line_kwargs)
             elif bspec is None:
                 self.spec_line ,= self.ax.plot(self.spectrum.wvs, self.spectrum.flux)
         self._plots_initialized = True
     
-    def set_wv_span(self, wv_span):
-        self.wv_span = wv_span
+    def set_bounds(self, bounds):
+        self.bounds = bounds
         self.update()
     
     def update(self):
         bspec = self.cropped_spectrum()
         if self.normalize:
             bspec = bspec.normalized()
+        if self.auto_zoom:
+            bwv = bspec.wv
+            min_x, max_x = sorted(bwv[0], bwv[-1])
+            min_y = min(0, np.min(bspec.flux))
+            max_y_idx = np.argmax(bwv.flux*bwv.ivar) #most significant point
+            max_y = bwv.flux[max_y_idx]
+            self.ax.set_xlim(min_x, max_x)
+            self.ax.set_ylim(min_y-0.01, max_y+(max_y-min_y)*0.15)
         self.spec_line.set_data(bspec.wvs, bspec.flux)
 
 

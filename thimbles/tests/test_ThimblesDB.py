@@ -21,7 +21,7 @@ class Dummy(ThimblesTable, Base):
 class TestCreate(unittest.TestCase):
     
     def setUp(self):
-        base_path = os.path.abspath(os.path.dirname(__file__))
+        base_path = os.path.dirname(os.path.abspath(__file__))
         self.db_path = os.path.join(base_path, "junk_db.tdb")
     
     def delete_db(self):
@@ -47,17 +47,17 @@ class TestPersistence(unittest.TestCase):
     def delete_db(self):
         os.system( "rm -r {}".format(self.db_path))
     
-    def test_save_dummy(self):
+    def test_persist_dummy(self):
         dummy1 = Dummy(name="groot", float_value=60.2, int_value=89)
         dummy2 = Dummy(name="bloot", float_value=20.2, int_value=2, array_value=np.arange(10))
         self.tdb.add(dummy1)
         self.tdb.add(dummy2)
-        self.tdb.save()
+        self.tdb.commit()
         res = self.tdb.query(Dummy).all()
         print res
         self.assertTrue(len(res) == 2)
         d1_res = self.tdb.query(Dummy).filter(Dummy.name == "groot").first()
-        self.assertTrue(d1_res is dummy1)
+        self.assertTrue(d1_res._id == dummy1._id)
         self.tdb.close()
         self.make_db()
         afres = self.tdb.query(Dummy).filter(Dummy.name=="groot").first()

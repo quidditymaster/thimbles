@@ -38,5 +38,18 @@ class TestIRLS(unittest.TestCase):
         res_vec = irls(sparse.csr_matrix(self.fit_matrix), self.y, 1.0)
         self._check_result(res_vec, 1e-10)
 
+
+
+class TestNoiseEstimates(unittest.TestCase):
+    
+    def setUp(self):
+        pass
+
+    def test_smoothed_mad_error(self):
+        npts = 1000
+        rpts = 2.0+np.random.random(size=(npts,))
+        smerr = smoothed_mad_error(rpts)
+        #import pdb; pdb.set_trace()
+
 if __name__ == "__main__":
     unittest.main()

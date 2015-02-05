@@ -16,7 +16,7 @@ import thimbles.utils.piecewise_polynomial as ppol
 from thimbles import logger
 from thimbles import hydrogen
 from latbin import matching
-from thimbles import as_wavelength_solution
+from thimbles import as_wavelength_sample
 from thimbles.utils.misc import saturated_voigt_cog
 from thimbles.sqlaimports import *
 

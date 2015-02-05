@@ -29,6 +29,7 @@ def write_moog_marcs_file(layer_data, out_fname, vmicro, abundances, comment_str
     outf.flush()
     outf.close()
 
+
 class MarcsInterpolator(PhotosphereEngine):
     """interpolates the grid of MARCS model atmospheres"""
     

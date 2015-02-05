@@ -1,11 +1,13 @@
-import pandas as pd
-import numpy as np
+
 import re
 from datetime import datetime
 
+import pandas as pd
+import numpy as np
+
+import thimbles as tmb
 from thimbles import ptable, atomic_number, atomic_symbol
 from thimbles.linelists import LineList
-import pandas as pd
 
 def float_or_nan(val):
     try:
@@ -129,8 +131,6 @@ def read_moog_abfind_summary(fname):
                     abund=[],
                     )
     #batom = Batom()
-    
-    #import pdb; pdb.set_trace()
     for cspecies in linedata.keys():
         species_parts = cspecies.split()
         species_pnum = atomic_number[species_parts[0]]
@@ -148,7 +148,29 @@ def read_moog_abfind_summary(fname):
     
     return out_ldat
 
-def read_moog_synth_summary(fname):
-    pass #TODO:
 
-
+def read_moog_synth_summary(fname, effective_snr=500.0):
+    lines = open(fname).readlines()[1:]
+    data = []
+    for lidx in range(len(lines)):
+        try:
+            spl = lines[lidx].split()
+            if len(spl) != 4:
+                continue
+            flvals = map(float, spl)
+            min_wv = flvals[0]
+            max_wv = flvals[1]
+            wv_delta = flvals[2]
+            break
+        except Exception:
+            pass
+    for lidx in range(lidx+1, len(lines)):
+        data.extend(map(float, lines[lidx].split()))
+    flux = 1.0-np.array(data)
+    wvs = np.linspace(min_wv, min_wv+(len(flux)-1)*wv_delta, len(flux))
+    sflags = tmb.spectrum.SpectrumFlags()
+    sflags["normalized"] = True
+    eff_ivar = np.repeat(effective_snr**2, len(flux))
+    #import pdb; pdb.set_trace()
+    spec = tmb.Spectrum(wvs, flux, eff_ivar, flags=sflags)
+    return spec

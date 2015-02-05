@@ -123,7 +123,6 @@ class FixedParameterException(Exception):
     pass
 
 class Parameter(ThimblesTable, Base):
-    #_value = Column(Float) #a handle for storing and loading our model values
     parameter_class = Column(String)
     __mapper_args__={
         "polymorphic_identity":"parameter",
@@ -132,6 +131,7 @@ class Parameter(ThimblesTable, Base):
     
     fixed = Column(Boolean)
     propagate = Column(Boolean)
+    _value = None
     
     #class attributes
     name = "base parameter class"
@@ -143,6 +143,7 @@ class Parameter(ThimblesTable, Base):
     max=np.inf
     
     def __init__(self, 
+                 value=None,
                  fixed = False,
                  propagate=True,
                  ):
@@ -152,11 +153,18 @@ class Parameter(ThimblesTable, Base):
     
     @property
     def value(self):
+        if self._value is None:
+            m_models = self.mapped_models
+            if len(m_models) >= 1:
+                if len(m_models) > 1:
+                    print "warning parameter value regeneration is non-unique consider changing the model hierarchy to use cached paramters"
+                mod = m_models[0]
+                mod.fire() #should populate our self._value attribute
         return self._value
     
     @value.setter
     def value(self, value):
-        self.set(value, clip=True, propagate=self.propagate)
+        self.set(value, clip=True, propagate=None)
     
     def get(self):
         return self.value
@@ -167,17 +175,16 @@ class Parameter(ThimblesTable, Base):
         if clip:
             value = np.clip(value, self.min, self.max)
         self._value = value
-        mod_set = set()
         if propagate is None:
             propagate = self.propagate
         if propagate:
             mods = []
+            mod_set = set()
             mods.extend(self.models)
             while len(mods) > 0:
                 mod = mods.pop(0)
                 mod_set.add(mod)
-                val = mod()
-                mod.output_p.value = val
+                mod.fire()
                 mods.extend([nmod for nmod in mod.output_p.models if nmod not in mod_set])
     
     def __repr__(self):
@@ -199,10 +206,11 @@ class Parameter(ThimblesTable, Base):
         self.history.revert(value_id=value_id, pop=pop)
 
 
-#class ParameterPrototype(Parameter):
+#how to make a parameter subclass
+#class classname(Parameter):
 #    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
 #    _value = Column(Float)
 #    __mapper_args__={
-#        "polymorphic_identity": "Parameter"
+#        "polymorphic_identity": "classname"
 #    }
 

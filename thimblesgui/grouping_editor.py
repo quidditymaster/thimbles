@@ -7,18 +7,21 @@ from PySide.QtCore import Signal, Slot
 
 import numpy as np
 import matplotlib as mpl
+import matplotlib.pyplot as plt
 
 import thimbles as tmb
 from thimbles import workingdataspace as wds
 from thimbles.thimblesdb import Base
 from thimbles.transitions import Transition, as_transition_group
-from thimbles import as_wavelength_solution
+from thimbles.abundances import Ion
+from thimbles import as_wavelength_sample
 from thimbles import ptable
 from thimbles.periodictable import symbol_to_z, z_to_symbol
 import thimbles.charts as charts
 #from thimbles.charts import MatplotlibCanvas
 
 from thimblesgui import MatplotlibWidget
+from thimblesgui import FluxDisplay
 
 class CurrentSelection(QtCore.QObject):
     transitionChanged = Signal(Transition)
@@ -91,6 +94,14 @@ class WavelengthSpan(QtCore.QObject):
     def max_wv(self, value):
         self._max_wv = value
         self.emit_bounds_changed()
+    
+    @property
+    def bounds(self):
+        return [self._min_wv, self._max_wv]
+    
+    @bounds.setter
+    def bounds(self, value):
+        self.set_bounds(*value)
     
     def set_bounds(self, min_wv, max_wv):
         self._min_wv = min_wv
@@ -206,6 +217,8 @@ class SpeciesSelectorWidget(QtGui.QWidget):
         
         layout = QtGui.QHBoxLayout()
         self.setLayout(layout)
+        self.label = QtGui.QLabel("species")
+        layout.addWidget(self.label)
         self.species_le = QtGui.QLineEdit(parent=self)
         layout.addWidget(self.species_le)
         #self.species_le.setFixedWidth(150)
@@ -254,7 +267,7 @@ class BaseExpressionWidget(QtGui.QWidget):
     expression = None
     expressionChanged = Signal()
     
-    def __init__(self, sqla_base=None, parent=None):
+    def __init__(self, sqla_base=None, label="base expression", parent=None):
         super(BaseExpressionWidget, self).__init__(parent)
         if sqla_base is None:
             sqla_base = Base
@@ -263,6 +276,8 @@ class BaseExpressionWidget(QtGui.QWidget):
         layout = QtGui.QHBoxLayout()
         self.setLayout(layout)
         #self.text_box = QtGui.QPlainTextEdit()
+        self.label = QtGui.QLabel(label)
+        layout.addWidget(self.label)
         self.expression_le = QtGui.QLineEdit(parent=self)
         layout.addWidget(self.expression_le)
         self.parse_btn = QtGui.QPushButton("parse")
@@ -295,30 +310,53 @@ class BaseExpressionWidget(QtGui.QWidget):
             return
         super(BaseExpressionWidget, self).keyPressEvent(event)
 
-class TransitionConstraintsWidget(QtGui.QWidget):
-    constraintsChanged = Signal()
+class TransitionConstraints(QtGui.QWidget):
+    constraintsChanged = Signal(list)
     
-    def __init__(self, parent):
-        super(TransitionConstraintsWidget, self).__init__(parent)
+    def __init__(self, wv_span, parent=None):
+        super(TransitionConstraints, self).__init__(parent)
         
         layout = QtGui.QGridLayout()
+        self.setLayout(layout)
+        self.wv_span = wv_span
+        self.wv_span_widget = WavelengthSpanWidget(wv_span, parent=self)
+        layout.addWidget(self.wv_span_widget, 0, 1, 1, 1)
         self.species_filter_cb = QtGui.QCheckBox()
         self.species_selector = SpeciesSelectorWidget(parent=self)
-        layout.addWidget(self.species_filter_cb, 0, 0, 1, 1)
-        layout.addWidget(self.species_selector, 0, 1, 1, 1)
+        layout.addWidget(self.species_filter_cb, 1, 0, 1, 1)
+        layout.addWidget(self.species_selector, 1, 1, 1, 1)
         self.expr_filter_cb = QtGui.QCheckBox()
-        self.expr_wid = BaseExpressionWidget(parent=self)
+        self.expr_wid = BaseExpressionWidget(parent=self, label="filter")
+        layout.addWidget(self.expr_filter_cb, 2, 0, 1, 1)
+        layout.addWidget(self.expr_wid, 2, 1, 1, 1)
         
-        self.species_filter_cb.toggled.connect(self.constraintsChanged.emit)#self.emit_constraints_changed)
-        self.expr_filter_cb.toggled.connect(self.constraintsChanged.emit)#self.emit_constraints_changed)
+        self.wv_span.boundsChanged.connect(self.emit_constraints)
+        self.species_filter_cb.toggled.connect(self.emit_constraints)
+        self.expr_filter_cb.toggled.connect(self.emit_constraints)
+        self.species_selector.speciesChanged.connect(self.on_species_changed)
+        self.expr_wid.expressionChanged.connect(self.on_expression_changed)
     
-    def emit_constraints_changed(self):
-        self.constraintsChanged.emit()
+    def emit_constraints(self):
+        self.constraintsChanged.emit(self.transition_constraints())
+    
+    def on_species_changed(self, new_species):
+        if self.filter_cb.checkState():
+            self.emit_constraints()
+    
+    def on_expression_changed(self):
+        if self.expr_filter_cb.checkState():
+            self.emit_constraints()
     
     def transition_constraints(self):
         constraints = []
+        constraints.append([Transition.wv >= self.wv_span.min_wv])
+        constraints.append([Transition.wv <= self.wv_span.max_wv])
         if self.species_filter_cb.checkState():
-            constraints.append(Ion.z._in(self.zvals))
+            zvals = self.species_selector.zvals
+            if len(zvals) == 1:
+                constraints.append(Ion.z == zvals[0])
+            elif len(zvals) > 1:
+                constraints.append(Ion.z.in_(self.species_selector.zvals))
         if self.expr_filter_cb.checkState():
             expr = self.expr_wid.expression
             if not expr is None:
@@ -498,11 +536,10 @@ class TransitionScatter(QtGui.QWidget):
 
 class GroupingStandardEditor(QtGui.QMainWindow):
     
-    
     def __init__(
             self, 
             standard_name, 
-            tdb, 
+            tdb,
             spectra=None,
             parent=None,
     ):
@@ -513,39 +550,66 @@ class GroupingStandardEditor(QtGui.QMainWindow):
         
         self.tdb = tdb
         gstand = tdb.query(tmb.transitions.TransitionGroupingStandard)\
-                    .filter(name=standard_name).one()
+                    .filter(tmb.transitions.TransitionGroupingStandard.name==standard_name).one()
         self.grouping_standard = gstand
+        self.grouping_dict = {}
+        for group in self.grouping_standard.groups:
+            for trans in group.transitions:
+                self.grouping_dict[trans] = group
         
-        self.wv_span = wv_span
-        self.wv_step = wv_step
+        blue_trans = tdb.query(Transition).order_by(Transition.wv).first()
+        self.wv_span = WavelengthSpan(blue_trans.wv, blue_trans.wv*(1.002))
         
         self.make_actions()
         self.make_status_bar()
-        self.make_spec_widget()
+        
+        self.flux_display = FluxDisplay(self.wv_span, parent=self)
+        self.setCentralWidget(self.flux_display)
+        chart_kwargs = {}
+        chart_kwargs["ax"] = self.flux_display.ax
+        chart_kwargs["label_axes"] = False
+        chart_kwargs["auto_zoom"] = False
+        for spec in self.spectra:
+            schart = charts.SpectrumChart(spec, **chart_kwargs)
+            self.flux_display.add_chart(schart)
+        
+        transitions = self.tdb.query(tmb.transitions.Transition).all()
+        self.fork_diagram = tmb.charts.fork_diagram.TransitionsChart(transitions, ax=self.flux_display.ax)
+        
+        
+        dock = QtGui.QDockWidget("Transiton Filter", self)
+        self.constraints = TransitionConstraints(self.wv_span, parent=dock)
+        dock.setWidget(self.constraints)
+        self.addDockWidget(Qt.LeftDockWidgetArea, dock)
     
     def make_actions(self):
         self.save_act = QtGui.QAction("Save changes to database", self)
-        save_seq = QKeySequence(Qt.Key_Control + Qt.Key_X, Qt.Key_Control + Qt.Key_S)
+        save_seq = QtGui.QKeySequence(Qt.Key_Control + Qt.Key_X, Qt.Key_Control + Qt.Key_S)
         self.save_act.setShortcut(save_seq)
-        self.save_act.triggered.connect(self.save)
+        self.save_act.triggered.connect(self.on_save)
         
         self.nextwv_act = QtGui.QAction("next wv region", self)
-        self.nextwv_act.setStatusTip("move wavelength bounds forward a step", self)
-        self.nextwv_act.setShortcut(QKeySequence(Qt.Key_Control+Qt.Key_Right))
+        self.nextwv_act.setStatusTip("move wavelength bounds forward a step")
+        self.nextwv_act.setShortcut(QtGui.QKeySequence(Qt.Key_Control+Qt.Key_Right))
         self.nextwv_act.triggered.connect(self.next_wv_region)
         
         self.prevwv_act = QtGui.QAction("prev wv region", self)
-        self.prevwv_act.setStatusTip("move wavelength bounds back a step", self)
-        self.prevwv_act.setShortcut(QKeySequence(Qt.Key_Control+Qt.Key_Left))
+        self.prevwv_act.setStatusTip("move wavelength bounds back a step")
+        self.prevwv_act.setShortcut(QtGui.QKeySequence(Qt.Key_Control+Qt.Key_Left))
         self.prevwv_act.triggered.connect(self.prev_wv_region)
     
     def make_status_bar(self):
         self.statusBar().showMessage("Ready")
     
-    def save(self):
+    @Slot(list)
+    def on_constraints_changed(self, constraints):
+        print "constraints changed!"
+    
+    def on_save(self):
         try:
             self.tdb.commit()
-            self.statusBar().showMessage("saved")
+            self.statusBar().showMessage("Committed changes to database {}"\
+                                         .format(self.tdb.db_url))
         except Exception as e:
             print "save action failed"
             print e
@@ -578,24 +642,34 @@ class GroupingStandardEditor(QtGui.QMainWindow):
 if __name__ == "__main__":
     
     qap = QtGui.QApplication([])
-
+    
     #wvspan = WavelengthSpan(5000.0, 5500.0)
     #wvspanwid = WavelengthSpanWidget(wvspan)
     #wvspanwid.show()
     
     #sfw = SpeciesSetWidget()
     #sfw.show()
-    
+                                         
     #arbfilt = BaseExpressionWidget()
     #arbfilt.show()
-
+    
+    #import pdb; pdb.set_trace()
     tdb = tmb.ThimblesDB("/home/tim/sandbox/cyclefind/junk.tdb")
-    transitions = tdb.query(Transition).all()
-    tscat = TransitionScatter()
-    tscat.set_pool(transitions)
-    tscat.set_transition(transitions[0])
-    tscat.set_group(transitions[:3])
-    tscat.show()
+    #transitions = tdb.query(Transition).all()
+    
+    #tscat = TransitionScatter()
+    #tscat.set_pool(transitions)
+    #tscat.set_transition(transitions[0])
+    #tscat.set_group(transitions[3:8])
+    #tscat.show()
+    
+    spectra = tmb.io.read_spec("/home/tim/data/HD221170/hd.3720rd")
+    gse = GroupingStandardEditor("default", tdb, spectra=spectra)
+    gse.show()
     
     qap.exec_()
+    
+    #trans_chart = tmb.charts.fork_diagram.TransitionsChart(transitions)
+    #trans_chart.ax.set_xlim(3500, 4000)
+    #plt.show()
     

@@ -1,6 +1,6 @@
 import threading
 import numpy as np
-import matplotlib
+import matplotlib as mpl
 
 from PySide import QtCore
 from PySide import QtGui
@@ -20,10 +20,9 @@ class MatplotlibWidget(QtGui.QWidget):
     canvas : the MplCanvas object, which contains the figure, axes, etc.
     axes : the main axe object for the figure
     vboxlayout : a vertical box layout from QtGui
-    mpl_toolbar : if instanciated with a withNavBar=True, then this attribute
-        is the navigation toolbar object (from matplotlib), to allow
-        exploration within the axes.
-        
+    mpl_toolbar : boolean
+      whether the widget should have a regular matplotlib toolbar or not.
+    
     Notes
     -----
     __1)__ S. Tosi, ``Matplotlib for Python Developers''
@@ -31,15 +30,15 @@ class MatplotlibWidget(QtGui.QWidget):
         http://www.packtpub.com/matplotlib-python-development/book
         
     """
-    buttonPressed = Signal(list)
-    buttonReleased = Signal(list)
-    pickEvent = Signal(list)
+    buttonPressed = Signal(list)#mpl.backend_bases.Event)
+    buttonReleased = Signal(list)#mpl.backend_bases.Event)
+    pickEvent = Signal(list)#mpl.backend_bases.Event)
     
-    def __init__(self, parent=None, nrows=1, ncols=1, mpl_toolbar=True,
-                 sharex="none", sharey="none"):
+    def __init__(self, nrows=1, ncols=1, mpl_toolbar=True,
+                 sharex="none", sharey="none", parent=None,):
         #self.parent = parent
         # initialization of Qt MainWindow widget
-        QtGui.QWidget.__init__(self, parent)
+        super(MatplotlibWidget, self).__init__(parent)
         
         # set the canvas to the Matplotlib widget
         self.canvas = MatplotlibCanvas(nrows, ncols, sharex=sharex, sharey=sharey)
@@ -51,14 +50,15 @@ class MatplotlibWidget(QtGui.QWidget):
         if mpl_toolbar:
             self.mpl_toolbar = NavigationToolbar(self.canvas,self)
             self.mpl_toolbar.setWindowTitle("Plot")
+            #import thimblesgui at the beginning of your script to fix signature/subclassing bugs.
             self.vboxlayout.addWidget(self.mpl_toolbar)
         
         # set the layout to the vertical box
         self.setLayout(self.vboxlayout)
         
-        self.mpl_connect()
+        self._mpl_qt_connect()
     
-    def mpl_connect(self):
+    def _mpl_qt_connect(self):
         #print "mpl connect called"
         #import pdb; pdb.set_trace()
         self.canvas.callbacks.connect("button_press_event", self.emit_button_pressed)

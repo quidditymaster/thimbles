@@ -63,12 +63,14 @@ class SpectrumChart(object):
     def _initialize_plots(self):
         if not self._plots_initialized:
             bspec = self.cropped_spectrum()
-            if self.normalize:
-                bspec = bspec.normalized()
+            if not bspec is None:
+                if self.normalize:
+                    bspec = bspec.normalized()
             if not bspec is None:
                 self.spec_line ,= self.ax.plot(bspec.wvs, bspec.flux, **self.line_kwargs)
             elif bspec is None:
-                self.spec_line ,= self.ax.plot(self.spectrum.wvs, self.spectrum.flux)
+                self.spec_line ,= self.ax.plot([0], [1], **self.line_kwargs)
+                self.spec_line.set_visible(False)
         self._plots_initialized = True
     
     def set_bounds(self, bounds):
@@ -77,13 +79,19 @@ class SpectrumChart(object):
     
     def update(self):
         bspec = self.cropped_spectrum()
+        if bspec is None:
+            self.spec_line.set_visible(False)
+            return
+        else:
+            self.spec_line.set_visible(True)
         if self.normalize:
             bspec = bspec.normalized()
         if self.auto_zoom:
             bwv = bspec.wv
             min_x, max_x = sorted(bwv[0], bwv[-1])
             min_y = min(0, np.min(bspec.flux))
-            max_y_idx = np.argmax(bwv.flux*bwv.ivar) #most significant point
+            mflux = np.median(bspec.flux)
+            max_y_idx = np.argmax((bspec.flux > mflux)*(bspec.flux*bspec.ivar))
             max_y = bwv.flux[max_y_idx]
             self.ax.set_xlim(min_x, max_x)
             self.ax.set_ylim(min_y-0.01, max_y+(max_y-min_y)*0.15)

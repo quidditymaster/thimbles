@@ -244,7 +244,7 @@ class ArbitraryCoordinatization(Coordinatization):
         coord = np.asarray(coord)
         in_shape = coord.shape
         coord = np.atleast_1d(coord)
-        out_index = np.zeros(in_shape, dtype=float)
+        out_index = np.zeros(coord.shape, dtype=float)
         coord_idxs = np.argsort(coord)
         cur_idx = 0
         min_x = self.min
@@ -268,9 +268,9 @@ class ArbitraryCoordinatization(Coordinatization):
                 idx = cur_idx + (cur_x - lb)/(ub-lb)
             out_index[cur_i] = idx
         if snap:
-            out_coordinates = np.around(out_index).astype(int)
+            out_index = np.around(out_index).astype(int)
         if clip:
-            out_coordinates = np.clip(out_coordinates, 0, len(self)-1)
+            out_index = np.clip(out_index, 0, len(self)-1)
         return out_index.reshape(in_shape)
 
 class LinearCoordinatization(Coordinatization):

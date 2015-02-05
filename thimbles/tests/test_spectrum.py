@@ -4,11 +4,68 @@ try:
     import ipdb as pdb
 except ImportError:
     import pdb
+from thimbles.coordinatization import *
 from thimbles.spectrum import Spectrum, WavelengthSolution
 
 # ########################################################################### #
 # np.testing.assert_almost_equal(x, y, nulp)
 
+
+class TestWavelengthSolution(unittest.TestCase):
+    
+    def setUp(self):
+        npts = 100
+        self.min_wv = 5000
+        self.max_wv = 5500
+        flux = np.ones(npts)
+        ivar = np.ones(npts)
+        self.linear_wvs = np.linspace(self.min_wv, self.max_wv, npts)
+        self.log_linear_wvs = np.exp(np.linspace(np.log(self.min_wv), np.log(self.max_wv), npts))
+        self.poly_wvs = self.linear_wvs + np.linspace(0, 1, npts)**2
+        
+        self.linspec = Spectrum(self.linear_wvs, flux, ivar)
+        self.logspec = Spectrum(self.log_linear_wvs, flux, ivar)
+        self.polyspec = Spectrum(self.poly_wvs, flux, ivar)
+        
+        self.spectra = [self.linspec, self.logspec, self.polyspec]
+        
+    def test_coordinatization_types(self):
+        lin_idxer = self.linspec.wv_sample.wv_soln.indexer
+        assert isinstance(lin_idxer, LinearCoordinatization)
+        log_idxer = self.logspec.wv_sample.wv_soln.indexer
+        assert isinstance(log_idxer, LogLinearCoordinatization)
+        poly_idxer = self.polyspec.wv_sample.wv_soln.indexer
+        assert isinstance(poly_idxer, ArbitraryCoordinatization)
+    
+    def test_spec_passthrough(self):
+        for spec in self.spectra:
+            wvs = np.linspace(self.min_wv, self.max_wv, 5)
+            indexes = spec.get_index(wvs)
+            wv_sol_indexes = spec.wv_sample.wv_soln.get_index(wvs)
+            np.testing.assert_almost_equal(indexes, wv_sol_indexes)
+            spec_back_wvs = spec.get_wvs(indexes)
+            wv_soln_back_wvs = spec.wv_sample.wv_soln.get_wvs(indexes)
+            np.testing.assert_almost_equal(spec_back_wvs, wv_soln_back_wvs)
+            np.testing.assert_almost_equal(wvs, spec_back_wvs)
+    
+    def test_scalar_indexing(self):
+        for spec in self.spectra:
+            wvsoln = spec.wv_sample.wv_soln
+            cent_wv = 0.5*(self.max_wv+self.min_wv)
+            cent_idx = wvsoln.get_index(cent_wv)
+            back_wv = wvsoln.get_wvs(cent_idx)
+            assert np.abs(back_wv-cent_wv) < 1e-7
+    
+    def test_index_snap_clip(self):
+        for spec in self.spectra:
+            wvsoln = spec.wv_sample.wv_soln
+            wvs = np.linspace(self.min_wv, self.max_wv, 7)
+            res = wvsoln.get_index(wvs, snap=True)
+            assert isinstance(res[0], int)
+            res = wvsoln.get_index(wvs-10.0, clip=True)
+            assert np.min(res) == 0
+            res = wvsoln.get_index(wvs+10.0, clip=True)
+            assert np.max(res) == len(wvsoln)-1
 
 class TestSpectrum (unittest.TestCase):
     

@@ -170,13 +170,12 @@ class WavelengthSolution(ThimblesTable, Base):
             return np.arange(len(self.indexer))
         return self.indexer.get_index(wvs, clip=clip, snap=snap)
     
-    def interpolant_sampling_matrix(self, wv_soln, fill_mode="zeros"):
+    def interpolant_sampling_matrix(self, wvs):
         """generate an interpolation matrix which will transform from
         an input wavelength solution to this wavelength solution.
         """
-        wv_soln = as_wavelength_solution(wv_soln)
-        shifted_wvs = wv_soln.get_wvs()*(1.0 + self.fractional_shift)
-        return self.indexer.interpolant_sampling_matrix(shifted_wvs)
+        wvs = as_wavelength_sample(wvs)
+        return self.indexer.interpolant_sampling_matrix(wvs.wvs)
 
 
 def as_wavelength_solution(wavelengths):
@@ -293,8 +292,12 @@ class Spectrum(ThimblesTable, Base):
         
         if flags is None:
             flags = SpectrumFlags()
-        else:
-            flags = SpectrumFlags(int(flags))
+        elif isinstance(flags, SpectrumFlags):
+            flags = flags
+        elif isinstance(flags, int):
+            flags = SpectrumFlags(flags)
+        elif isinstance(flags, dict):
+            flags = SpectrumFlags(flags)
         self.flags = flags
         
         if info is None:
@@ -362,11 +365,11 @@ class Spectrum(ThimblesTable, Base):
         """
         if mode=="bounded":
             bounds = sorted([wavelengths[0], wavelengths[-1]])
-            l_idx, u_idx = self.get_index(bounds, snap=True)
+            l_idx, u_idx = self.get_index(bounds, snap=True, clip=True)
             if u_idx-l_idx < 1:
                 return None
             out_flux = self.flux[l_idx:u_idx+1]
-            wv_sample = WavelengthSample(self.wv_sample.wv_soln, l_idx, u_idx)
+            wv_sample = WavelengthSample(self.wv_sample.wv_soln, l_idx, u_idx+1)
             out_ivar = self.ivar[l_idx:u_idx+1]
             sampling_matrix = scipy.sparse.identity(len(out_flux))
             sampled_spec = Spectrum(wv_sample, out_flux, out_ivar)

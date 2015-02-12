@@ -34,8 +34,16 @@ class MatplotlibWidget(QtGui.QWidget):
     buttonReleased = Signal(list)#mpl.backend_bases.Event)
     pickEvent = Signal(list)#mpl.backend_bases.Event)
     
-    def __init__(self, nrows=1, ncols=1, mpl_toolbar=True,
-                 sharex="none", sharey="none", parent=None,):
+    def __init__(
+            self, 
+            nrows=1, 
+            ncols=1, 
+            mpl_toolbar=True,
+            sharex="none", 
+            sharey="none", 
+            parent=None,
+            fig_kws=None,
+    ):
         #self.parent = parent
         # initialization of Qt MainWindow widget
         super(MatplotlibWidget, self).__init__(parent)
@@ -43,6 +51,18 @@ class MatplotlibWidget(QtGui.QWidget):
         # set the canvas to the Matplotlib widget
         self.canvas = MatplotlibCanvas(nrows, ncols, sharex=sharex, sharey=sharey)
         self.fig = self.canvas.fig
+
+        kws = dict(
+            top=0.98,
+            bottom=0.1,
+            left=0.06,
+            right=0.98)
+        if fig_kws is None:
+            fig_kws = {}
+        fig_kws = fig_kws.copy()
+        for k in kws:
+            fig_kws.setdefault(k,kws[k])
+        self.fig.subplotpars.update(**fig_kws)        
         
         # create a vertical box layout
         self.vboxlayout = QtGui.QVBoxLayout()
@@ -57,7 +77,7 @@ class MatplotlibWidget(QtGui.QWidget):
         self.setLayout(self.vboxlayout)
         
         self._mpl_qt_connect()
-    
+        
     def _mpl_qt_connect(self):
         #print "mpl connect called"
         #import pdb; pdb.set_trace()

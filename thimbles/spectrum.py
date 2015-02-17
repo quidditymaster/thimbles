@@ -23,7 +23,7 @@ from thimbles import logger
 from scipy.interpolate import interp1d
 from thimbles.thimblesdb import ThimblesTable, Base
 from thimbles.modeling import Model, Parameter
-from thimbles.modeling.distributions import NormalDistribution
+from thimbles.modeling.distributions import VectorNormalDistribution
 from thimbles.coordinatization import Coordinatization, as_coordinatization
 from thimbles.sqlaimports import *
 from sqlalchemy.orm.collections import attribute_mapped_collection
@@ -288,7 +288,7 @@ class Spectrum(ThimblesTable, Base):
         if ivar is None:
             ivar = tmb.utils.misc.smoothed_mad_error(flux)
         #treat the observed flux as a prior on the flux parameter values
-        self.obs_prior = NormalDistribution(flux, ivar)
+        self.obs_prior = VectorNormalDistribution(flux, ivar)
         
         if flags is None:
             flags = SpectrumFlags()

@@ -1,3 +1,4 @@
+import numpy as np
 
 import thimbles as tmb
 from thimbles.tasks import task
@@ -67,7 +68,7 @@ class Transition(ThimblesTable, Base):
     def charge(self):
         return self.ion.charge
     
-    def pseudo_strength(self, stellar_parameters=None):
+    def pseudo_strength(self, stellar_parameters=None, ion_delta=1.5):
         solar_ab = self.ion.solar_ab
         if stellar_parameters is None:
             theta = 1.0
@@ -75,7 +76,15 @@ class Transition(ThimblesTable, Base):
         else:
             theta = stellar_parameters.theta
             metalicity = stellar_parameters.metalicity
-        return solar_ab + metalicity + self.loggf - theta*self.ep
+        ion_ratio = np.power(10.0, ion_delta)
+        ion_frac = ion_ratio/(ion_ratio + 1.0)
+        #ion_correction = np.log10(ion_frac)
+        #neutral_correction = np.log10(1.0-ion_frac)
+        if self.ion.charge == 1:
+            ion_correction = np.log10(ion_frac)
+        else:
+            ion_correction = np.log10(1.0-ion_frac)
+        return solar_ab + metalicity + self.loggf - theta*self.ep + ion_correction
     
     @property
     def x(self):
@@ -88,7 +97,7 @@ transgroup_assoc = sa.Table("transgroup_assoc", Base.metadata,
 )
 
 class TransitionGroup(ThimblesTable, Base):
-    transitions = relationship("Transition", secondary=transgroup_assoc)
+    transitions = relationship("Transition", secondary=transgroup_assoc, order_by="Transition.loggf")
     _grouping_standard_id = Column(Integer, ForeignKey("TransitionGroupingStandard._id"))
     
     def __init__(self, transitions=None):
@@ -105,6 +114,10 @@ class TransitionGroup(ThimblesTable, Base):
     def __setitem__(self, index, value):
         self.transitions[index] = value
     
+    @property
+    def exemplar(self):
+        return self.transitions[-1]
+    
     def pop(self, index):
         self.transitions.pop(index)
     
@@ -113,6 +126,12 @@ class TransitionGroup(ThimblesTable, Base):
     
     def extend(self, in_list):
         self.transitions.extend(in_list)
+    
+    def aggregate(self, attr, reduce_func=np.nanmean, empty_val=np.nan):
+        if len(self) == 0:
+            return empty_val
+        attrvals = [getattr(t, attr) for t in self.transitions]
+        return reduce_func(attrvals)
 
 class TransitionGroupingStandard(ThimblesTable, Base):
     name = Column(String)

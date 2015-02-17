@@ -37,6 +37,9 @@ class ThimblesDB(object):
     def add(self, obj):
         self.session.add(obj)
     
+    def delete(self, obj):
+        self.session.delete(obj)
+    
     def add_all(self, obj_list):
         self.session.add_all(obj_list)
     

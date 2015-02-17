@@ -6,6 +6,7 @@ import scipy.optimize
 import scipy.ndimage
 import scipy.fftpack as fftpack
 import thimbles as tmb
+from thimbles import speed_of_light
 sqrt2pi = np.sqrt(2*np.pi)
 
 profile_functions = {}
@@ -50,10 +51,10 @@ def nnstark(wvs, center, stark_width):
 
 profile_functions["stark"] = nnstark
 
-def rotational(wvs, center, vsini, limb_darkening = 0):
+def rotational(wvs, center, vsini, limb_dark = 0):
     "for wavelengths in angstroms and v*sin(i) in km/s"
     ml = np.abs(vsini/3e5*center)
-    eps = limb_darkening
+    eps = limb_dark
     deltas = wvs-center
     deltas = deltas * (np.abs(deltas) <= ml)
     indep_part = 2*(1-eps)*np.power(1-np.power(deltas/ml, 2.0), 0.5)
@@ -88,7 +89,7 @@ _prototype_rt_freqs, _prototype_rt_prof = _calc_prototype_rt_profile(0.05, 1024)
 _prototype_rt_interper = scipy.interpolate.interp1d(_prototype_rt_freqs, _prototype_rt_prof, fill_value=0.0, bounds_error=False)
 
 def radial_tangential_macroturbulence(wvs, center, eta_rt, n_freqs=1024):
-    delta_lam = (eta_rt/299792.458)*center
+    delta_lam = (eta_rt/speed_of_light)*center
     delta_freqs = (wvs - center)/delta_lam
     return _prototype_rt_interper(delta_freqs)
 
@@ -119,6 +120,97 @@ def convolved_stark(wvs, center, g_width, l_width, stark_width):
     voigt_prof = voigt(wvs, center, g_width, l_width)
     return scipy.ndimage.filters.convolve(centered_stark, voigt_prof)
 
+
+def compound_profile(wvs, center, sigma, gamma, vsini, limb_dark, vmacro, convolution_mode="fft", normalize=True):
+    """a helper class for convolving together the voigt, rotational, 
+    radial tangential macroturbulent profiles. 
+    Note: the convolution procedure may induce shifts, warps and
+    other unphysical artefacts so always examine the output.
+    The convolution will not get it right if the center wv is not actually in
+    the center of the passed in wvs.
+    
+    parameters:
+    wvs: ndarray
+     the wavelengths at which to sample the profile
+    center: float
+     the central wavelength of the profile 
+     (make sure it is also the central wavelength of wvs)
+    sigma: float
+     gaussian sigma width
+    gamma: float
+     lorentz width
+    vsini: float
+     projected rotational velocity [km/s]
+    limb_dark: float
+     limb darkening coefficient (between 0 and 1)
+    vmacro: float
+     radial tangential macroturbulent velocity [km/s]
+    convolution_mode: string
+     "fft" do the convolution by multiplying together fourier transforms
+     "discrete" do the convolution explicitly in wv space.
+     Because the fft implicitly assumes the function wraps around from low
+     to high wavelengths and the discrete convolution assumes that the 
+     function is zero outside the given wvs the fft convolution will
+     tend to be too high in the wings and the discrete too low, 
+     pick your poison.
+    normalize: bool
+     if True then nomalize the result to have sum=1
+    """
+    vprof = voigt(wvs, center, sigma, gamma)
+    rotprof = rotational(wvs, center, vsini, limb_dark)
+    macroprof = radial_tangential_macroturbulence(wvs, center, vmacro)
+    all_profs = [vprof, rotprof, macroprof]
+    if convolution_mode == "fft":
+        ffts = [fftpack.fft(prof) for prof in all_profs]
+        fft_prod = reduce(lambda x, y: x*y, ffts)
+        prof = fftpack.ifft(fft_prod).real.copy()
+    elif convolution_mode == "discrete":
+        prof = reduce(lambda x, y: np.convolve(x, y), all_profs)
+    else:
+        raise ValueError("convolution mode {} is not recognized".format(convolution_mode))
+    if normalize:
+        prof /= np.sum(prof)
+    return prof
+
+
+def uniformly_sampled_profile_matrix(
+        wvs, 
+        sigma_min, 
+        sigma_max,
+        gamma_min,
+        gamma_max,
+        vsini_min=0.1,
+        vsini_max=100.0,
+        limb_dark_min = 0.0,
+        limb_dark_max = 1.0,
+        vmacro_min = 0.1,
+        vmacro_max = 20.0,
+        n_samples = 1000,
+):
+    center_wv = np.mean(wvs)
+    out_mat = np.zeros((n_samples, len(wvs)))
+    sigmas = np.random.uniform(sigma_min, sigma_max, size=(n_samples, 1))
+    gammas = np.random.uniform(gamma_min, gamma_max, size=(n_samples, 1))
+    vsinis = np.random.uniform(vsini_min, vsini_max, size=(n_samples, 1))
+    limb_darks = np.random.uniform(limb_dark_min, limb_dark_max, (n_samples, 1))
+    vmacros = np.random.uniform(vmacro_min, vmacro_max, (n_samples, 1))
+    params = np.hstack([sigmas, gammas, vsinis, limb_darks, vmacros])
+    for i in range(n_samples):
+        sig, gam, vsini, limb_dark, vmacro = params[i]
+        out_mat[i] = compound_profile(wvs, center_wv, sig, gam, vsini, limb_dark, vmacro)
+    return out_mat, params
+
+def pca_matched_feature_filter(k, **kwargs):
+    prof_mat, params = uniformly_sampled_profile_matrix(**kwargs)
+    junk, wvgrad = scipy.gradient(prof_mat)
+    junk, wvgrad = scipy.gradient(wvgrad)
+    #wvgrad /= np.sqrt(np.sum(wvgrad**2, axis=1)).reshape((-1, 1))
+    #wvgrad /= np.sum(np.abs(wvgrad), axis=1).reshape((-1, 1))
+    wvgrad /= np.max(np.abs(wvgrad), axis=1).reshape((-1, 1))
+    u, s, v = np.linalg.svd(wvgrad, full_matrices=False)
+    import pdb; pdb.set_trace()
+    return u, s, v
+
 class InterpolatedGridProfileFunction(object):
     
     def __init__(self, parameter_points):
@@ -144,3 +236,8 @@ class LineProfile:
             parameters = self.parameters
         return self.profile_func(wvs, self.center, *parameters)
 
+
+if __name__ == "__main__":
+    wvs = np.linspace(4990, 5010, 1000)
+    cprof = compound_profile(wvs, 5000.0, 1.0, 1.0, 1.0, 0.8, 1.0)
+    

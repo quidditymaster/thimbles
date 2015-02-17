@@ -50,8 +50,10 @@ class TestPersistence(unittest.TestCase):
     def test_persist_dummy(self):
         dummy1 = Dummy(name="groot", float_value=60.2, int_value=89)
         dummy2 = Dummy(name="bloot", float_value=20.2, int_value=2, array_value=np.arange(10))
+        dum_spec = tmb.Spectrum([0, 1, 2], [3, 4, 5], [7, 8, 9])
         self.tdb.add(dummy1)
         self.tdb.add(dummy2)
+        self.tdb.add(dum_spec)
         self.tdb.commit()
         res = self.tdb.query(Dummy).all()
         print res
@@ -63,6 +65,8 @@ class TestPersistence(unittest.TestCase):
         afres = self.tdb.query(Dummy).filter(Dummy.name=="groot").first()
         self.assertTrue(afres.int_value == 89)
         self.assertTrue(id(afres) != id(dummy1))
+        allspec = self.tdb.query(tmb.Spectrum).all()
+        assert len(allspec) == 1
 
 if __name__ == "__main__":
     unittest.main()

@@ -4,15 +4,26 @@ import scipy.sparse
 from thimbles.utils.partitioning import partitioned_polynomial_model
 from thimbles.utils import piecewise_polynomial as ppol 
 from thimbles.thimblesdb import Base, ThimblesTable
-from thimbles.modeling import Model
+from thimbles.modeling import Model, Parameter
 from thimbles.sqlaimports import *
 
-class Spectrograph(Base, ThimblesTable):
-    name = Column(String)
+class PolynomialCoefficientsParameter(Parameter):
+    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"PolynomialCoefficientsParameter"
+    }
+    
+    def __init__(self, wv_soln):
+        pass
 
-class SpectrographSetup(Base, ThimblesTable):
-    spectrograph_id = Column(Integer, ForeignKey("Spectrograph._id"))
-    spectrograph = relationship(Spectrograph)
+class SpectrographBlazeModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"SpectrographBlazeModel",
+    }
+    
+    def __init__(self):
+        pass
 
 class PiecewisePolynomialSpectrographEfficiencyModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)

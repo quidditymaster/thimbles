@@ -32,7 +32,7 @@ __all__ = ["read_spec","read_ascii","read_fits",
            "read_fits","read_fits_hdu","read_bintablehdu",
            "read_many_fits", "read_hdf5"]
 
-def read_hdf5(filepath):
+def read_hdf5(filepath, source=None):
     hf = h5py.File(filepath, "r")
     spectra = []
     spec_keys = hf.keys()
@@ -42,13 +42,13 @@ def read_hdf5(filepath):
         wvs = np.array(hf[wv_soln_path + "/wv_centers"])
         lsf = np.array(hf[wv_soln_path + "/lsf"])
         rv, vhelio = hf[wv_soln_path + "/velocity_offsets"]
-        wvs = WavelengthSolution(wvs, rv=rv, vhelio=vhelio)
+        wvs = WavelengthSolution(wvs, rv=rv, delta_helio=vhelio, lsf=lsf)
         
         quant_path = spec_grp_name + "/spectral_quantities" 
         flux = np.array(hf[quant_path+"/flux/values"])
         ivar = np.array(hf[quant_path+"/flux/ivar"])
-
-        new_spec = Spectrum(wvs, flux, ivar, rv=rv, barycenter_vel=bcvel, lsf=lsf)
+        
+        new_spec = Spectrum(wvs, flux, ivar, source=source)
         spectra.append(new_spec)
     return spectra
 

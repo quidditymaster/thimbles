@@ -21,23 +21,43 @@ from thimbles import as_wavelength_sample
 from thimbles import ptable
 from thimbles.periodictable import symbol_to_z, z_to_symbol
 import thimbles.charts as charts
-#from thimbles.charts import MatplotlibCanvas
 
 from thimblesgui import MatplotlibWidget
 from thimblesgui import FluxDisplay
 
+#background transition color gamut
+fgtrans_color = "#4076FF" #darkish blue
+bktrans_focus_color = "#B2ECFF" #highlighted in pale blue-green
+
+#foreground transition color gamut
+bktrans_color = "#CD4619" #darkish red/ochre
+fgtrans_focus_color = "#F0DB62"#"#FAFF68" #highlighted in mute yellow
+
 class SelectionTier(QtCore.QObject):
     changed = Signal(list)
+    _selection_model = None
     focusChanged = Signal(list)
     
     def __init__(self, values=None):
         super(SelectionTier, self).__init__()
         if values is None:
             values = []
+        self.focus = []
         self.set_values(values)
     
     def __len__(self):
         return len(self.values)
+    
+    def set_selection_model(self, selection_model):
+        if not self._selection_model is None:
+            raise Exception("selection model is already set!")
+        self._selection_model = selection_model
+        self._selection_model.selectionChanged.connect(self.on_selection_change)
+    
+    def on_selection_change(self, selected, deselected):
+        row_qidxs = self._selection_model.selectedRows()
+        rows = [idx.row() for idx in row_qidxs]
+        self.set_focus(rows, update_selection=False)
     
     def index(self, index):
         return self.indexes.get(index)
@@ -57,26 +77,38 @@ class SelectionTier(QtCore.QObject):
     def append(self, obj):
         self.extend([obj])
     
-    def set_focus(self, focus):
-        if isinstance(focus[0], int):
-            self.focus = focus
+    @property
+    def focused(self):
+        return [self.values[idx] for idx in self.focus]
+    
+    def set_focus(self, focus, update_selection=True):
+        if len(focus) == 0:
+            self.focus = []
+            self.focusChanged.emit(self.focused)
+        elif isinstance(focus[0], int):
+            focus = focus
         else:
             focus = [self.index(fc) for fc in focus]
             focus = sorted([fc for fc in focus if not (fc is None)])
-        if not (len(focus) == len(self.focus)):
-            self.focus = focus
-            self.focusChanged.emit(self.focus)
-        elif any([f1!=f2 for f1, f2 in zip(focus, self.focus)]):
-            self.focus = focus
-            self.focusChanged.emit(self.focus)
+        self.focus = focus
+        self.focusChanged.emit(self.focused)
+        if update_selection:
+            if not self._selection_model is None:
+                #print "need to implement selection setting form focus figure this out!"
+                data_model = self._selection_model.parent().model()
+                qidxs = [data_model.index(i, 0) for i in self.focus]
+                qsel = QtGui.QItemSelection()
+                for qidx in qidxs:
+                    qsel.select(qidx, qidx)
+                self._selection_model.select(qsel, QtGui.QItemSelectionModel.SelectCurrent)
     
     def set_values(self, values):
         self.indexes = {}
-        self.focus = []
         for idx in range(len(values)):
             self.indexes[values[idx]] = idx
         self.values = values
         self.changed.emit(self.values)
+        self.set_focus([], update_selection=True)
     
     def clear(self):
         self.indexes = {}
@@ -84,21 +116,18 @@ class SelectionTier(QtCore.QObject):
         self.changed.emit(self.values)
 
 
-class TieredSelection(object):
-    """A a wrapper for managing multiple simultaneous levels of selection.
-    """
+class TransitionSelection(object):
+    """manages two simultaneous selections into the Transition table"""
     
     def __init__(self):
         self.background = SelectionTier()
         self.foreground = SelectionTier()
-        self.active = SelectionTier()
-
 
 class GroupingEditorSelection(object):
     
     def __init__(self):
-        self.transitions = TieredSelection()
-        self.groups = TieredSelection()
+        self.transitions = TransitionSelection()
+        self.groups = SelectionTier()
 
 
 class WavelengthSpan(QtCore.QObject):
@@ -145,13 +174,6 @@ class WavelengthSpan(QtCore.QObject):
         self.emit_bounds_changed()        
 
 class SpanWidgetBase(object):
-    def keyPressEvent(self, event):
-        ekey = event.key()
-        print ekey
-        if (ekey == Qt.Key_Enter) or (ekey == Qt.Key_Return):
-            #self.on_set()
-            return
-        super(WavelengthSpanWidget, self).keyPressEvent(event)
     
     def on_step_edit(self):
         self.step_frac = float(self.step_le.text())
@@ -237,7 +259,14 @@ class FlatWavelengthSpanWidget(SpanWidgetBase, QtGui.QWidget):
             self.step_le.editingFinished.connect(self.on_step_edit)
             self.backward_btn.clicked.connect(self.step_back)
             self.forward_btn.clicked.connect(self.step_forward)
-
+    
+    def keyPressEvent(self, event):
+        ekey = event.key()
+        print ekey
+        if (ekey == Qt.Key_Enter) or (ekey == Qt.Key_Return):
+            #self.on_set()
+            return
+        super(FlatWavelengthSpanWidget, self).keyPressEvent(event)
 
 class WavelengthSpanWidget(SpanWidgetBase, QtGui.QWidget):
     
@@ -282,7 +311,14 @@ class WavelengthSpanWidget(SpanWidgetBase, QtGui.QWidget):
         self.step_le.editingFinished.connect(self.on_step_edit)
         self.backward_btn.clicked.connect(self.step_back)
         self.forward_btn.clicked.connect(self.step_forward)
-
+    
+    def keyPressEvent(self, event):
+        ekey = event.key()
+        print ekey
+        if (ekey == Qt.Key_Enter) or (ekey == Qt.Key_Return):
+            #self.on_set()
+            return
+        super(WavelengthSpanWidget, self).keyPressEvent(event)
 
 def _to_z(val):
     try:
@@ -310,7 +346,7 @@ class SpeciesSelectorWidget(QtGui.QWidget):
         
         layout = QtGui.QHBoxLayout()
         self.setLayout(layout)
-        self.label = QtGui.QLabel("species")
+        self.label = QtGui.QLabel("Species")
         layout.addWidget(self.label)
         self.species_le = QtGui.QLineEdit(parent=self)
         layout.addWidget(self.species_le)
@@ -429,6 +465,7 @@ class TransitionConstraints(QtGui.QWidget):
         layout.addWidget(self.expr_wid, 2, 1, 1, 1)
         
         self.wv_span.boundsChanged.connect(self.emit_constraints)
+        self.wv_span_cb.toggled.connect(self.emit_constraints)
         self.species_filter_cb.toggled.connect(self.emit_constraints)
         self.expr_filter_cb.toggled.connect(self.emit_constraints)
         self.species_selector.speciesChanged.connect(self.on_species_changed)
@@ -449,8 +486,9 @@ class TransitionConstraints(QtGui.QWidget):
     
     def transition_constraints(self):
         constraints = []
-        constraints.append(Transition.wv >= self.wv_span.min_wv)
-        constraints.append(Transition.wv <= self.wv_span.max_wv)
+        if self.wv_span_cb.checkState():
+            constraints.append(Transition.wv >= self.wv_span.min_wv)
+            constraints.append(Transition.wv <= self.wv_span.max_wv)
         if self.species_filter_cb.checkState():
             zvals = self.species_selector.zvals
             if len(zvals) == 1:
@@ -610,11 +648,15 @@ class TransitionScatterPlot(object):
             picker=None,
             auto_zoom=False,
             ax=None,
+            transition_tags=None, 
             **mplkwargs
     ):
         self.x_expression=x_expression
         self.y_expression=y_expression
         self.picker = picker
+        if transition_tags is None:
+            transition_tags = {}
+        self.transition_tags =transition_tags
         self.auto_zoom = auto_zoom
         mplkwargs.setdefault("marker", "o")
         self.mplkwargs = mplkwargs
@@ -665,7 +707,10 @@ class TransitionScatterPlot(object):
                 self._plot_initialized =True
             else:
                 self.scatter.set_data(xvals, yvals)
-            self.scatter._md = dict(kind="transitions", transitions=transitions)
+            mdat = dict(kind="transitions", transitions=transitions)
+            mdat.update(self.transition_tags)
+            self.scatter._md = mdat
+            
             self.scatter.set_visible(True)
             if self.auto_zoom:
                 self.zoom_to_data()
@@ -679,6 +724,7 @@ class TransitionScatterPlot(object):
         dy = ymax-ymin
         self.ax.set_xlim(xmin-x_pad*dx, xmax+x_pad*dx)
         self.ax.set_ylim(ymin-y_pad*dy, ymax+y_pad*dy)
+
 
 class ListMappedColumn(object):
     
@@ -737,7 +783,9 @@ class MappedListModel(QtCore.QAbstractTableModel):
     def headerData(self, section, orientation, role):
         if role == Qt.DisplayRole:
             if orientation == Qt.Horizontal:
-                self.column_map[section].header
+                return self.column_map[section].header
+            if orientation == Qt.Vertical:
+                return section
     
     def flags(self, index):
         col = index.column()
@@ -762,7 +810,9 @@ class MappedListModel(QtCore.QAbstractTableModel):
 
 class TransitionListModel(MappedListModel):
     
-    def __init__(self, transitions):
+    def __init__(self, transitions=None):
+        if transitions is None:
+            transitions = []
         wv = ListMappedColumn("Wavelength", lambda x: x.wv)
         #z = ListMappedColumn("Z", lambda x: x.ion.z)
         #charge = ListMappedColumn("Ion Charge", lambda x: x.ion.charge)
@@ -773,109 +823,221 @@ class TransitionListModel(MappedListModel):
         super(TransitionListModel, self).__init__(transitions, cols)
 
 
+def group_species_symbol(group):
+    transitions = group.transitions
+    if len(transitions) == 0:
+        return "None"
+    symbols = list(set([t.ion.symbol for t in transitions]))
+    charges = list(set([t.ion.charge for t in transitions]))
+    species_symbol = "-".join(symbols)
+    if len(charges) == 1:
+        charge_symbol = "I"*(charges[0]+1)
+    else:
+        min_num = min(charges) + 1
+        max_num = max(charges) + 1
+        charge_symbol = "{}-{}".format(min_num, max_num)
+    return "{} {}".format(symbols, charge_symbol)
+    
+
 class TransitionGroupListModel(MappedListModel):
     
     def __init__(self, groups):
-        symbol = ListMappedColumn("Symbol", lambda x: "{} {}".format(x.transitions[0].ion.symbol, "I"*(x.transitions[0].ion.charge+1)), value_converter=lambda x: x)
+        symbol = ListMappedColumn("Symbol", group_species_symbol, value_converter=lambda x: x)
         minwv = ListMappedColumn("Min Wavelength", lambda x: x.aggregate("wv", np.min))
         #wvsig = ListMappedColumn("Wavelength\nSpread", lambda x: x.aggregate("wv", np.std))
         maxwv = ListMappedColumn("Max Wavelength", lambda x: x.aggregate("wv", np.max))
         n= ListMappedColumn("N", lambda x: len(x), value_converter=lambda x: "{}".format(x))
-        epmean = ListMappedColumn("mean E.P.", lambda x: x.aggregate("ep", np.mean))        
+        #epmean = ListMappedColumn("mean E.P.", lambda x: x.aggregate("ep", np.mean))        
         epsig = ListMappedColumn("sigma E.P.", lambda x: x.aggregate("ep", np.std)) 
-        xmean = ListMappedColumn("mean pseudo-strength", lambda x: x.aggregate("x", np.mean))        
-        xsig = ListMappedColumn("sigma pseudo-strength", lambda x: x.aggregate("wv", np.mean))               
-        cols = [symbol, n, minwv, maxwv, epmean, epsig, xmean, xsig]
+        xmean = ListMappedColumn("mean\npseudo-strength", lambda x: x.aggregate("x", np.mean))        
+        xsig = ListMappedColumn("sigma\npseudo-strength", lambda x: x.aggregate("x", np.std))               
+        cols = [symbol, n, minwv, maxwv, epsig, xmean, xsig]
         super(TransitionGroupListModel, self).__init__(groups, cols)
-
-
-class SelectionListView(QtGui.QTabWidget):
-    
-    def __init__(
-            self, 
-            tiered_selection, 
-            list_model_class,
-            tiers="background foreground active",
-            parent=None
-    ):
-        self.selection = tiered_selection
-        super(SelectionListView, self).__init__(parent)
-        
-        tiers = tiers.split()
-        self.tab_dict = {}
-        self.tmods = {}
-        self.tviews = {}
-        for tier in tiers:
-            qw = QtGui.QWidget(parent=self)
-            layout = QtGui.QHBoxLayout()
-            qw.setLayout(layout)
-            tbv = QtGui.QTableView(parent=qw)
-            layout.addWidget(tbv)
-            self.tviews[tier] = tbv
-            tier_obj = getattr(tiered_selection, tier)
-            cmod = list_model_class(tier_obj.values)
-            tier_obj.changed.connect(cmod.set_mapped_list)
-            tbv.setModel(cmod)
-            self.tmods[tier] = cmod
-            self.tab_dict[tier] = qw
-            self.addTab(qw, tier)
 
 
 class BackgroundTransitionListWidget(QtGui.QWidget):
     
-    def __init__(self, selection, parent=None):
+    def __init__(self, grouping_standard_editor, parent=None):
+        self.selection=grouping_standard_editor.selection
+        self.tdb = grouping_standard_editor.tdb
         super(BackgroundTransitionListWidget, self).__init__(parent)
         layout = QtGui.QGridLayout()
         self.setLayout(layout)
-        
         bk_tier = self.selection.transitions.background
         self.table_model = TransitionListModel(bk_tier.values)
-
-        self.wv_span = WavelengthSpan(3700, 3705)
-        self.constraints = TransitionConstraints(self.wv_span)
-        self.table_view = QtGui.QTableView(parent=self)
-        layout.addWidget(self.table_view, 1, 0, 1, 3)
-
-class ActiveTransitionListWidget(QtGui.QWidget):
-    
-    def __init__(self, selection, parent=None):
-        self.selection = selection
-        super(ActiveTransitionListWidget, self).__init__(parent)
-        layout = QtGui.QGridLayout()
-        self.setLayout(layout)
-        
-        active_trans = self.selection.transitions.active.values
-        self.table_model = TransitionListModel(active_trans)
+        bk_tier.changed.connect(self.table_model.set_mapped_list)
+        self.constraints = TransitionConstraints(grouping_standard_editor.wv_span, parent=self)
+        self.constraints.constraintsChanged.connect(self.set_transition_constraints)
+        layout.addWidget(self.constraints, 0, 0, 1, 1)
         self.table_view = QtGui.QTableView(parent=self)
         self.table_view.setModel(self.table_model)
-        layout.addWidget(self.table_view, 0, 0, 1, 3)
+        #import pdb; pdb.set_trace()
+        self.table_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectionBehavior.SelectRows)
+        #self.table_view.setSelectionMode(QtGui.QAbstractItemView.SelectionMode.SingleSelection)
+        layout.addWidget(self.table_view, 1, 0, 1, 1)
+    
+    @Slot(list)
+    def set_transition_constraints(self, constraint_list):
+        self.table_model.beginResetModel()
+        query = self.tdb.query(Transition).join(Ion)
+        for constraint in constraint_list:
+            query = query.filter(constraint)
+        trans = query.all()
+        self.selection.transitions.background.set_values(trans)
+        self.table_model.endResetModel()
+
+class ForegroundTransitionListWidget(QtGui.QWidget):
+    
+    def __init__(self, grouping_standard_editor, parent=None):
+        self.parent_editor = grouping_standard_editor
+        self.selection = grouping_standard_editor.selection
+        self.tdb = grouping_standard_editor.tdb
+        super(ForegroundTransitionListWidget, self).__init__(parent)
+        layout = QtGui.QGridLayout()
+        self.setLayout(layout)
+        fg_tier = self.selection.transitions.foreground
+        self.table_model = TransitionListModel(fg_tier.values)
+        fg_tier.changed.connect(self.table_model.set_mapped_list)
+        self.constraints = TransitionConstraints(grouping_standard_editor.wv_span, parent = self)
+        self.constraints.constraintsChanged.connect(self.set_transition_constraints)
+        layout.addWidget(self.constraints, 0, 0, 1, 3)
+        self.table_view = QtGui.QTableView(parent=self)
+        self.table_view.setModel(self.table_model)
+        self.table_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.selection.transitions.foreground.set_selection_model(self.table_view.selectionModel())
+        table_selection = self.table_view.selectionModel()
+        layout.addWidget(self.table_view, 1, 0, 1, 3)
         self.clear_btn = QtGui.QPushButton("Clear")
         self.clear_btn.clicked.connect(self.on_clear)
-        layout.addWidget(self.clear_btn, 1, 0, 1, 1)
+        layout.addWidget(self.clear_btn, 2, 0, 1, 1)
         self.inject_btn = QtGui.QPushButton("inject")
-        self.inject_btn.clicked.connect(on_inject)
-        layout.addWidget(self.inject_btn, 1, 2, 1, 1)
+        self.inject_btn.clicked.connect(self.on_inject)
+        layout.addWidget(self.inject_btn, 2, 1, 1, 1)
+    
+    @Slot(list)
+    def set_transition_constraints(self, constraint_list):
+        self.table_model.beginResetModel()
+        query = self.tdb.query(Transition).join(Ion)
+        for constraint in constraint_list:
+            query = query.filter(constraint)
+        trans = query.all()
+        self.selection.transitions.foreground.set_values(trans)
+        self.table_model.endResetModel()
     
     def on_clear(self):
         self.selection.transitions.active.clear()
     
     def on_inject(self):
-        print "inject1!one!"
-    
+        focus_indexes = self.selection.groups.foreground.focus
+        sbar = self.parent_editor.statusBar()
+        if len(focus_indexes) == 0:
+            sbar.showMessage("injection failed, no group selected!")
+        elif len(focus_indexes) > 1:
+            sbar.showMessage("injection failed, multiple groups selected!")
+        else:
+            group ,= self.selection.groups.foreground.focused
+            to_inject = self.selection.transitions.active.focused
+            old_trans = group.transitions
+            new_trans = [t for t in to_inject if not (t in old_trans)]
+            gdict = self.parent_editor.grouping_dict
+            if len(new_trans) > 0:
+                for t in new_trans:
+                    old_group = gdict.get(t)
+                    if not old_group is None:
+                        old_group.transitions.remove(t)
+                        if len(old_group.transitions) == 0:
+                            #get the current group model
+                            old_group_index = self.selection.groups.foreground.index(old_group)
+                            #old_gmod = self.parent_editor.group_view.groups_model
+                            #gmod.beginDeleteRows(QModelIndex(), old_group_index, old_group_index)
+                            cur_fg_tier = self.selection.groups.foreground
+                            cur_fg_tier.values.pop(old_group_index)
+                            cur_fg_tier.set_values(cur_fg_tier.values)
+                            self.parent_editor.tdb.delete(old_group)
+                            #gmod.endDeleteRows()
+                            
+                    group.transitions.append(t)
+                    gdict[t] = group
+                sbar.showMessage(
+                    "{} transitions injected".format(len(new_trans)))
+            else:
+                sbar.showMessage("no new transitions selected")
 
-class TransitionSelectionView(QtGui.QTabWidget):
+
+class ActiveGroupWidget(QtGui.QWidget):
     
-    def __init__(
-            self, 
-            transition_selection, 
-            parent=None
-    ):
-        self.selection = transition_selection
-        super(SelectionListView, self).__init__(parent)
+    def __init__(self, grouping_standard_editor, parent=None):
+        self.selection = grouping_standard_editor.selection
+        self.parent_editor = grouping_standard_editor
+        super(ActiveGroupWidget, self).__init__(parent)
+        layout = QtGui.QGridLayout()
+        self.setLayout(layout)
+        self.grouped_trans_model = TransitionListModel()
+        self.selection.groups.focusChanged.connect(self.on_focused_group_changed)
+        self.grouped_trans_view = QtGui.QTableView(parent=self)
+        self.grouped_trans_view.setModel(self.grouped_trans_model)
+        self.grouped_trans_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectionBehavior.SelectRows)
+        layout.addWidget(self.grouped_trans_view, 0,0, 1, 2)
+        self.remove_btn = QtGui.QPushButton("remove\nselected")
+        self.remove_btn.clicked.connect(self.on_remove)
+        layout.addWidget(self.remove_btn, 1, 0, 1, 1)
+    
+    def make_control_btns(self):
+        groupbox = QtGui.QGroupBox()
+    
+    def on_focused_group_changed(self):
+        fgroups = self.selection.groups.focused
+        if len(fgroups) == 0:
+            ftrans = []
+        else:
+            ftrans = fgroups[0].transitions
+        self.grouped_trans_model.set_mapped_list(ftrans)
+    
+    def sizeHint(self):
+        return QtCore.QSize(500, 300)
+    
+    def on_remove(self):
+        print "remove!"
+
+class GroupSelectionWidget(QtGui.QWidget):
+    
+    def __init__(self, grouping_standard_editor, parent=None):
+        self.selection = grouping_standard_editor.selection
+        self.parent_editor = grouping_standard_editor
+        self.grouping_dict = grouping_standard_editor.grouping_dict
+        super(GroupSelectionWidget, self).__init__(parent)
+        layout = QtGui.QHBoxLayout()
+        self.setLayout(layout)
         
-        self.bk_tab = QtGui.QWidget(parent=self)
-        self.bk_mod = TransitionListModel
-        self.bk_view = None
+        cur_groups = self.transition_groups(self.selection.transitions.foreground.values)
+        self.groups_model = TransitionGroupListModel(cur_groups)
+        self.selection.groups.set_values(cur_groups)
+        group_tier = self.selection.groups
+        group_tier.changed.connect(self.groups_model.set_mapped_list)
+        self.selection.transitions.foreground.changed.connect(self.set_groups_from_transitions)
+        self.groups_view = QtGui.QTableView(parent=self)
+        self.groups_view.setModel(self.groups_model)
+        self.groups_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectionBehavior.SelectRows)
+        #self.groups_view.setSelectionMode(QtGui.QAbstractItemView.SelectionMode.SingleSelection)
+        self.selection.groups.set_selection_model(self.groups_view.selectionModel())
+        layout.addWidget(self.groups_view)
+        self.active_group_widget = ActiveGroupWidget(grouping_standard_editor, parent=self)
+        layout.addWidget(self.active_group_widget)
+    
+    def transition_groups(self, transitions):
+        groups = set()
+        for trans in transitions:
+            tgroup = self.grouping_dict.get(trans)
+            if not tgroup is None:
+                groups.add(tgroup)
+        return list(groups)
+    
+    @Slot(list)
+    def set_groups_from_transitions(self, transitions):
+        transitions = self.selection.transitions.foreground.values
+        groups = self.transition_groups(transitions)
+        self.selection.groups.set_values(groups)
+
 
 mplframerate = Option("mplframerate", default=10, parent="GUI")
 
@@ -890,12 +1052,9 @@ class GroupingStandardEditor(QtGui.QMainWindow):
             parent=None,
     ):
         super(GroupingStandardEditor, self).__init__(parent)
-        self.selection = GroupingEditorSelection()
-        
         if spectra is None:
             spectra = []
         self.spectra = spectra
-        
         self.tdb = tdb
         gstand = tdb.query(tmb.transitions.TransitionGroupingStandard)\
                     .filter(TransitionGroupingStandard.name==standard_name).one()
@@ -912,17 +1071,11 @@ class GroupingStandardEditor(QtGui.QMainWindow):
                 .filter(Transition.wv >= self.wv_span.min_wv-0.1)\
                 .filter(Transition.wv <= self.wv_span.max_wv+0.1)\
                 .all()
-        foreground_transitions = background_transitions #should we apply a filter?
+        foreground_transitions = background_transitions
         
-        for trans in foreground_transitions:
-            cgroup = self.grouping_dict.get(trans)
-            if not cgroup is None:
-                if len(cgroup) > 1:
-                    break
-        
+        self.selection = GroupingEditorSelection()
         self.selection.transitions.background.set_values(background_transitions)
         self.selection.transitions.foreground.set_values(foreground_transitions)
-        self.selection.groups.active.set_values([cgroup])
         
         self.make_actions()
         self.make_menus()
@@ -949,7 +1102,9 @@ class GroupingStandardEditor(QtGui.QMainWindow):
             self.selection.transitions.background.values,
             lmin=lmin,
             lmax=lmax,
-            color="#aaaaaa",
+            linewidth=1.0,
+            color=bktrans_color,
+            tine_tags={"tier":"background"},
             ax=self.flux_display.ax,
         )
         self.flux_display.add_chart(self.background_tines)
@@ -957,32 +1112,29 @@ class GroupingStandardEditor(QtGui.QMainWindow):
         self.foreground_tines = tmb.charts.fork_diagram.TransitionsChart(
             self.selection.transitions.foreground.values,
             #grouping_dict=self.grouping_dict,
-            color="#0a0f15",
+            color=fgtrans_color,
             tine_picker=6,
+            tine_tags={"tier":"foreground"},
             lmin=lmin,
             lmax=lmax,
-            linewidth=1.5,
+            linewidth=1.0,
+            zorder=2,
             ax=self.flux_display.ax,
         )
         self.flux_display.add_chart(self.foreground_tines)
         self.selection.transitions.foreground.changed.connect(self.foreground_tines.set_transitions)
         self.active_fork_diagram = tmb.charts.fork_diagram.TransitionsChart(
-            self.selection.transitions.active.values,
+            self.selection.transitions.foreground.focused,
             grouping_dict=self.grouping_dict,
-            color="#ea7355",
+            color=fgtrans_focus_color,
             lmin=lmin,
             lmax=lmax,
-            linewidth=3.0,
+            linewidth=2.5,
+            zorder=1,
             ax=self.flux_display.ax,
         )
         self.flux_display.add_chart(self.active_fork_diagram)
-        self.selection.transitions.active.changed.connect(self.on_active_transitions_changed)
-        
-        dock = QtGui.QDockWidget("Transiton Constraints", self)
-        self.constraints = TransitionConstraints(self.wv_span, parent=dock)
-        self.constraints.constraintsChanged.connect(self.on_constraints_changed)
-        dock.setWidget(self.constraints)
-        self.addDockWidget(Qt.TopDockWidgetArea, dock)
+        self.selection.transitions.foreground.focusChanged.connect(self.on_focused_transitions_changed)
         
         dock = QtGui.QDockWidget("Transition Scatter", self)
         x_exp = "t.pseudo_strength()"
@@ -996,7 +1148,7 @@ class GroupingStandardEditor(QtGui.QMainWindow):
             self.selection.transitions.background.values, 
             ax=self.scatter_display.ax, 
             markersize=3, 
-            color="#555555",
+            color=bktrans_color,
             auto_zoom=True,
             alpha=0.6
         )
@@ -1009,9 +1161,11 @@ class GroupingStandardEditor(QtGui.QMainWindow):
         self.foreground_scatter = TransitionScatterPlot(
             self.selection.transitions.foreground.values, 
             ax=self.scatter_display.ax, 
-            picker=6, markersize=6,
+            picker=6, 
+            transition_tags={"tier":"foreground"},
+            markersize=6,
             auto_zoom=False,
-            color="#ff2000"
+            color=fgtrans_color,
         )
         self.scatter_display.mplwid.pickEvent.connect(self.on_pick_event)
         self.selection.transitions.foreground.changed.connect(
@@ -1021,32 +1175,32 @@ class GroupingStandardEditor(QtGui.QMainWindow):
         self.scatter_display.yExpressionChanged.connect(
             self.foreground_scatter.set_y_expression)
         dock.setWidget(self.scatter_display)
+        self.addDockWidget(Qt.RightDockWidgetArea, dock)
+        
+        dock = QtGui.QDockWidget("Background Transitions")
+        self.background_view = BackgroundTransitionListWidget(self, parent=dock)
+        dock.setWidget(self.background_view)
+        self.addDockWidget(Qt.TopDockWidgetArea, dock)
+
+        dock = QtGui.QDockWidget("Foreground Transitions")
+        self.foreground_view = ForegroundTransitionListWidget(self, parent=dock)
+        dock.setWidget(self.foreground_view)
         self.addDockWidget(Qt.TopDockWidgetArea, dock)
         
-        dock = QtGui.QDockWidget("Transitions")
-        self.transition_list_view = SelectionListView(
-            self.selection.transitions,
-            list_model_class=TransitionListModel,
-            tiers="background foreground active",
-            parent=dock
-        )
-        self.transition_list_view.setCurrentIndex(2)
-        dock.setWidget(self.transition_list_view)
-        self.addDockWidget(Qt.RightDockWidgetArea, dock)
-        
         dock = QtGui.QDockWidget("Groups")
-        self.group_list_view = SelectionListView(
-            self.selection.groups,
-            list_model_class = TransitionGroupListModel,
-            tiers="background foreground active",
-            parent=dock,
-        )
-        dock.setWidget(self.group_list_view)
-        self.addDockWidget(Qt.RightDockWidgetArea, dock)
-
+        self.group_view = GroupSelectionWidget(self, parent=dock)
+        dock.setWidget(self.group_view)
+        self.addDockWidget(Qt.TopDockWidgetArea, dock)
+        
+        #trigger update cascades
+        self.wv_span.emit_bounds_changed()
+        
         self.draw_timer = QtCore.QTimer(self)
         self.draw_timer.start(1000.0/mplframerate.value)
         self.draw_timer.timeout.connect(self.on_draw_timeout)
+    
+    def trigger_redraw(self):
+        self._redraw_all = True
     
     def on_draw_timeout(self):
         for display in self.mpl_displays:
@@ -1079,7 +1233,6 @@ class GroupingStandardEditor(QtGui.QMainWindow):
         self.wavelength_toolbar = self.addToolBar("Wavelength")
         self.global_wv_span_widget = FlatWavelengthSpanWidget(self.wv_span)
         self.wavelength_toolbar.addWidget(self.global_wv_span_widget)
-        self.wavelength_toolbar.addSeparator()
     
     def make_status_bar(self):
         self.statusBar().showMessage("Ready")
@@ -1092,44 +1245,20 @@ class GroupingStandardEditor(QtGui.QMainWindow):
             if metdat["kind"] == "transitions":
                 transitions = event.artist._md["transitions"]
                 trans = transitions[event.ind[0]]
-                group = self.grouping_dict.get(trans)
-                if not group is None:
-                    trans_to_add = group.transitions
-                else:
-                    trans_to_add = [trans]
-                start_idx = len(self.selection.transitions.active)
-                added = self.selection.transitions.active.extend(trans_to_add)
-                if len(added) >= 1:
-                    end_idx = start_idx+len(added)-1
-                    self.transition_list_view.tmods["active"].beginInsertRows(QModelIndex(), start_idx, end_idx)
-                    self.transition_list_view.tmods["active"].endInsertRows()
+                self.selection.transitions.foreground.set_focus([trans])
+                if metdat["tier"] == "foreground":
+                    group = self.grouping_dict.get(trans)
+                    if not group is None:
+                        self.selection.groups.set_focus([group])
+            elif metdat["kind"] == "groups":
+                groups = event.artist._md["groups"]
+                group = groups[event.ind[0]]
+                self.selection.groups.set_focus([group])
     
     @Slot(list)
-    def on_active_transitions_changed(self, active_list):
+    def on_focused_transitions_changed(self, active_list):
         self.active_fork_diagram.set_transitions(active_list)
-        self._redraw_all = True
-    
-    @Slot(list)
-    def on_constraints_changed(self, constraints):
-        self.transition_list_view.tmods["background"].beginResetModel()
-        query = self.tdb.query(Transition)
-        #the first two constraints will be the wavelength bounds
-        for constraint in constraints[:2]:
-            query = query.filter(constraint)
-        bk_trans = query.all()
-        self.selection.transitions.background.set_values(bk_trans)
-        self.transition_list_view.tmods["background"].endResetModel()
-        self.transition_list_view.tmods["foreground"].beginResetModel()
-        if len(constraints) == 2:
-            foreground_trans = bk_trans
-        else:
-            query = query.join(Ion)
-            for constraint in constraints[2:]:
-                query = query.filter(constraint)
-            foreground_trans = query.all()
-        self.selection.transitions.foreground.set_values(foreground_trans)
-        self.transition_list_view.tmods["foreground"].endResetModel()
-        self.flux_display.ax.figure.canvas.draw()
+        self.trigger_redraw()
     
     def on_save(self):
         try:
@@ -1185,6 +1314,8 @@ if __name__ == "__main__":
     
     #import pdb; pdb.set_trace()
     tdb = tmb.ThimblesDB("/home/tim/sandbox/cyclefind/junk.tdb")
+    #transobj = tdb.query(Transition).first()
+    #import pdb; pdb.set_trace()
     #transitions = tdb.query(Transition).all()
     
     #tscat = TransitionScatter()

@@ -10,15 +10,19 @@ from flags import FeatureFlags
 from thimbles import ptable
 from thimbles.profiles import voigt
 from thimbles import resource_dir
-from thimbles.modeling import Model
+from thimbles.modeling import Model, Parameter
 from thimbles.utils.misc import smooth_ppol_fit
 import thimbles.utils.piecewise_polynomial as ppol
 from thimbles import logger
 from thimbles import hydrogen
 from latbin import matching
 from thimbles import as_wavelength_sample
+from thimbles.thimblesdb import ThimblesTable, Base
+from thimbles.sqlaimports import *
 from thimbles.utils.misc import saturated_voigt_cog
 from thimbles.sqlaimports import *
+from thimbles.radtran import mooger
+
 
 def indicator_factory(indval, tolerance):
     return lambda x: np.abs(x-indval) < tolerance
@@ -707,6 +711,7 @@ class FeatureGroup(Model):
     __mapper_args__={
         "polymorphic_identity":"FeatureGroup",
     }
+    #.features backref from Feature class
     _wv_soln_id = Column(Integer, ForeignKey("WavelengthSolution._id"))
     wv_soln = relationship("WavelengthSolution")
     
@@ -723,17 +728,93 @@ class FeatureGroup(Model):
             feat_idx = self.parameters.index(feature.output_p)
             self.parameters.pop(feat_idx)
     
-    def update(self, *args):    
-        pass #TODO:
+    def fire(self, *args, **kwargs):
+        raise NotImplementedError("getting to it!")
 
-class Feature(Model):
+
+class GammaParameter(Parameter):
+    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
+    _value = Column(Float)
+    __mapper_args__={
+        "polymorphic_identity":"GammaParameter",
+    }
+    
+    def __init__(self, value):
+        self._value = value
+
+
+class SigmaParameter(Parameter):
+    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
+    _value = Column(Float)
+    __mapper_args__={
+        "polymorphic_identity":"GammaParameter",
+    }
+    
+    def __init__(self, value):
+        self._value = value
+
+
+class VoigtFeatureProfile(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    _group_id = Column(Integer, ForeignKey("FeatureGroup._id"))
+    group = relationship("FeatureGroup", foreign_keys=_group_id)
+    _transition_id = Column(Integer, ForeignKey("Transition._id"))
+    transition = relationship("Transition")
     
-    def __init__(self, transition):
-        self.transition = transition
-                 
-                 
+    def __init__(self, sigma, gamma, transition=None, group=None):
+        self.transition=transition
+        self.group = group
+        sigma_p = GammaParameter(sigma)
+        gamma_p = SigmaParameter(gamma)
+        self.parameters = [sigma_p, gamma_p]
+
+
+class VoigtFitSingleLineSynthesis(ThimblesTable, Base):
+    """table for caching the values of running MOOG to synthesize an individual
+transition then fitting the resultant spectrum with a voigt profile to determine a sigma, gamma and equivalent width.
+    """
+    _transition_id = Column(Integer, ForeignKey("Transition._id"))
+    transition = relationshp = relationship("Transition")
+    _stellar_parameters_id = Column(Integer, ForeignKey("StellarParameters._id"))
+    stellar_parameters = relationship("StellarParameters")
+    ew = Column(Float)
+    sigma = Column(Float)
+    gamma = Column(Float)
+    rms = Column(Float)
     
+    #class attributes
+    _teff_delta = 250 #grid points in teff
+    _logg_delta = 0.5 #grid spacing in logg
+    _metalicity_delta = 0.5 #grid spacing in [Fe/H]
+    _vmicro_delta = 0.1 #grid spacing in microturbulence
+    _delta_lambda = 0.01
+    _opac_rad = 10.0
+    
+    engine_instance = mooger
+    
+    def __init__(self, transition, teff, logg, metalicity, vmicro, x_on_fe):
+        self.transtion = transition
+        abund = Abundance(self.transition.ion)
+        self.stellar_parameters = StellarParameters(teff, logg, metalicity, vmicro, abundances=[abund])
+        cent_wv = self.transition.wv
+        min_wv = cent_wv - self._opac_rad
+        max_wv = cent_wv + self._opac_rad
+        targ_npts = int((max_wv-min_wv)/self._delta_lambda)
+        targ_wvs = np.linspace(min_wv, max_wv, targ_npts)
+        synth = self.engine_instance.spectrum(
+            linelist=[self.transition],
+            stellar_params=self.stellar_parameters,
+            wavelengths=targ_wvs,
+            sampling_mode="bounded",
+            delta_wv=self._delta_lambda,
+            opac_rad=self._opac_rad,
+            central_intensity=False,
+        )
+        depths = 1.0-synth.flux
+        fres = tmb.utils.misc.unweighted_voigt_fit(synth.wvs, depths)
+        self.sigma, self.gamma, self.ew = fres
+        #import pdb; pdb.set_trace()
+
 
 class OldFeature(object):
     

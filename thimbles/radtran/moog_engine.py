@@ -64,6 +64,7 @@ synth_template= "synth\n" +opts["moog.par_template"] + common_par_components +\
           {min_wv: 10.5f} {max_wv: 10.5f} {delta_wv: 10.5f} {opac_rad: 10.5f}  
 """
 
+
 class MoogEngine(RadiativeTransferEngine):
     """an abstract class specifying the API for wrapping radiative transfer
     codes.
@@ -137,7 +138,7 @@ class MoogEngine(RadiativeTransferEngine):
         result = tmb.io.moog_io.read_moog_abfind_summary(summary_fname)
         return result
     
-    def abundance_to_ew(self, linelist, stellar_params, abundances=None, central_intensity=True):
+    def abundance_to_ew(self, linelist, stellar_params, abundances=None, central_intensity=False):
         self._make_photo_file(stellar_params)
         #write out the linelist in moog format
         line_name = "templines.ln.tmp"
@@ -209,6 +210,9 @@ class MoogEngine(RadiativeTransferEngine):
     
     def continuum(self, stellar_params):
         self._not_implemented()
+
+
+mooger = MoogEngine()
 
 
 def get_model_name (teff,logg,feh,vt,modtype=None):

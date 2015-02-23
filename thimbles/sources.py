@@ -11,16 +11,9 @@ class Source(Base, ThimblesTable):
     name = Column(String)
     ra = Column(Float)
     dec = Column(Float)
-    #photometry = relationship("")
-    spectroscopy = relationship("Spectrum", backref="source")
     
-    def __init__(self, name=None, ra=None, dec=None, photometry=None, spectroscopy=None):
+    def __init__(self, name=None, ra=None, dec=None):
         self.name = name
         self.ra=ra
         self.dec=dec
-        if photometry is None:
-            photometry = []
-        self.photometry=photometry
-        if spectroscopy is None:
-            spectroscopy = []
-        self.spectroscopy = spectroscopy
+    

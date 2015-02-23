@@ -84,7 +84,7 @@ class Transition(ThimblesTable, Base):
             ion_correction = np.log10(ion_frac)
         else:
             ion_correction = np.log10(1.0-ion_frac)
-        return solar_ab + metalicity + self.loggf - theta*self.ep + ion_correction
+        return solar_ab + metalicity + self.loggf - theta*self.ep + ion_correction + np.log10(self.wv) - 3.0
     
     @property
     def x(self):

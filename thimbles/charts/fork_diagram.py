@@ -158,10 +158,12 @@ class TransitionsChart(object):
             tine_min=0.0,
             tine_max=1.0,
             handle_max=1.35,
-            fan_fraction=0.6,
+            fan_fraction=0.9,
             handle_picker=None,
             tine_picker=None,
+            tine_tags=None,
             ax=None,
+            **mpl_kwargs
     ):
         #import pdb; pdb.set_trace()
         self.tine_min=tine_min
@@ -175,34 +177,36 @@ class TransitionsChart(object):
             grouping_dict = {}
         self.grouping_dict=grouping_dict
         self.handle_picker=handle_picker
-        self.tine_piecker=tine_picker
+        self.tine_picker=tine_picker
+        if tine_tags is None:
+            tine_tags = {}
+        self.tine_tags=tine_tags
+        self.mpl_kwargs = mpl_kwargs
         if ax is None:
             fig, ax = plt.subplots()
         self.ax = ax
         self.set_transitions(transitions)
     
     def get_handle_pts(self):
-        n_handles = len(self.handle_indexes)
+        n_handles = len(self.handle_wvs)
         if n_handles == 0:
             return None
         dat = np.zeros((n_handles, 2, 2))
-        handle_min = (1.0-self.fan_fraction)
-        dat[:, 0, 0] = self.transition_wvs[self.handle_indexes]
-        dat[:, 1, 0] = self.transition_wvs[self.handle_indexes]
-        dat[:, 0, 1] = self.handle_max*(1.0-self.fan_fraction) + self.fan_fraction*self.tine_max
+        dat[:, 0, 0] = self.handle_wvs
+        dat[:, 1, 0] = self.handle_wvs
+        dat[:, 0, 1] = self.tine_max + (self.handle_max-self.tine_max)*self.fan_fraction
         dat[:, 1, 1] = self.handle_max
         return dat
     
     def get_fan_pts(self):
-        if len(self.handle_indexes)==0:
+        if len(self.handle_wvs)==0:
             return None
         fan_idxs = np.where(self.grouping_vec > -1)[0] 
         dat = np.zeros((len(fan_idxs), 2, 2))
-        dat[:, 0, 0] = self.transition_wvs[fan_idxs]
-        associated_handles = self.handle_indexes[self.group_indexes[self.fan_idxs]]
-        dat[:, 1, 0] = self.transition_wvs[associated_handles]
-        dat[:, 0, 1] = self.ymax
-        dat[:, 1, 1] = self.handle_max*self.fan_fraction + (1.0-self.fan_fraction)*self.tine_max
+        dat[:, 0, 0] = self.fan_bottom_wvs
+        dat[:, 1, 0] = self.fan_top_wvs
+        dat[:, 0, 1] = self.tine_max
+        dat[:, 1, 1] = self.tine_max + (self.handle_max-self.tine_max)*self.fan_fraction
         return dat
     
     def get_tine_pts(self):
@@ -217,24 +221,23 @@ class TransitionsChart(object):
         if not self._handles_initialized:
             handle_dat = self.get_handle_pts()
             if not handle_dat is None:
-                self.handles = mpl.collections.LineCollection(handle_dat, picker=self.handle_picker)
+                self.handles = mpl.collections.LineCollection(handle_dat, picker=self.handle_picker, **self.mpl_kwargs)
                 self.ax.add_collection(self.handles)
                 self._handles_initialized = True
         if not self._fans_initialized:
             fan_dat = self.get_fan_pts()
             if not fan_dat is None:
-                self.fans = mpl.collections.LineCollection(fan_dat)
+                self.fans = mpl.collections.LineCollection(fan_dat, **self.mpl_kwargs)
                 self.ax.add_collection(self.fans)
                 self._fans_initialized = True
         if not self._tines_initialized:
             tine_dat = self.get_tine_pts()
             if not tine_dat is None:
-                self.tines = mpl.collections.LineCollection(tine_dat)
+                self.tines = mpl.collections.LineCollection(tine_dat, picker=self.tine_picker, **self.mpl_kwargs)
                 self.ax.add_collection(self.tines)
                 self._tines_initialized = True
     
     def set_transitions(self, transitions):
-        #import pdb; pdb.set_trace()
         if not transitions is None:
             twvs = np.array([t.wv for t in transitions])
             tlens = np.array([t.x for t in transitions])
@@ -245,37 +248,55 @@ class TransitionsChart(object):
             tlens = (tlens-self.lmin)/(self.lmax-self.lmin)
             tlens = np.clip(tlens, 0, 1)
             
-            self.lmax - self.lmin
             grouping_vec = np.repeat(-1, len(transitions))
-            group_to_idx = {None:-1}
+            group_to_idx = {}
+            handle_wvs = []
+            fan_top_wvs = []
+            fan_bottom_wvs = []
+            group_list = []
             for trans_idx in range(len(transitions)):
                 trans = transitions[trans_idx]
                 group = self.grouping_dict.get(trans)
-                group_idx = group_to_idx.get(group)
-                if group_idx is None:
-                    group_idx = len(group_to_idx)
-                    group_to_idx[group] = group_idx
-                grouping_vec[trans_idx] = group_idx
+                if not group is None:
+                    group_idx = group_to_idx.get(group)
+                    if group_idx is None:
+                        group_idx = len(group_to_idx)
+                        group_to_idx[group]=group_idx
+                        group_list.append(group)
+                        handle_wvs.append(group.aggregate(attr="wv", reduce_func=np.mean))
+                    fan_bottom_wvs.append(trans.wv)
+                    fan_top_wvs.append(handle_wvs[-1])
+                    grouping_vec[trans_idx]=group_idx
             self.transitions = transitions
             self.transition_wvs = twvs
             self.tine_lengths = tlens
             self.group_to_idx = group_to_idx
+            self.group_list = group_list
+            self.handle_wvs = handle_wvs
+            self.fan_top_wvs = fan_top_wvs
+            self.fan_bottom_wvs = fan_bottom_wvs
             self.grouping_vec = grouping_vec
-            ures = np.unique(self.grouping_vec, return_index=True, return_inverse=True)
-            
-            self.group_ids, self.handle_indexes, self.group_indexes = ures
-            self.handle_indexes = self.handle_indexes[1:]
             self._initialize_plots()
             self.update()
     
     def update(self):
         if self._handles_initialized:
             self.handles.set_segments(self.get_handle_pts())
+            metdat = dict(
+                kind="groups",
+                groups=self.group_list,
+            )
+            self.handles._md = metdat
         if self._fans_initialized:
             self.fans.set_segments(self.get_fan_pts())
         if self._tines_initialized:
             self.tines.set_segments(self.get_tine_pts())
+            metdat = dict(
+                kind="transitions",
+                transitions=self.transitions,
+            )
+            metdat.update(self.tine_tags)
+            self.tines._md = metdat
     
-        
     def set_bounds(self, bounds):
         pass

@@ -1,10 +1,13 @@
 
-import matplotlib
-matplotlib.use('Qt4Agg')
-matplotlib.rcParams['backend.qt4'] = 'PySide'
+import matplotlib as mpl
+mpl.use('Qt4Agg')
+mpl.rcParams['backend.qt4'] = 'PySide'
 import matplotlib.pyplot as plt
 
 import thimbles as tmb
+import os 
+plt.style.use(os.path.join(tmb.resource_dir, "matplotlibrc"))
+
 from thimblesgui.mplwidget import MatplotlibWidget
 from thimblesgui.spec_widget import FluxDisplay
 

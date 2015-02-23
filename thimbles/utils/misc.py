@@ -202,7 +202,7 @@ def local_gaussian_fit(yvalues, peak_idx=None, fit_width=2, xvalues=None):
         peak_idx = np.argmax(yvalues)
     lb = max(peak_idx - fit_width, 0)
     ub = min(peak_idx + fit_width, len(yvalues)-1)
-    if xvalues == None:
+    if xvalues is None:
         chopped_xvals = np.arange(lb, ub+1)
         peak_xval = peak_idx
     else:
@@ -1099,13 +1099,28 @@ def sparse_row_circulant_matrix(vec, npts):
         else:
             data[count:count+len(cur_r_idxs)] = vec[-len(cur_r_idxs):]
         count += len(cur_r_idxs)
-    return scipy.sparse.coo_matrix((data, (row_idxs, col_idxs)), shape=(npts, npts))    
+    return scipy.sparse.coo_matrix((data, (row_idxs, col_idxs)), shape=(npts, npts))
 
 def anti_smoothing_matrix(width, npts):
     max_width = int(max(1, 5*width))+1
     deltas = np.arange(-max_width, max_width+1)
     dvec = scipy.gradient(scipy.gradient(np.exp(-(deltas/width)**2)))
     return sparse_row_circulant_matrix(dvec, npts)
+
+def _voigt_resids(voigt_pvec, center, x, y):
+    vprof = voigt(x, center, voigt_pvec[0], voigt_pvec[1])
+    best_ew = np.sum(vprof*y)/np.sum(vprof**2)
+    resids = y - best_ew*vprof
+    return resids
+
+def unweighted_voigt_fit(x, y):
+    center_x, start_sigma, peak_val = local_gaussian_fit(y, xvalues=x)
+    start_vec = np.array([start_sigma, 0.0])
+    opt_res = scipy.optimize.leastsq(_voigt_resids, start_vec, args=(center_x, x, y))
+    sig, gam = opt_res[0]
+    vprof = voigt(x, center_x, sig, gam)
+    ew = np.sum(y*vprof)/np.sum(vprof**2)
+    return sig, gam, ew
 
 
 def eval_multiplicative_models(model_mats, xvecs, offsets):

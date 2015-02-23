@@ -136,6 +136,8 @@ class Coordinatization(ThimblesTable, Base):
 class ArbitraryCoordinatization(Coordinatization):
     _id = Column(Integer, ForeignKey("Coordinatization._id"), primary_key=True)
     coordinates = Column(PickleType)
+    _start_dx = Column(Float)
+    _end_dx = Column(Float)
     __mapper_args__={
         "polymorphic_identity":"arbitrarycoordinatization",
     }

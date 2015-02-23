@@ -108,10 +108,10 @@ class MultiVariatePolynomial:
         self.powers = np.asarray(powers, dtype = int)
         self.max_powers = np.max(self.powers, axis = 0)
         self.n_coeffs, self.n_dims = self.powers.shape
-        if  center == None:
+        if  center is None:
             center = np.zeros(self.n_dims)
         self.center = np.asarray(center)
-        if scale == None:
+        if scale is None:
             self.scale = np.ones(self.n_dims, dtype = float)
         else:
             self.scale = np.asarray(scale)

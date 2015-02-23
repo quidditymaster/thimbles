@@ -16,6 +16,10 @@ class ThimblesTable(object):
     @declared_attr
     def __tablename__(cls):
         return cls.__name__
+    
+    @property
+    def session(self):
+        return self._sa_instance_state.session
 
 Option("database", option_style="parent_dict")
 Option("dialect", option_style="raw_string", default="sqlite", parent="database")

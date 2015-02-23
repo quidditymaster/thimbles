@@ -249,13 +249,17 @@ class Spectrum(ThimblesTable, Base):
     _obs_prior_id = Column(Integer, ForeignKey("Distribution._id"))
     obs_prior = relationship("Distribution")
     info = Column(PickleType)
+    _flag_id = Column(Integer, ForeignKey("SpectrumFlags._id"))
+    flags = relationship("SpectrumFlags")
     _source_id = Column(Integer, ForeignKey("Source._id"))
+    source = relationship("Source", backref="spectroscopy")
     
     def __init__(
             self,
             wavelengths, 
             flux, 
             ivar=None,
+            lsf=None,
             flags=None,
             info=None,
             source=None,
@@ -283,6 +287,8 @@ class Spectrum(ThimblesTable, Base):
         self.pseudonorm_kwargs = pseudonorm_kwargs
         
         self.flux_p = FluxParameter(wavelengths)
+        if not lsf is None:
+            self.flux_p.wv_sample.wv_soln.lsf = lsf
         
         flux = np.asarray(flux)
         if ivar is None:
@@ -303,6 +309,8 @@ class Spectrum(ThimblesTable, Base):
         if info is None:
             info = {}
         self.info = info
+        
+        self.source = source
     
     @property
     def wv_sample(self):

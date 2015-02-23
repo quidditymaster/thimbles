@@ -18,6 +18,8 @@ input_assoc = sa.Table(
 
 class Model(ParameterGroup, ThimblesTable, Base):
     model_class = Column(String)
+    _generator_id = Column(Integer, ForeignKey("Generator._id"))
+    generator = relationship("Generator", backref="models")
     __mapper_args__={
         "polymorphic_identity": "Model",
         "polymorphic_on": model_class
@@ -35,7 +37,6 @@ class Model(ParameterGroup, ThimblesTable, Base):
     )
     
     #class attributes
-    #jacobian_columns =_derivative_helpers[key](model_instance)
     _derivative_helpers = {} 
     
     def __init__(self, parameters=None, output_p=None):
@@ -43,8 +44,8 @@ class Model(ParameterGroup, ThimblesTable, Base):
         self.output_p = output_p
     
     def __call__(self, *args, **kwargs):
-        raise NotImplementedError("Abstract Class")
-        
+        raise NotImplementedError("Model is intended strictly as a parent class and table place holder, it cannot be executed.")
+    
     def parameter_expansion(self, input_vec, **kwargs):
         parameters = self.free_parameters
         deriv_vecs = []

@@ -6,7 +6,8 @@ from thimbles.charts import MatplotlibCanvas
 from thimbles.options import Option, opts
 
 spectra_mpl_kwargs=Option("spectra_mpl_kwargs", option_style="parent_dict", parent="charts")
-Option("color", default="#55AAFF", parent=spectra_mpl_kwargs)
+spec_color = "#6EF057"
+Option("color", default=spec_color, parent=spectra_mpl_kwargs)
 Option("linewidth", default=2.0, parent=spectra_mpl_kwargs)
 Option("linestyle", default="steps-mid", parent=spectra_mpl_kwargs)
 

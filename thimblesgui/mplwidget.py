@@ -51,18 +51,6 @@ class MatplotlibWidget(QtGui.QWidget):
         # set the canvas to the Matplotlib widget
         self.canvas = MatplotlibCanvas(nrows, ncols, sharex=sharex, sharey=sharey)
         self.fig = self.canvas.fig
-
-        kws = dict(
-            top=0.98,
-            bottom=0.1,
-            left=0.06,
-            right=0.98)
-        if fig_kws is None:
-            fig_kws = {}
-        fig_kws = fig_kws.copy()
-        for k in kws:
-            fig_kws.setdefault(k,kws[k])
-        self.fig.subplotpars.update(**fig_kws)        
         
         # create a vertical box layout
         self.vboxlayout = QtGui.QVBoxLayout()

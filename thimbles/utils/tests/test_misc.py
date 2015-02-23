@@ -32,14 +32,32 @@ class TestIRLS(unittest.TestCase):
     def test_gaussian_noise(self):
         y_gauss = np.random.normal(size=(self.npts,)) + self.y
         res_vec = irls(self.fit_matrix, y_gauss, 1.0)
-        self._check_result(res_vec, 0.2)
+        self._check_result(res_vec, 0.5)
     
     def test_sparse(self):
         res_vec = irls(sparse.csr_matrix(self.fit_matrix), self.y, 1.0)
         self._check_result(res_vec, 1e-10)
 
 
+class TestUnweightedVoigtFit(unittest.TestCase):
+    
+    def setUp(self):
+        pass
 
+    def test_random_voigt(self):
+        #sig = np.random.uniform(1.0, 5.0)
+        #gam = np.random.uniform(1.0, 5.0)
+        sig = 1.0
+        gam = 2.0
+        ew = 3.0
+        x = np.linspace(-10, 10, 25)
+        vgt = voigt(x, 0.0, sig, gam)*ew
+        
+        res = unweighted_voigt_fit(x, vgt)
+        self.assertTrue(np.abs(sig-res[0]) < 1e-4)
+        self.assertTrue(np.abs(gam-res[1]) < 1e-4)
+        self.assertTrue(np.abs(ew-res[2]) < 1e-4)
+        
 class TestNoiseEstimates(unittest.TestCase):
     
     def setUp(self):

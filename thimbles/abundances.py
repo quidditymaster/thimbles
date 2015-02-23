@@ -81,5 +81,8 @@ class Abundance(Parameter):
     ion = relationship("Ion")
     _stellar_parameters_id = Column(Integer, ForeignKey("StellarParameters._id"))
     _value = Column(Float) #log(epsilon)
+
+    def __init__(self, ion, logeps):
+        self._value = logeps
     
 

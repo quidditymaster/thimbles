@@ -14,6 +14,7 @@ from thimbles.stellar_parameters import StellarParameters
 from thimbles.radtran import MoogEngine
 from thimbles.radtran import MarcsInterpolator
 
+#_make_plots = True
 _make_plots = False
 
 class TestRadTranEngine(unittest.TestCase):

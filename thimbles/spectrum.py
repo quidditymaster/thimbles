@@ -511,10 +511,72 @@ def add_spectra(
         spectrum1,
         spectrum2,
         target_wvs=None, 
-        sampling_mode=None,
+        sampling_mode="interpolate",
 ):
     if target_wvs is None:
         target_wvs = spectrum1.wv_sample
     else:
         target_wvs = as_wavelength_sample(target_wvs)
+    spec1_samp = spectrum1.sample(target_wvs, mode=sampling_mode)
+    spec2_samp = spectrum2.sample(target_wvs, mode=sampling_mode)
     
+    out_flux = spec1_samp.flux + spec2_samp.flux
+    out_var = spec1_samp.var + spec2_samp.var
+    out_ivar = tmb.utils.misc.var_2_inv_var(out_var)
+    return tmb.Spectrum(target_wvs, out_flux, out_ivar)
+
+def subtract_spectra(
+        spectrum1,
+        spectrum2,
+        target_wvs=None, 
+        sampling_mode="interpolate",
+):
+    if target_wvs is None:
+        target_wvs = spectrum1.wv_sample
+    else:
+        target_wvs = as_wavelength_sample(target_wvs)
+    spec1_samp = spectrum1.sample(target_wvs, mode=sampling_mode)
+    spec2_samp = spectrum2.sample(target_wvs, mode=sampling_mode)
+    
+    out_flux = spec1_samp.flux - spec2_samp.flux
+    out_var = spec1_samp.var + spec2_samp.var
+    out_ivar = tmb.utils.misc.var_2_inv_var(out_var)
+    return tmb.Spectrum(target_wvs, out_flux, out_ivar)
+
+def multiply_spectra(
+        spectrum1,
+        spectrum2,
+        target_wvs=None, 
+        sampling_mode="interpolate",
+):
+    if target_wvs is None:
+        target_wvs = spectrum1.wv_sample
+    else:
+        target_wvs = as_wavelength_sample(target_wvs)
+    spec1_samp = spectrum1.sample(target_wvs, mode=sampling_mode)
+    spec2_samp = spectrum2.sample(target_wvs, mode=sampling_mode)
+    
+    out_flux = spec1_samp.flux * spec2_samp.flux
+    out_var = spec1_samp.var*spec2_samp.flux**2 + spec1_samp.flux**2*spec2_samp.var
+    out_ivar = tmb.utils.misc.var_2_inv_var(out_var)
+    return tmb.Spectrum(target_wvs, out_flux, out_ivar)
+
+
+def divide_spectra(
+        spectrum1,
+        spectrum2,
+        target_wvs=None, 
+        sampling_mode="interpolate",
+):
+    if target_wvs is None:
+        target_wvs = spectrum1.wv_sample
+    else:
+        target_wvs = as_wavelength_sample(target_wvs)
+    spec1_samp = spectrum1.sample(target_wvs, mode=sampling_mode)
+    spec2_samp = spectrum2.sample(target_wvs, mode=sampling_mode)
+    
+    out_flux = spec1_samp.flux/spec2_samp.flux
+    s2sq = spec2_samp.flux**2
+    out_var = spec1_samp.var/s2sq + (spec1_samp.flux/(2.0*s2sq))**2*spec2_samp.var
+    out_ivar = tmb.utils.misc.var_2_inv_var(out_var)
+    return tmb.Spectrum(target_wvs, out_flux, out_ivar)

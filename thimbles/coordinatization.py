@@ -101,7 +101,7 @@ class Coordinatization(ThimblesTable, Base):
     def __len__(self):
         return self.npts
     
-    def interpolant_sampling_matrix(self, sample_coords):
+    def interpolant_sampling_matrix(self, sample_coords, extrapolate=False):
         """generates a  matrix which carries a vector sampled at coordinates
         corresponding to this coordinatization to a linear interpolation 
         of those values sampled at coordinates coresponding to sample_coords.
@@ -123,6 +123,10 @@ class Coordinatization(ThimblesTable, Base):
         neighbor_idxs = clipped_snapped_input_cols + snap_direction
         neighbor_alpha = np.abs(snap_delta)
         snap_alpha = 1.0-neighbor_alpha
+        if not extrapolate:
+            close_enough = neighbor_alpha < 2.0
+            neighbor_alpha = np.where(close_enough, neighbor_alpha, 0.0)
+            snap_alpha = np.where(close_enough, snap_alpha, 0.0)
         #import pdb; pdb.set_trace()
         nrows = len(sample_coordinatization)
         ncols = len(input_coordinatization)

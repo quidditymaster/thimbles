@@ -57,13 +57,6 @@ class ThimblesDB(object):
     def close(self):
         self.session.close()
     
-    def incorporate(self, data, template, **kwargs):
-        global template_registry
-        if isinstance(template, basestring):
-            template = template_registry[template]
-        temp_instance = template(data, self, **kwargs)
-        self.add(temp_instance)
-
 
 @task(result_name="tdb",
     sub_kwargs={"fname":dict(

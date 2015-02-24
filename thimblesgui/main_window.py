@@ -76,13 +76,7 @@ class ThimblesMainWindow(QtGui.QMainWindow):
         self.make_dock_widgets()
     
     def make_actions(self):
-        #QtGui.QAction(QtGui.QIcon(":/images/new.png"), "&Attach Database", self)
-        self.attach_act = QtGui.QAction("&Attach Database", self)
-        #attach_act.setShortcut()
-        self.attach_act.setStatusTip("set the active database for this GUI")
-        self.attach_act.triggered.connect(self.on_attach_db)
-        self.attach_act.setShortcut("Ctrl+A")
-        
+        #QtGui.QAction(QtGui.QIcon(":/images/new.png"), "&Attach Database", self)        
         self.quit_act = QtGui.QAction("&Quit", self)
         self.quit_act.setShortcut("Ctrl+Q")
         self.quit_act.setStatusTip("Quit Thimbles")
@@ -90,12 +84,10 @@ class ThimblesMainWindow(QtGui.QMainWindow):
     
     def make_menus(self):
         self.file_menu = self.menuBar().addMenu("&File")
-        self.file_menu.addAction(self.attach_act)
         self.file_menu.addAction(self.quit_act)
     
     def make_tool_bar(self):
         self.file_tool_bar = self.addToolBar("File")
-        self.file_tool_bar.addAction(self.attach_act)
     
     def make_status_bar(self):
         self.statusBar().showMessage("Ready")
@@ -451,7 +443,7 @@ class OldAppForm(QtGui.QMainWindow):
     
     def fit_features(self, features):
         #import pdb; pdb.set_trace()
-        tmb.modeling.spectral_models.quick_quadratic_fit(features)
+        #tmb.modeling.spectral_models.quick_quadratic_fit(features)
         for i in range(int(self.options.iteration)):
             tmb.modeling.spectral_models.ensemble_feature_fit(features, self.options.fit_width)
         return features

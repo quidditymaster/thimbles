@@ -1,3 +1,4 @@
+import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 
@@ -88,12 +89,12 @@ class SpectrumChart(object):
         if self.normalize:
             bspec = bspec.normalized()
         if self.auto_zoom:
-            bwv = bspec.wv
-            min_x, max_x = sorted(bwv[0], bwv[-1])
+            bwv = bspec.wvs
+            min_x, max_x = sorted([bwv[0], bwv[-1]])
             min_y = min(0, np.min(bspec.flux))
             mflux = np.median(bspec.flux)
             max_y_idx = np.argmax((bspec.flux > mflux)*(bspec.flux*bspec.ivar))
-            max_y = bwv.flux[max_y_idx]
+            max_y = bspec.flux[max_y_idx]
             self.ax.set_xlim(min_x, max_x)
             self.ax.set_ylim(min_y-0.01, max_y+(max_y-min_y)*0.15)
         self.spec_line.set_data(bspec.wvs, bspec.flux)

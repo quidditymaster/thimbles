@@ -47,6 +47,7 @@ def sorting_norm(spectrum, min_frac=0.75, max_frac=0.97, n_samples=15, fit_plot=
     #import pdb; pdb.set_trace()
     return np.repeat(res[0], npts)
 
+
 def iterative_sorting_norm(
         spectrum, 
         init_min=0.1, 

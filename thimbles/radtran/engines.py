@@ -15,10 +15,10 @@ class PhotosphereEngine(object):
     
     def make_photosphere(self, fname, stellar_params):
         self._not_implemented()
-
+    
 
 class RadiativeTransferEngine(object):
-    """an abstract class specifying the API for wrapping radiative transfer
+    """a class specifying the API for wrapping radiative transfer
     codes.
     """
     _photosphere_fname = "modelphoto.tmp"

@@ -1223,3 +1223,7 @@ def attribute_df(obj_list, attrs, index_attr=None):
         for obj in obj_list:
             obj_indexes.append(getattr(obj, index_attr))
     return pd.DataFrame(data=obj_dat, index=obj_indexes)
+
+def thermal_width(teff, wv, mol_weight):
+    """The thermal width in angstroms"""
+    return 4.301e-7*np.sqrt(teff/mol_weight)*wv

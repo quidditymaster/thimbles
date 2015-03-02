@@ -6,24 +6,34 @@ from thimbles.utils import piecewise_polynomial as ppol
 from thimbles.thimblesdb import Base, ThimblesTable
 from thimbles.modeling import Model, Parameter
 from thimbles.sqlaimports import *
+from thimbles.spectrum import FluxParameter
 
-class PolynomialCoefficientsParameter(Parameter):
+class BlazeCoefficientsParameter(Parameter):
     _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
     __mapper_args__={
-        "polymorphic_identity":"PolynomialCoefficientsParameter"
+        "polymorphic_identity":"BlazeCoefficientsParameter"
     }
+    _value = Column(PickleType)
     
-    def __init__(self, wv_soln):
-        pass
+    def __init__(self, coeffs=None):
+        if coeffs is None:
+            coeffs = np.zeros(2, dtype=float)
+        self._value = coeffs
 
-class SpectrographBlazeModel(Model):
+
+class PolynomialBlazeModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    _coeffs_id = Column(Integer, ForeignKey("BlazeCoefficientsParameter._id"))
+    coeffs_p = relationship("BlazeCoefficientsParameter")
     __mapper_args__={
-        "polymorphic_identity":"SpectrographBlazeModel",
+        "polymorphic_identity":"PolynomialBlazeModel",
     }
     
-    def __init__(self):
-        pass
+    def __init__(self, generator=None):
+        bcp = BlazeCoefficientsParameter()
+        self.parameters = [bcp]
+        
+        
 
 class PiecewisePolynomialSpectrographEfficiencyModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)

@@ -201,6 +201,9 @@ class WavelengthSample(ThimblesTable, Base):
         self.start = start
         self.end = end
     
+    def __len__(self):
+        return self.end-self.start
+    
     @property
     def pixels(self):
         return np.arange(self.start, self.end)
@@ -233,8 +236,12 @@ class FluxParameter(Parameter):
     #class attributes
     name = "flux"
     
-    def __init__(self, wvs):
+    def __init__(self, wvs, flux=None):
         self.wv_sample = as_wavelength_sample(wvs)
+        self._value = flux
+    
+    def __len__(self):
+        return len(self.wv_sample)
     
     @property
     def pixels(self):

@@ -173,7 +173,7 @@ class MoogEngine(RadiativeTransferEngine):
             central_intensity=False,
     ):
         if not normalized:
-            self._not_implemented("moog only generates the normalized spectrum")
+            self._not_implemented("moog only generates normalized spectra")
         self._make_photo_file(stellar_params)
         #write out the linelist in moog format
         line_name = "templines.ln.tmp"

@@ -59,6 +59,8 @@ class Star(Source):
     __mapper_args__={
         "polymorphic_identity":"Star",
     }
+    _stellar_parameters_id = Column(Integer, ForeignKey("StellarParameters._id"))
+    stellar_parameters = relationship("StellarParameters", backref="star", uselist=False)
     
     def __init__(self, name=None, ra=None, dec=None, stellar_parameters=None):
         self.name = name
@@ -67,7 +69,9 @@ class Star(Source):
         if stellar_parameters is None:
             stellar_parameters = StellarParameters()
         self.stellar_parameters = stellar_parameters
-
+    
+    def __repr__(self):
+        return "Star name={name}".format(self.name)
 
 class StellarParameters(ThimblesTable, Base):
     _teff_id = Column(Integer, ForeignKey("TeffParameter._id"))
@@ -81,8 +85,6 @@ class StellarParameters(ThimblesTable, Base):
     _mass_id = Column(Integer, ForeignKey("MassParameter._id"))
     mass_p = relationship("MassParameter", foreign_keys=_mass_id)
     abundances = relationship("Abundance")
-    _star_id = Column(Integer, ForeignKey("Star._id"))
-    star = relationship("Star", backref="parameter_sets")
     
     def __init__(self, 
                  teff=5000.0, 
@@ -91,7 +93,6 @@ class StellarParameters(ThimblesTable, Base):
                  vmicro=2.0, 
                  mass=1.0,
                  abundances=None,
-                 star=None
     ):
         if not isinstance(teff, TeffParameter):
             teff = TeffParameter(teff)
@@ -112,7 +113,6 @@ class StellarParameters(ThimblesTable, Base):
         if abundances is None:
             abundances = []
         self.abundances = abundances
-        self.star = star
     
     @property
     def teff(self):

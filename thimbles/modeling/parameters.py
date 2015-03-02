@@ -129,8 +129,6 @@ class Parameter(ThimblesTable, Base):
         "polymorphic_on": parameter_class
     }
     
-    fixed = Column(Boolean)
-    propagate = Column(Boolean)
     _value = None
     
     #class attributes
@@ -142,14 +140,8 @@ class Parameter(ThimblesTable, Base):
     min=-np.inf
     max=np.inf
     
-    def __init__(self, 
-                 value=None,
-                 fixed = False,
-                 propagate=True,
-                 ):
-        self.free = free
-        self.propagate=propagate
-        #self.history = ValueHistory(self, history_max)   
+    def __init__(self, value=None,):
+        pass
     
     @property
     def value(self):
@@ -164,46 +156,32 @@ class Parameter(ThimblesTable, Base):
     
     @value.setter
     def value(self, value):
-        self.set(value, clip=True, propagate=None)
+        self.set(value,)
     
     def get(self):
         return self.value
     
-    def set(self, value, clip=True, propagate=None):
-        if not self.free:
-            raise FixedParameterException("attempted to set the value of a non-free parameter")
-        if clip:
-            value = np.clip(value, self.min, self.max)
+    def set(self, value):
+        #import pdb; pdb.set_trace()
         self._value = value
-        if propagate is None:
-            propagate = self.propagate
-        if propagate:
-            mods = []
-            mod_set = set()
-            mods.extend(self.models)
-            while len(mods) > 0:
-                mod = mods.pop(0)
-                mod_set.add(mod)
-                mod.fire()
-                mods.extend([nmod for nmod in mod.output_p.models if nmod not in mod_set])
-    
-    def __repr__(self):
-        val = None
-        try:
-            val = self.get()
-        except:
-            pass
-        return "Parameter: name={}, value={}".format(self.name, val)
+        mods = []
+        mod_set = set()
+        mods.extend(self.models)
+        while len(mods) > 0:
+            mod = mods.pop(0)
+            mod_set.add(mod)
+            #execute the model
+            mod.fire()
+            #mark the donwnstream models inputs as invalid
+            downstream = mod.output_p.models
+            for dsmod in downstream:
+                dsmod.output_p._value = None 
+            #TODO: implement incremental updates somehow
+            mods.extend([nmod for nmod in mod.output_p.models if nmod not in mod_set])
     
     @property
     def shape(self):
         return np.asarray(self.get()).shape
-    
-    def remember(self, value_id=None):
-        self.history.remember(value_id=value_id)
-    
-    def revert(self, value_id, pop=False):
-        self.history.revert(value_id=value_id, pop=pop)
 
 
 #how to make a parameter subclass

@@ -18,8 +18,8 @@ input_assoc = sa.Table(
 
 class Model(ParameterGroup, ThimblesTable, Base):
     model_class = Column(String)
-    _generator_id = Column(Integer, ForeignKey("Generator._id"))
-    generator = relationship("Generator", backref="models")
+    _substrate_id = Column(Integer, ForeignKey("ModelSubstrate._id"))
+    substrate = relationship("ModelSubstrate", backref="models")
     __mapper_args__={
         "polymorphic_identity": "Model",
         "polymorphic_on": model_class
@@ -27,7 +27,7 @@ class Model(ParameterGroup, ThimblesTable, Base):
     parameters = relationship(
         "Parameter", 
         secondary=input_assoc, 
-        backref="models"
+        backref="models",
     )
     _output_parameter_id = Column(Integer, ForeignKey("Parameter._id"))
     output_p = relationship(
@@ -39,12 +39,25 @@ class Model(ParameterGroup, ThimblesTable, Base):
     #class attributes
     _derivative_helpers = {} 
     
-    def __init__(self, parameters=None, output_p=None):
+    def __init__(self, parameters=None, output_p=None, substrate=None):
+        if parameters is None:
+            parameters = []
         self.parameters = parameters
         self.output_p = output_p
+        self.substrate=substrate
     
-    def __call__(self, *args, **kwargs):
+    def __call__(self, vdict=None):
         raise NotImplementedError("Model is intended strictly as a parent class and table place holder, it cannot be executed.")
+    
+    def fire(self):
+        self.output_p.value = self()
+    
+    def get_vdict(self, pvrep=None):
+        if pvrep is None:
+            pvrep = {}
+        values_dict = {p:p.value for p in self.parameters}
+        values_dict.update(pvrep)
+        return values_dict
     
     def parameter_expansion(self, input_vec, **kwargs):
         parameters = self.free_parameters

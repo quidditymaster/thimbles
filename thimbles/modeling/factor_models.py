@@ -3,19 +3,27 @@ import scipy.sparse as sparse
 import matplotlib.pyplot as plt
 import thimbles as tmb
 from thimbles.modeling.models import Model, Parameter
+from thimbles.thimblesdb import NamedRow
 from thimbles.sqlaimports import *
 
 
-class MultiplierModel(Model):
+class MultiplierModel(NamedRow, Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__={
         "polymorphic_identity":"MultiplierModel",
     }
     
-    def __init__(self, parameters, output_p=None, substrate=None):
+    def __init__(
+            self, 
+            parameters=None, 
+            output_p=None, 
+            name=None,
+            substrate=None
+    ):
         if parameters is None:
             parameters = []
         self.parameters = parameters
+        self.name=name
         self.substrate = substrate
         self.output_p = output_p
     
@@ -46,17 +54,24 @@ class VectorParameter(Parameter):
         self._value = vector
 
 
-class MatrixMultiplierModel(Model):
+class MatrixMultiplierModel(NamedRow, Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__={
         "polymorphic_identity":"MatrixMultiplierModel",
     }
     
-    def __init__(self, parameters=None, output_p=None, substrate=None):
+    def __init__(
+            self, 
+            parameters=None, 
+            output_p=None,
+            name=None,
+            substrate=None
+    ):
         if parameters is None:
             parameters = []
         self.parameters = parameters
         self.output_p = output_p
+        self.name=name
         self.substrate = substrate
     
     @property
@@ -90,18 +105,25 @@ class MatrixMultiplierModel(Model):
         return matrix*vector
 
 
-class FluxSumModel(Model):
+class FluxSumModel(NamedRow, Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__={
         "polymorphic_identity":"FluxSumModel",
     }
     background_level = Column(Float)
     
-    def __init__(self, parameters=None, output_p=None, substrate=None):
+    def __init__(
+            self, 
+            parameters=None, 
+            output_p=None, 
+            name=None, 
+            substrate=None
+    ):
         if parameters is None:
             parameters = []
         self.parameters = parameters
         self.output_p = output_p
+        self.name=name
         self.substrate=substrate
     
     def __call__(self, pvrep=None):
@@ -136,7 +158,7 @@ class NegativeExponentialModel(Model):
         return np.exp(-p0.value)
 
 
-class PixelPolynomialModel(Model):
+class PixelPolynomialModel(NamedRow, Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__={
         "polymorphic_identity":"PolynomialFluxModel",
@@ -144,7 +166,15 @@ class PixelPolynomialModel(Model):
     center = Column(Float)
     scale = Column(Float)
     
-    def __init__(self, wv_sample, coeffs=None, center=None, scale=None):
+    def __init__(
+            self, 
+            wv_sample, 
+            coeffs=None, 
+            center=None, 
+            scale=None, 
+            name=None, 
+            substrate=None
+    ):
         wv_sample = tmb.as_wavelength_sample(wv_sample)
         fp = FluxParameter(wv_sample)
         self.output_p = fp
@@ -158,6 +188,8 @@ class PixelPolynomialModel(Model):
         if scale is None:
             scale = max(0.25*(wv_sample.end - wv_sample.start), 1.0)
         self.scale = scale
+        self.name=name
+        self.substrate=substrate
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)

@@ -133,12 +133,6 @@ class Parameter(ThimblesTable, Base):
     
     #class attributes
     name = "base parameter class"
-    scale = 1.0
-    #step_scale = 1.0
-    #derivative_scale = 1e-4
-    #convergence_scale = 1e-2
-    min=-np.inf
-    max=np.inf
     
     def __init__(self, value=None,):
         pass

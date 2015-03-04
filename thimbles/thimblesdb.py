@@ -56,7 +56,11 @@ class ThimblesDB(object):
     
     def close(self):
         self.session.close()
-    
+
+
+class NamedRow(object):
+    """a mixin class for the name column"""
+    name = Column(String)
 
 @task(result_name="tdb",
     sub_kwargs={"fname":dict(

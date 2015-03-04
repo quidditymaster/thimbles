@@ -5,6 +5,7 @@ try:
 except ImportError:
     import pdb
 from thimbles.coordinatization import *
+import thimbles as tmb
 from thimbles.spectrum import Spectrum, WavelengthSolution
 
 # ########################################################################### #
@@ -132,6 +133,43 @@ class TestSpectrum (unittest.TestCase):
         
         iterp_res, iterp_mat = self.spec.sample(iterp_wvs, mode="interpolate", return_matrix = True)
         np.testing.assert_almost_equal(iterp_mat*self.spec.flux, perfect_iterp)
+
+    def test_rebin(self):
+        rebin_wvs = self.spec.wvs[::5]
+        rebin_spec = self.spec.sample(rebin_wvs, mode="rebin")
+        #will still be a line since we preserve normalization
+        perfect_rebin = self.flux_slope*rebin_wvs[1:-1]+self.flux_offset
+        np.testing.assert_almost_equal(rebin_spec.flux[1:-1], perfect_rebin)
+
+core_prop_names = \
+"""
+spectrograph_multiplier    
+spectrograph_adder
+sampling_matrix_multiplier
+inner_multiplier
+inner_adder
+broadening_matrix_multiplier
+feature_multiplier
+feature_adder
+""".split()
+
+class TestCoreSpectrumSubstrate(unittest.TestCase):
+    
+    def setUp(self):
+        min_wv = 100
+        max_wv = 200
+        npts_spec = 30
+        npts_model = 100
+        spec_wvs = np.linspace(min_wv, max_wv, npts_spec)
+        model_wvs = np.linspace(min_wv, max_wv, npts_model)
+        self.spec = tmb.Spectrum(spec_wvs, np.ones(npts_spec), np.ones(npts_spec))
+        self.spec_core_sub = tmb.spectrum.CoreSpectrumSubstrate(self.spec, model_wvs)
+    
+    def test_model_properties(self):
+        scs = self.spec_core_sub
+        for prop_name in core_prop_names:
+            #print prop_name
+            assert not (getattr(scs, prop_name) is None)
 
 
 if __name__ == "__main__":

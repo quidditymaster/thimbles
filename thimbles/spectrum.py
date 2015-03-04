@@ -23,6 +23,8 @@ from thimbles import logger
 from scipy.interpolate import interp1d
 from thimbles.thimblesdb import ThimblesTable, Base
 from thimbles.modeling import Model, Parameter
+from thimbles.modeling.factor_models import \
+    FluxSumModel, MultiplierModel, MatrixMultiplierModel
 from thimbles.modeling.distributions import VectorNormalDistribution
 from thimbles.coordinatization import Coordinatization, as_coordinatization
 from thimbles.sqlaimports import *
@@ -396,18 +398,17 @@ class Spectrum(ThimblesTable, Base):
             sampled_spec = Spectrum(wavelengths, out_flux, out_ivar)
             sampling_matrix = tmat
         elif mode =="rebin":
-            raise NotImplementedError("time to make this work!")
             #wv_widths = scipy.gradient(self.wvs)*self.wv_soln.lsf
             #interp_mat = self.wv_sample.interpolant_matrix(wavlengths)
             
             #gdense = resampling.GaussianDensity(model_wvs, interper(model_wvs))
             #transform = resampling.get_resampling_matrix(model_wvs, self.wv, preserve_normalization=True, pixel_density=gdense)  
             in_wvs = self.wvs
-            wavelengths = as_wavelength_solution(wavelengths)
-            out_wvs = wavelengths.get_wvs()
+            wavelengths = as_wavelength_sample(wavelengths)
+            out_wvs = wavelengths.wvs
             transform = resampling.get_resampling_matrix(in_wvs, out_wvs, preserve_normalization=True)
             out_flux = transform*self.flux
-            var = self.get_var()
+            var = self.var
             #TODO make this take into account the existing lsfs
             covar = resampling.\
                     get_transformed_covariances(transform, var)
@@ -502,14 +503,6 @@ class Spectrum(ThimblesTable, Base):
         nspec.flags["normalized"] = True
         return nspec
     
-    def lsf_sampling_matrix(self, model_wvs):
-        wv_widths = scipy.gradient(self.wv)*self.wv_soln.lsf
-        #TODO: use faster interpolation
-        interper = interp1d(self.wv, wv_widths, bounds_error=False, fill_value=1.0)
-        gdense = resampling.GaussianDensity(model_wvs, interper(model_wvs))
-        transform = resampling.get_resampling_matrix(model_wvs, self.wv, preserve_normalization=True, pixel_density=gdense)    
-        return transform
-    
     def plot(self, ax=None, **mpl_kwargs):
         return tmb.charts.SpectrumChart(self, ax=ax)
 
@@ -587,3 +580,140 @@ def divide_spectra(
     out_var = spec1_samp.var/s2sq + (spec1_samp.flux/(2.0*s2sq))**2*spec2_samp.var
     out_ivar = tmb.utils.misc.var_2_inv_var(out_var)
     return tmb.Spectrum(target_wvs, out_flux, out_ivar)
+
+
+class CoreSpectrumSubstrate(tmb.modeling.ModelSubstrate):
+    _id = Column(Integer, ForeignKey("ModelSubstrate._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"CoreSpectrumModelSubstrate",
+    }
+    _spectrum_id = Column(Integer, ForeignKey("Spectrum._id"))
+    spectrum = relationship("Spectrum", backref="core_substrate")
+    
+    _spectrograph_multiplier = None    
+    _spectrograph_adder = None
+    _sampling_matrix_multiplier = None
+    _inner_multiplier = None
+    _inner_adder = None
+    _broadening_matrix_multiplier = None
+    _feature_multiplier = None
+    _feature_adder = None
+    
+    def __init__(self, spectrum, model_wv_soln):
+        self.spectrum = spectrum
+        out_wv_soln =spectrum.wv_sample.wv_soln
+        model_wv_soln = as_wavelength_solution(model_wv_soln)
+        spectrograph_multiplier = MultiplierModel(
+            output_p=spectrum.flux_p,
+            name="spectrograph_multiplier",
+            substrate=self,
+        )
+        add1_out = FluxParameter(out_wv_soln)
+        spectrograph_multiplier.parameters.append(add1_out)
+        spectrograph_adder = FluxSumModel(
+            output_p=add1_out,
+            name="spectrograph_adder",
+            substrate=self,
+        )
+        resampled_flux_param = FluxParameter(out_wv_soln)
+        spectrograph_adder.parameters.append(resampled_flux_param)
+        lsfmat_mult = MatrixMultiplierModel(
+            output_p=resampled_flux_param,
+            name="sampling_matrix_multiplier",
+            substrate=self,
+        )
+        inner_mult_out = FluxParameter(model_wv_soln)
+        lsfmat_mult.parameters.append(inner_mult_out)
+        inner_multiplier = MultiplierModel(
+            output_p=inner_mult_out,
+            name="inner_multiplier",
+            substrate=self,
+        )
+        inner_add_out = FluxParameter(model_wv_soln)
+        inner_multiplier.parameters.append(inner_add_out)
+        inner_adder = FluxSumModel(
+            output_p=inner_add_out,
+            name = "inner_adder",
+            substrate=self,
+        )
+        broadened_flux_p = FluxParameter(model_wv_soln)
+        inner_adder.parameters.append(broadened_flux_p)
+        broadening_multiplier = MatrixMultiplierModel(
+            output_p=broadened_flux_p,
+            name="broadening_matrix_multiplier",
+            substrate=self,
+        )
+        feat_mul_out = FluxParameter(model_wv_soln)
+        broadening_multiplier.parameters.append(feat_mul_out)
+        feature_multiplier = MultiplierModel(
+            output_p = feat_mul_out,
+            name="feature_multiplier",
+            substrate=self,
+        )
+        feature_sum_p = FluxParameter(model_wv_soln)
+        feature_adder = FluxSumModel(
+            output_p=feature_sum_p,
+            name="feature_adder",
+            substrate=self,
+        )
+    
+    def find_named_model(self, name):
+        for model in self.models:
+            try:
+                if model.name == name:
+                    return model
+            except AttributeError:
+                pass
+        return None
+    
+    def update_model_property(self, mod_name):
+        attr_name = "_"+mod_name
+        setattr(self, attr_name, self.find_named_model(mod_name))
+    
+    @property
+    def spectrograph_multiplier(self):
+        if self._spectrograph_multiplier is None:
+           self.update_model_property("spectrograph_multiplier")
+        return self._spectrograph_multiplier
+
+    @property
+    def spectrograph_adder(self):
+        if self._spectrograph_adder is None:
+            self.update_model_property("spectrograph_adder")
+        return self._spectrograph_adder
+        
+    @property
+    def sampling_matrix_multiplier(self):
+        if self._sampling_matrix_multiplier is None:
+            self.update_model_property("sampling_matrix_multiplier")
+        return self._sampling_matrix_multiplier
+
+    @property
+    def inner_multiplier(self):
+        if self._inner_multiplier is None:
+            self.update_model_property("inner_multiplier")
+        return self._inner_multiplier
+
+    @property
+    def inner_adder(self):
+        if self._inner_adder is None:
+            self.update_model_property("inner_adder")
+        return self._inner_adder
+    
+    @property
+    def broadening_matrix_multiplier(self):
+        if self._broadening_matrix_multiplier is None:
+            self.update_model_property("broadening_matrix_multiplier")
+        return self._broadening_matrix_multiplier
+    
+    @property
+    def feature_multiplier(self):
+        if self._feature_multiplier is None:
+            self.update_model_property("feature_multiplier")
+        return self._feature_multiplier
+    
+    @property
+    def feature_adder(self):
+        if self._feature_adder is None:
+            self.update_model_property("feature_adder")
+        return self._feature_adder

@@ -66,7 +66,6 @@ class SpeciesGrouper(object):
         self.tolerance = tolerance
     
     def __call__(self, species):
-        #import pdb; pdb.set_trace()
         species = np.atleast_1d(species)
         unique_species, recon_idxs = np.unique(species, return_inverse=True)
         grp_nums = np.zeros(unique_species.shape)
@@ -789,7 +788,7 @@ class FeatureGroupModel(Model):
             start, end = fp.wv_sample.start, fp.wv_sample.end
             start = start-out_start
             end = end-out_start
-            fsum[start:end] += -prof_strengths[prof_idx]*fp.value
+            fsum[start:end] += -prof_strengths[prof_idx]*fp.value#*ew_sum_value
         return fsum
 
 

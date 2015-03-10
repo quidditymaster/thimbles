@@ -1118,6 +1118,12 @@ def blackbody_flux(sampling_wavelengths, temperature,  normalize = True):
         bbspec /= peak_val
     return bbspec
 
+def thermal_width(linelist, teff=5777.0):
+    weight = 2.0*linelist["Z"] #TODO: use real atomic weight
+    wv = linelist["wv"]
+    widths = 4.301e-7*np.sqrt(teff/weight)*wv
+    return widths
+
 @task()
 def fit_blackbody_phirls(spectrum, start_teff=5000.0, gamma_frac=3.0):
     flux = spectrum.flux

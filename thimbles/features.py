@@ -110,7 +110,7 @@ def voigt_feature_matrix(wv_soln, centers, sigmas, gammas=None):
 
 
 
-class SaturatedVoigtFeatureModel(Model):
+class SaturatedVoigtFeatureModel(object):#(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     
     def __init__(self, 
@@ -606,11 +606,7 @@ class SaturatedVoigtFeatureModel(Model):
         self.fdat["solar_ab"] = ptable[self.fdat.species.values]["abundance"]
     
     def calc_therm_widths(self):
-        #TODO: use real atomic weight
-        weight =2.0*self.fdat["Z"]
-        wv = self.fdat["wv"]
-        widths = 4.301e-7*np.sqrt(self.teff/weight)*wv
-        self.fdat["thermal_width"] = widths
+        self.fdat["thermal_width"] = tmb.utils.misc.thermal_width(self.fdat, self.teff)
     
     def calc_vmicro_widths(self):
         self.fdat["vmicro_width"] = self.fdat["wv"]*self.vmicro/299792.458

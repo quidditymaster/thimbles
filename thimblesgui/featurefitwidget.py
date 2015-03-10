@@ -2,302 +2,12 @@ import threading
 import numpy as np
 import matplotlib
 
-from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT as NavigationToolbar
+from PySide import QtCore
+from PySide import QtGui
+from PySide.QtCore import Signal, Slot
+Qt = QtCore.Qt
 
-from PySide.QtGui import *
-from PySide.QtCore import *
-
-import models
-import views
-import thimbles as tmb
-from thimbles.charts import MatplotlibCanvas
-from thimbles.options import Option, opts
-
-class NormalizationWidget(QWidget):
-    
-    def __init__(self, spectra, norms=None):
-        self.spectra = spectra
-    
-    def initUI(self):
-        lay = QHBoxLayout()
-        self.mpl_wid = MatplotlibWidget(parent=self, nrows=1, ncols=1, mpl_toolbar=True,
-                 sharex="none", sharey="none")
-        
-        self.setLayout(lay)
-
-
-class FloatSlider(QWidget):
-    
-    def __init__(self, name, hard_min, hard_max, n_steps=127, orientation=Qt.Vertical, format_str="{:5.3f}", parent=None):
-        super(FloatSlider, self).__init__(parent)
-        label = QLabel(name, parent=self)
-        if orientation == Qt.Horizontal:
-            lay = QHBoxLayout()
-        elif orientation == Qt.Vertical:
-            lay = QVBoxLayout()
-        else:
-            raise NotImplementedError
-        self.hard_min = hard_min
-        self.hard_max = hard_max
-        self.c_min = hard_min
-        self.c_max = hard_max
-        self.n_steps = n_steps
-        self.calculate_delta()
-        self.slider = QSlider(orientation, self)
-        self.format_str = format_str
-        self.value_indicator = QLabel()
-        self.refresh_indicator()
-        self.min_lineedit = QLineEdit()
-        min_valid = QDoubleValidator(self.hard_min, self.hard_max, 4, self.min_lineedit)
-        self.min_lineedit.setValidator(min_valid)
-        self.min_lineedit.setText("{:10.4f}".format(self.c_min))
-        self.max_lineedit = QLineEdit()
-        max_valid = QDoubleValidator(self.hard_min, self.hard_max, 4, self.max_lineedit)
-        self.max_lineedit.setValidator(max_valid)
-        self.max_lineedit.setText("{:10.4f}".format(self.c_max))
-        self.slider.setRange(0, n_steps)
-        lay.addWidget(label)
-        lay.addWidget(self.value_indicator)
-        lay.addWidget(self.max_lineedit)
-        lay.addWidget(self.slider)
-        lay.addWidget(self.min_lineedit)
-        self.min_lineedit.setFixedWidth(50)
-        self.max_lineedit.setFixedWidth(50)
-        self.setLayout(lay)
-        
-        #connect up the line edit events
-        self.min_lineedit.textChanged.connect(self.on_min_input)
-        self.max_lineedit.textChanged.connect(self.on_max_input)
-        self.slider.valueChanged.connect(self.refresh_indicator)
-    
-    def refresh_indicator(self):
-        self.value_indicator.setText(self.format_str.format(self.value()))
-    
-    @property
-    def valueChanged(self):
-        return self.slider.valueChanged
-    
-    def on_min_input(self):
-        self.set_min(self.min_lineedit.text())
-    
-    def on_max_input(self):
-        self.set_max(self.max_lineedit.text())
-    
-    def calculate_delta(self):
-        self.delta = float(self.c_max-self.c_min)
-    
-    def set_min(self, min):
-        cur_value = self.value() 
-        self.c_min = float(min)
-        self.calculate_delta()
-        self.set_value(cur_value)
-    
-    def set_max(self, max):
-        cur_value = self.value()
-        self.c_max = float(max)
-        self.calculate_delta()
-        self.set_value(cur_value)
-    
-    def value(self):
-        return self.c_min + self.slider.value()*(self.delta/self.n_steps)
-    
-    def set_value(self, val):
-        try:
-            if val > self.c_max:
-                print "value above slider max, truncating"
-                val = self.c_max
-            elif val < self.c_min:
-                print "value below slider min, truncating"
-                val = self.c_min
-            elif val == np.nan:
-                print "value is nan, using minimum"
-                val = self.c_min
-            vfrac = (val-self.c_min)/self.delta
-            opt_idx = int(np.around(vfrac*self.n_steps))
-            self.slider.setValue(opt_idx)
-            self.refresh_indicator()
-        except Exception as e:
-            print "failed slider value setting resulted in error %s" % e
-
-
-class MatplotlibWidget(QWidget):
-    """
-    Matplotlib widget
-    
-    Attributes
-    ----------
-    canvas : the MplCanvas object, which contains the figure, axes, etc.
-    axes : the main axe object for the figure
-    vboxlayout : a vertical box layout from QtGui
-    mpl_toolbar : if instanciated with a withNavBar=True, then this attribute
-        is the navigation toolbar object (from matplotlib), to allow
-        exploration within the axes.
-        
-    Notes
-    -----
-    __1)__ S. Tosi, ``Matplotlib for Python Developers''
-        Ed. Packt Publishing
-        http://www.packtpub.com/matplotlib-python-development/book
-        
-    """
-    buttonPressed = Signal(list)
-    buttonReleased = Signal(list)
-    pickEvent = Signal(list)
-    
-    def __init__(self, parent=None, nrows=1, ncols=1, mpl_toolbar=True,
-                 sharex="none", sharey="none"):
-        #self.parent = parent
-        # initialization of Qt MainWindow widget
-        QWidget.__init__(self, parent)
-        
-        # set the canvas to the Matplotlib widget
-        self.canvas = MatplotlibCanvas(nrows, ncols, sharex=sharex, sharey=sharey)
-        self.fig = self.canvas.fig
-        
-        # create a vertical box layout
-        self.vboxlayout = QVBoxLayout()
-        self.vboxlayout.addWidget(self.canvas)
-        if mpl_toolbar:
-            self.mpl_toolbar = NavigationToolbar(self.canvas,self)
-            self.mpl_toolbar.setWindowTitle("Plot")
-            self.vboxlayout.addWidget(self.mpl_toolbar)
-        
-        # set the layout to the vertical box
-        self.setLayout(self.vboxlayout)
-        
-        self.mpl_connect()
-    
-    def mpl_connect(self):
-        #print "mpl connect called"
-        #import pdb; pdb.set_trace()
-        self.canvas.callbacks.connect("button_press_event", self.emit_button_pressed)
-        self.canvas.callbacks.connect("button_release_event", self.emit_button_released)
-        self.canvas.callbacks.connect("pick_event", self.emit_pick_event)
-    
-    def emit_button_pressed(self, event):
-        self.buttonPressed.emit([event])
-    
-    def emit_button_released(self, event):
-        self.buttonReleased.emit([event])
-    
-    def emit_pick_event(self, event):
-        self.pickEvent.emit([event])
-    
-    @property
-    def ax(self):
-        return self.canvas.ax
-    
-    def set_ax(self, row, column):
-        self.canvas.set_ax(row, column)
-    
-    def axis(self, row, column):
-        return self.canvas.axis(row, column)
-    
-    def draw (self):
-        self.canvas.draw()
-
-
-class PrevNext(QWidget):
-    prev = Signal()
-    next = Signal()
-    
-    def __init__(self, duration=1, parent=None):
-        super(PrevNext, self).__init__(parent)
-        layout = QGridLayout()
-        self.prev_btn = QPushButton("prev")
-        self.next_btn = QPushButton("next")
-        self.duration = int(duration*1000)
-        self.duration_le = QLineEdit("%5.3f" % duration)
-        self.timer = QTimer(self)
-        self.timer.start(self.duration)
-        self.play_toggle_btn = QPushButton("Play/Pause")
-        self.play_toggle_btn.setCheckable(True)
-        self.play_toggle_btn.setChecked(True)
-        
-        #add to layout
-        layout.addWidget(self.prev_btn, 0, 0, 1, 1)
-        layout.addWidget(self.next_btn, 0, 1, 1, 1)
-        layout.addWidget(self.duration_le, 1, 0, 1, 2)
-        layout.addWidget(self.play_toggle_btn, 2, 0, 1, 2)
-        self.setLayout(layout)
-        
-        #connect stuff
-        self.duration_le.editingFinished.connect(self.set_duration)
-        self.timer.timeout.connect(self.on_timeout)
-        self.prev_btn.clicked.connect(self.on_prev_clicked)
-        self.next_btn.clicked.connect(self.on_next_clicked)
-        self.play_toggle_btn.clicked.connect(self.toggle_pause)
-    
-    @property
-    def paused(self):
-        return self.play_toggle_btn.isChecked()
-    
-    def pause(self):
-        self.play_toggle_btn.setChecked(True)
-
-    def play(self):
-        self.play_toggle_btn.setChecked(False)
-
-    def on_prev_clicked(self):
-        self.pause()
-        self.emit_prev()
-    
-    def on_next_clicked(self):
-        self.pause()
-        self.emit_next()
-    
-    def emit_next(self):
-        self.next.emit()
-    
-    def emit_prev(self):
-        self.prev.emit()
-    
-    def on_timeout(self):
-        #print "timer went off"
-        if not self.paused:
-            if self.duration > 0:
-                self.emit_next()
-            elif self.duration < 0:
-                self.emit_prev()
-    
-    def set_duration(self):
-        try:
-            duration_text = self.duration_le.text()
-            new_duration = int(float(duration_text)*1000)
-            if abs(new_duration) < 10:
-                raise Exception("duration too small")
-            new_duration_success = True
-        except:
-            print "could not recognize new duration reverting to old"
-            new_duration_success = False
-            self.duration_le.setText("%5.5f" % self.duration)
-        if new_duration_success:
-            self.duration = new_duration
-            self.timer.setInterval(abs(new_duration))
-    
-    def toggle_pause(self):
-        if self.paused:
-            self.pause()
-        else:
-            self.play()
-
-class SliderCascade(QWidget):
-    slidersChanged = Signal(int)
-    
-    def __init__(self, sliders, parent=None):
-        super(SliderCascade, self).__init__(parent)
-        layout = QHBoxLayout()
-        self.sliders = sliders
-        for slider in sliders:
-            layout.addWidget(slider)
-        self.setLayout(layout)
-    
-    def _connect_sliders(self):
-        for slider in self.sliders:
-            slider.valueChanged.connect(self.slidersChanged.emit)
-
-
-class FeatureFitWidget(QWidget):
+class FeatureFitWidget(QtGui.QWidget):
     slidersChanged = Signal(int)
     
     def __init__(self, features, feature_idx, parent=None):
@@ -310,7 +20,7 @@ class FeatureFitWidget(QWidget):
         self.norm_hint_wvs = []
         self.norm_hint_fluxes = []
         
-        self.lay = QGridLayout()
+        self.lay = QtGui.QGridLayout()
         
         self.mpl_fit = MatplotlibWidget(parent=parent, nrows=2, sharex="columns")
         self.lay.addWidget(self.mpl_fit, 1, 0, 3, 1)
@@ -331,12 +41,12 @@ class FeatureFitWidget(QWidget):
         self.lay.addWidget(self.prev_next, 1, 1, 1, 4)
         
         #output_file button
-        self.output_button = QPushButton("save measurements")
+        self.output_button = QtGui.QPushButton("save measurements")
         self.output_button.clicked.connect(self.save_measurements)
         self.lay.addWidget(self.output_button, 3, 1, 1, 2)
         
         #use check box
-        self.use_cb = QCheckBox("Use line")
+        self.use_cb = QtGui.QCheckBox("Use line")
         self.use_cb.setChecked(self.feature.flags["use"])
         self.lay.addWidget(self.use_cb, 3, 3, 1, 1)
         
@@ -347,14 +57,14 @@ class FeatureFitWidget(QWidget):
         self.setLayout(self.lay)
 
     def minimumSizeHint(self):
-        return QSize(500, 500)
+        return QtGui.QSize(500, 500)
     
     def save_feature_fits(self, fname):
         import cPickle
         cPickle.dump(self.features, open(fname, "wb"))
     
     def save_measurements(self):
-        fname, file_filter = QFileDialog.getSaveFileName(self, "save measurements")
+        fname, file_filter = QtGui.QFileDialog.getSaveFileName(self, "save measurements")
         try:
             tmb.io.linelist_io.write_moog_from_features(fname, self.features)
         except Exception as e:
@@ -462,7 +172,7 @@ class FeatureFitWidget(QWidget):
         self.linelist_model = models.ConfigurableTableModel(self.features, columns)
         self.linelist_view = views.LineListView(parent=self)
         self.linelist_view.setModel(self.linelist_model)
-        self.linelist_view.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.linelist_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectRows)
         self.lay.addWidget(self.linelist_view, 0, 0, 1, 6)
     
     def update_row(self, row_num):

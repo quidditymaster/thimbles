@@ -5,6 +5,7 @@ import os
 from copy import deepcopy, copy
 
 # 3rd Party
+import pandas as pd
 import scipy.ndimage.filters as filters
 import scipy.ndimage.morphology as morphology
 import scipy.fftpack as fftpack
@@ -26,6 +27,7 @@ except ImportError:
 
 # Internal
 import thimbles
+import thimbles as tmb
 from thimbles.spectrum import as_wavelength_solution
 from thimbles import hydrogen
 from thimbles import resampling
@@ -200,7 +202,7 @@ def local_gaussian_fit(yvalues, peak_idx=None, fit_width=2, xvalues=None):
         peak_idx = np.argmax(yvalues)
     lb = max(peak_idx - fit_width, 0)
     ub = min(peak_idx + fit_width, len(yvalues)-1)
-    if xvalues == None:
+    if xvalues is None:
         chopped_xvals = np.arange(lb, ub+1)
         peak_xval = peak_idx
     else:
@@ -280,7 +282,6 @@ def wavelet_transform_fft(values, g_widths):
         out_dat[g_width_idx] = wvtrans[:n_pts].real
     return out_dat
 
-@task()
 def wavelet_transform(values, g_widths, mask):
     """create a grid of gaussian line profiles and perform a wavelet transform
     over the grid. (a.k.a. simply convolve the data with all line profiles
@@ -431,7 +432,7 @@ def detect_features(values,
     min_stats: MinimaStatistics 
         if the minima statistics have already been calculated you can pass it in
         and it will not be recalculated.
-
+    
     returns:
     a tuple of 
     left_idxs, min_idxs, right_idxs, feature_mask
@@ -461,38 +462,67 @@ def detect_features(values,
         feature_mask[max(0, left_idx+mask_back_off):right_idx-mask_back_off+1] = False 
     return msres, feature_mask
 
-@task()
-def smoothed_mad_error(spectrum, 
+
+def smoothed_mad_error(values, 
                        smoothing_scale=3.0, 
-                       error_scale = 200,
+                       median_scale = 200,
                        apply_poisson=True, 
-                       overwrite_error=False):
-    cinv_var = spectrum.ivar
-    good_mask = (cinv_var > 0)*(spectrum.flux > 0)
-    #detect and reject perfectly flat regions
-    flux_der = scipy.gradient(spectrum.flux)
-    flux_sec_der = scipy.gradient(flux_der)
-    good_mask *= np.abs(flux_sec_der) > 0
-    #smfl ,= wavelet_transform(spectrum.flux, [smoothing_scale], inv_mask)
-    smfl = filters.gaussian_filter(spectrum.flux, smoothing_scale)
+                       post_smooth=5.0,
+                       max_snr=1000.0,
+    ):
+    """estimate the noise characteristics of an input data vector under the assumption
+    that the underlying "true" value is slowly varying and the high frequency fluctuations
+    are representative of the level of the noise.
+    """
+    good_mask = np.ones(len(values), dtype=bool)
+    if isinstance(values, tmb.Spectrum):
+        if not values.ivar is None:
+            good_mask *= values.ivar > 0
+        good_mask *= values.flux > 0
+        values = values.flux
+    
+    #detect and reject perfectly flat regions and 2 pixels outside them
+    der = scipy.gradient(values)
+    sec_der = scipy.gradient(der)
+    good_mask *= filters.uniform_filter(np.abs(sec_der) > 0, 3) > 0
+    
+    #smooth the flux accross the accepted fluxes
+    smfl = values.copy()
+    smfl[good_mask] = filters.gaussian_filter(values[good_mask], smoothing_scale)
+    diffs = values - smfl
+    
+    #use the running median change to protect ourselves from outliers
+    mad = filters.median_filter(np.abs(diffs), median_scale)
     eff_width = 2.0*smoothing_scale #effective filter width
     #need to correct for loss of variance from the averaging
     correction_factor = eff_width/max(1, (eff_width-1))
-    diffs = (spectrum.flux - smfl)
-    #use the running median change to protect ourselves from outliers
-    mad = filters.median_filter(np.abs(diffs), error_scale)
-    char_sigma = correction_factor*1.48*mad
+    char_sigma = correction_factor*1.48*mad #the characteristic noise level
+    #smooth the running median filter so we don't have wildly changing noise levels
+    char_sigma = filters.gaussian_filter(char_sigma, post_smooth)
     if apply_poisson:
-        var = (smfl/np.median(smfl[good_mask])*char_sigma)**2
+        #scale the noise at each point to be proportional to its value
+        var = (smfl/np.median(smfl[good_mask]))*char_sigma**2
     else:
         var = char_sigma**2
     #put an upper limit on detected snr
-    var += spectrum.flux*1e-3
+    var += np.clip(var, 0.0, (values*max_snr)**2)
     new_inv_var = np.where(good_mask, 1.0/var, 0.0)
     new_inv_var = clean_inverse_variances(new_inv_var)
-    if overwrite_error:
-        spectrum.ivar = new_inv_var
     return new_inv_var
+
+@task(result_name="noise_estimate")
+def estimate_spectrum_noise(
+        spectrum, 
+        smoothing_scale=3.0,
+        median_scale=200,
+        apply_poisson=True,
+        post_smooth=5.0,
+        max_snr=1000.0,
+        overwrite_noise=False,
+):
+    sm_ivar = smoothed_mad_error(spectrum.flux, smoothing_scale=smoothing_scale, median_scale=median_scale, apply_poisson=apply_poisson, post_smooth=post_smooth, max_snr=max_snr)
+    if overwrite_noise:
+        spectrum.ivar = sm_ivar
 
 @task()
 def min_delta_bins(x, min_delta, target_n=1, forced_breaks=None):
@@ -576,7 +606,7 @@ def layered_median_mask(arr, n_layers=3, first_layer_width=31, last_layer_width=
         mask[mask] = masked_arr >= (filtered - rejection_sigma*1.4*local_mad)
     return mask
 
-@task()
+
 def smooth_ppol_fit(x, y, y_inv=None, order=3, mask=None, mult=None, partition="adaptive", partition_kwargs=None):
     if partition_kwargs == None:
         partition_kwargs = {}
@@ -703,127 +733,6 @@ def echelle_normalize(spectra, masks="layered median", partition="adaptive", mas
         norms.append(nmod)
     return norms
 
-@task()
-def approximate_normalization(spectrum,
-                              partition_scale=500, 
-                              poly_order=3,
-                              mask_kwargs=None,
-                              smart_partition=False, 
-                              alpha=4.0,
-                              beta=4.0,
-                              H_mask_radius=2.0,
-                              norm_hints=None,
-                              overwrite=False,
-                              min_stats=None,
-                              ):
-    """estimates a normalization curve for the input spectrum.
-    spectrum: Spectrum
-        a Spectrum object
-    partition_scale: float
-        a rough scale of the smallest allowable level of structure to be fit
-        in pixels
-    reject_fraction: float
-        sets the feature detection cutoff at the value representing this fraction
-        of all the feature troughs.
-    poly_order: int
-        the local order of spline to use
-    mask_back_off: int
-        a number of pixels to reduce the size of the feature mask by -1 enlarges
-        the number of pixels excluded around a feature trough by 1 on each side
-        and +1 would reduce by 1 on each side.
-    smart_partition: bool
-        if true attempt to use the optimal piecewise polynomial partitioning
-        algorithm. If the smart partitioning fails we will automatically 
-        switch to the quick way.
-    alpha: float
-        used only if smart_partition == True
-        how expensive new partitions are
-        see partitioning.partitioned_polynomial_model
-    beta: float
-        used only if smart_partition == True
-        how expensive small block sizes are
-        see partitioning.partitioned_polynomial_model
-    norm_hints: None or tuple of arrays
-        some suggestions for the norm which are entered into the fit.
-        (but not the partitioning)
-        wvs, continuum_fluxes, continuum_weights = norm_hints
-    overwrite: bool
-        if True the normalization object in the input spectrum is replaced
-        with the calculated normalization estimate (it all goes into the efficiency)
-    min_stats: MinimaStatistics
-        if the minima statistics have already been you can pass them in here.
-    
-    returns
-    ApproximateNorm object
-    """
-    #import matplotlib.pyplot as plt
-    #import pdb; pdb.set_trace()
-    wavelengths = spectrum.get_wvs()
-    pix_delta = np.median(scipy.gradient(wavelengths))
-    pscale = partition_scale*pix_delta
-    flux = spectrum.flux
-    variance = spectrum.get_var()
-    inv_var = spectrum.get_inv_var()
-    hmask = hydrogen.get_H_mask(wavelengths, H_mask_radius)
-    good_mask = (inv_var > 0)*(flux > 0)*hmask
-    #min_stats, fmask = detect_features(flux, variance, 
-    #                                   reject_fraction=reject_fraction,
-    #                                   mask_back_off=mask_back_off, 
-    #                                   min_stats=min_stats)
-    #fmask *= good_mask
-    
-    #generate a layered median mask.
-    if mask_kwargs is None:
-        mask_kwargs = {'n_layers':3, 'first_layer_width':201, 'last_layer_width':11, 'rejection_sigma':1.5} 
-    fmask = layered_median_mask(flux, **mask_kwargs)*good_mask
-    
-    mwv = wavelengths[fmask].copy()
-    mflux = flux[fmask].copy()
-    minv = inv_var[fmask]
-    if smart_partition:
-        try:
-            opt_part, mvps = partitioning.partitioned_polynomial_model(mwv, mflux, minv, 
-                    poly_order=(poly_order,),
-                    grouping_column=0, 
-                    min_delta=pscale,
-                    alpha=alpha, beta=beta, beta_epsilon=0.01)
-            break_wvs = mwv[np.asarray(opt_part[1:-1], dtype=int)]
-            use_simple_partition = False
-        except:
-            #the smart partitioning failed use the simple one instead
-            use_simple_partition = True
-    else:
-        use_simple_partition = True
-    if use_simple_partition:
-        break_wvs = min_delta_bins(mwv, min_delta=pscale, target_n=20*(poly_order+1)+10)
-        #roughly evenly space the break points partition_scale apart
-    pp_gen = piecewise_polynomial.RCPPB(poly_order=poly_order, control_points=break_wvs)
-    if norm_hints:
-        hint_wvs, hint_flux, hint_inv_var = norm_hints
-        mwv = np.hstack((mwv, hint_wvs))
-        mflux = np.hstack((mflux, hint_flux))
-        minv = np.hstack((minv, hint_inv_var))
-    
-    ppol_basis = pp_gen.get_basis(mwv).transpose()
-    in_sig = 1.0/np.sqrt(minv)
-    med_sig = np.median(in_sig)
-    print med_sig, "med sig"
-    fit_coeffs = pseudo_huber_irls(ppol_basis, mflux, 
-                      sigma=in_sig, 
-                      gamma=2.0*med_sig, 
-                      max_iter=10, conv_thresh=1e-4)
-    n_polys = len(break_wvs) + 1
-    n_coeffs = poly_order+1
-    out_coeffs = np.zeros((n_polys, n_coeffs))
-    for basis_idx in xrange(pp_gen.n_basis):
-        c_coeffs = pp_gen.basis_coefficients[basis_idx].reshape((n_polys, n_coeffs))
-        out_coeffs += c_coeffs*fit_coeffs[basis_idx]
-    continuum_ppol = piecewise_polynomial.PiecewisePolynomial(out_coeffs, break_wvs, centers=pp_gen.centers, scales=pp_gen.scales, bounds=pp_gen.bounds)
-    approx_norm = continuum_ppol(wavelengths)
-    if overwrite:
-        spectrum.norm = approx_norm
-        spectrum.feature_mask = fmask
-    return approx_norm
 
 def lad_fit(A, y):
     """finds the least absolute deviations fit for Ax = y
@@ -1013,7 +922,7 @@ def irls(A,
     else:
         return last_x, dict(weights=weights, iter_idx=iter_idx, resids_converged=resids_converged, x_converged=x_converged)
 
-@task()
+
 def l1_factor(input_matrix, input_weights, rank=3, n_iter=3):
     rows_in, cols_in = input_matrix.shape
     w = np.random.random((rows_in, rank))-0.5
@@ -1046,11 +955,9 @@ def cache_decorator (cache,key):
         return inner
     return outer
 
-@task()
 def vac_to_air_sdss(vac_wvs):
     return vac_wvs/(1.0 + 2.735182e-4 + 131.4182 /vac_wvs**2 + 2.76249e8/vac_wvs**4)
 
-@task()
 def vac_to_air_apogee(vac_wvs, a=0.0, b1=5.792105e-2, b2=1.67917e-3, c1=238.0185, c2=57.362):
     """
     converts vaccuum wavelengths in angstroms to air wavelengths.
@@ -1067,38 +974,8 @@ def vac_to_air_apogee(vac_wvs, a=0.0, b1=5.792105e-2, b2=1.67917e-3, c1=238.0185
     return vac_wvs/refractive_index
 
 
-def load_star_fits(fname):
-    hdul = fits.open(fname)
-    wvs = np.asarray(hdul[1].data)
-    flux = np.asarray(hdul[2].data)
-    inv_var = np.asarray(hdul[3].data)
-    #TODO: add proper handling of resolution on readin
-    spec = thimbles.Spectrum(wvs, flux, inv_var)
-    return spec
-    
-def write_star_fits(star ,fname):
-    #make the HDU's
-    if star.coadd == None:
-        print "there is no coadd, cannot write out"
-        return
-    wvs = star.coadd.get_wvs()
-    wv_hdr = fits.Header()
-    wv_hdu = fits.ImageHDU(wvs, name="wavelengths")
-    flux = star.coadd.flux
-    flux_hdu = fits.ImageHDU(flux, name="flux")
-    inv_var = star.coadd.get_inv_var()
-    inv_var_hdu = fits.ImageHDU(inv_var, name="inverse variance")
-    resolution = np.ones(len(wvs))
-    res_hdr = fits.Header()
-    res_hdr["dip_type"] = "gaussian"
-    res_hdu = fits.ImageHDU(resolution, header=res_hdr, name="resolution")
-    phdu = fits.PrimaryHDU()
-    hdul = fits.HDUList([phdu, wv_hdu, flux_hdu, inv_var_hdu, res_hdu])
-    hdul.writeto(fname)
-
 hcoverk = 1.4387751297851e8
 blconst = 1.191074728e24
-
 def blam(wavelength, temperature):
     """blackbody intensity for wavelengths in angstroms note this does not
     take into account the sampling derivative"""
@@ -1108,7 +985,6 @@ def blam(wavelength, temperature):
 #wien_constant = 2.8977721(26)e-3 in units of M*K
 wien_constant = 2.897772126e7 #in units of Angstrom*Kelvin
 
-@task()
 def blackbody_flux(sampling_wavelengths, temperature,  normalize = True):
     dlam_dx = scipy.gradient(sampling_wavelengths)
     bbspec = blam(sampling_wavelengths, temperature)/dlam_dx
@@ -1118,13 +994,7 @@ def blackbody_flux(sampling_wavelengths, temperature,  normalize = True):
         bbspec /= peak_val
     return bbspec
 
-def thermal_width(linelist, teff=5777.0):
-    weight = 2.0*linelist["Z"] #TODO: use real atomic weight
-    wv = linelist["wv"]
-    widths = 4.301e-7*np.sqrt(teff/weight)*wv
-    return widths
 
-@task()
 def fit_blackbody_phirls(spectrum, start_teff=5000.0, gamma_frac=3.0):
     flux = spectrum.flux
     variance = spectrum.var
@@ -1230,13 +1100,28 @@ def sparse_row_circulant_matrix(vec, npts):
         else:
             data[count:count+len(cur_r_idxs)] = vec[-len(cur_r_idxs):]
         count += len(cur_r_idxs)
-    return scipy.sparse.coo_matrix((data, (row_idxs, col_idxs)), shape=(npts, npts))    
+    return scipy.sparse.coo_matrix((data, (row_idxs, col_idxs)), shape=(npts, npts))
 
 def anti_smoothing_matrix(width, npts):
     max_width = int(max(1, 5*width))+1
     deltas = np.arange(-max_width, max_width+1)
     dvec = scipy.gradient(scipy.gradient(np.exp(-(deltas/width)**2)))
     return sparse_row_circulant_matrix(dvec, npts)
+
+def _voigt_resids(voigt_pvec, center, x, y):
+    vprof = voigt(x, center, voigt_pvec[0], voigt_pvec[1])
+    best_ew = np.sum(vprof*y)/np.sum(vprof**2)
+    resids = y - best_ew*vprof
+    return resids
+
+def unweighted_voigt_fit(x, y):
+    center_x, start_sigma, peak_val = local_gaussian_fit(y, xvalues=x)
+    start_vec = np.array([start_sigma, 0.0])
+    opt_res = scipy.optimize.leastsq(_voigt_resids, start_vec, args=(center_x, x, y))
+    sig, gam = opt_res[0]
+    vprof = voigt(x, center_x, sig, gam)
+    ew = np.sum(y*vprof)/np.sum(vprof**2)
+    return sig, gam, ew
 
 
 def eval_multiplicative_models(model_mats, xvecs, offsets):
@@ -1280,11 +1165,12 @@ def multiplicative_iterfit(vec, fit_mats, start_vecs, filters=None, offsets=None
     return cur_vecs
 
 
-def get_natural_breaks(
+def running_box_segmentation(
         df, 
         grouping_vecs=None, 
         merge_scale=0.1, 
         split_threshold=1.0,
+        combine_breaks = True
     ):
     if grouping_vecs is None:
         grouping_vecs = df.columns
@@ -1302,7 +1188,43 @@ def get_natural_breaks(
         mscale = merge_scale[cascade_idx]
         gvec = np.around(gvec/mscale)*mscale
         gvres, gvidxs = np.unique(gvec, return_inverse=True)
-        gvres = (gvres - gvres[0]) % split_threshold[cascade_idx]
-        crossovers = get_local_maxima(gvres).astype(int)
+        last_val = gvres[0]
+        crossovers = np.zeros(gvres.shape, dtype=int)
+        for i in range(1, len(gvres)):
+            if (gvres[i] - last_val) > split_threshold[cascade_idx]:
+                crossovers[i] = 1
+                last_val = gvres[i]
         grouping_id[:, cascade_idx] = np.cumsum(crossovers)[gvidxs]
+    
+    if combine_breaks:
+        combined_group_id = np.zeros(n_pts, dtype=int)
+        g_dict = {}
+        next_group_idx = 0
+        for row_idx, g_vec in enumerate(grouping_id):
+            g_tup = tuple(g_vec)
+            gr_idx = g_dict.get(g_tup, None)
+            if gr_idx is None:
+                gr_idx = next_group_idx
+                g_dict[g_tup] = gr_idx
+                next_group_idx += 1
+            combined_group_id[row_idx] = gr_idx
+        grouping_id = combined_group_id
+        
     return grouping_id
+
+def attribute_df(obj_list, attrs, index_attr=None):
+    obj_dat = {attr:[] for attr in attrs}
+    for attr in attrs:
+        for obj in obj_list:
+            obj_dat[attr].append(getattr(obj, attr))
+    if index_attr is None:
+        obj_indexes = None
+    else:
+        obj_indexes = []
+        for obj in obj_list:
+            obj_indexes.append(getattr(obj, index_attr))
+    return pd.DataFrame(data=obj_dat, index=obj_indexes)
+
+def thermal_width(teff, wv, mol_weight):
+    """The thermal width in angstroms"""
+    return 4.301e-7*np.sqrt(teff/mol_weight)*wv

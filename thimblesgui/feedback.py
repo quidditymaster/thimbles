@@ -29,16 +29,15 @@ FEEDBACK_EMAIL_LIST = [] #['quidditymaster@gmail.com']
 # ########################################################################### #
 
 class FeedbackForm (QtGui.QDialog):
-    """ Dialog asks for and handles user feedback """
     
-    def __init__ (self):
-        QtGui.QDialog.__init__(self)
-        self.setWindowTitle('THIMBLES Feedback Form')
+    def __init__ (self, parent=None):
+        QtGui.QDialog.__init__(parent)
+        self.setWindowTitle('Thmimbles Feedback')
         self.initUI()
-        self.feedback_text.setFocus()                         
+        self.feedback_text.setFocus()               
         self.is_accepted = False 
         self.setModal(True)
-                        
+    
     def guess_username (self):
         """ guess who is submitting """
         # use whoami system command
@@ -56,7 +55,7 @@ class FeedbackForm (QtGui.QDialog):
                 username = finger_out[i:].strip().lower()
                 
         return username
-          
+    
     def _init_feedback_type (self):        
         groupBox = QtGui.QGroupBox("Type of feedback")
 
@@ -227,13 +226,13 @@ Title : {title}
         cmd = 'echo "{}" | mail -s "{}" {}'.format(body,subject,email)
         os.system(cmd)
 
-def request_feedback (error_msg="",error_title="",dirpath=None,emails=None):
+def request_feedback (error_msg="",error_title="",dirpath=None,emails=None, parent=None):
     """ Create and handle dialog asking user for feedback """
     if dirpath is None:
         dirpath = FEEDBACK_DIRECTORY
     if emails is None:
         emails = FEEDBACK_EMAIL_LIST    
-    ff = FeedbackForm()    
+    ff = FeedbackForm(parent=parent)    
     # show and activate the window
     ff.show()
     ff.raise_()

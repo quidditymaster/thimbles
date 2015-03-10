@@ -7,8 +7,8 @@ from thimbles.tasks import task
 from thimbles.linelists import LineList
 from thimbles.io.moog_io import read_moog_linelist
 from thimbles.io.moog_io import write_moog_linelist
-
-from thimbles.stellar_atmospheres import solar_abundance as ptable
+from thimbles.transitions import Transition
+from thimbles import ptable, atomic_number
 
 def float_or_nan(val):
     try:
@@ -20,30 +20,29 @@ def read_vald_linelist(fname):
     lines = open(fname).readlines()
     input_re = re.compile("'[A-Z][a-z] [12]', ")
     col_names = "wv species ep loggf D0 stark_damp rad_damp waals_damp moog_damp".split()
-    ldat = {cname:[] for cname in col_names}
+    #ldat = {cname:[] for cname in col_names}
+    ldat = []
     for line in lines:
         m = input_re.match(line)
         if m is None:
             continue
         spl = line.rstrip().split(",")
         species_name, ion_number = spl[0].replace("'", "").split()
-        ion_number = int(ion_number) - 1
-        proton_number = ptable[species_name]["z"]
+        charge = int(ion_number) - 1
+        proton_number = atomic_number[species_name]
         wv, loggf, elow, jlo, eup, jup = map(float, spl[1:7])
         l_lande, u_lande, m_lande = map(float_or_nan, spl[8:11])
         rad_damp, stark_damp, waals_damp = map(float_or_nan, spl[12:15])
-        ldat["wv"].append(wv)
-        ldat["species"].append(proton_number+ion_number*0.1)
-        ldat["ep"].append(elow)
-        ldat["loggf"].append(loggf)
-        ldat["rad_damp"].append(rad_damp)
-        ldat["stark_damp"].append(stark_damp)
-        ldat["waals_damp"].append(waals_damp)
-        #and the parameters not present
-        ldat["moog_damp"].append(np.nan)
-        ldat["D0"].append(np.nan)
-    ldf = pd.DataFrame(data=ldat)
-    return LineList(ldf)
+        
+        trans = Transition(
+            wv=wv, 
+            ion=(proton_number, charge),
+            ep=elow,
+            loggf=loggf,
+            damp=dict(stark=stark_damp, waals=waals_damp, rad=rad_damp),
+        )
+        ldat.append(trans)
+    return ldat
 
 @task(result_name="line_data")
 def read_linelist(fname, file_type="detect"):

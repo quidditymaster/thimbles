@@ -1,8 +1,10 @@
 import sys
+import os
+from collections import OrderedDict
+from copy import copy
+
 from thimbles import thimbles_header_str
 from thimbles import workingdataspace as wds
-import os
-from copy import copy
 
 class OptionSpecificationError(Exception):
     pass
@@ -11,6 +13,8 @@ class EvalError(Exception):
     pass
 
 config_dir = os.environ.get("THIMBLESCONFIGPATH", os.path.join(os.environ["HOME"], ".config", "thimbles"))
+if not os.path.exists(config_dir):
+    os.makedirs(config_dir)
 config_file = os.path.join(config_dir, "config.txt")
 
 
@@ -19,8 +23,8 @@ class OptionTree(object):
     def __init__(self, config_file=config_file):
         self.option_path = ""
         self.config_file=config_file
-        self.children = {}
-        self.options = {}
+        self.children = OrderedDict()
+        self.options = OrderedDict()
     
     def __getattr__(self, opt_name):
         return self.children[opt_name]
@@ -42,11 +46,6 @@ class OptionTree(object):
         
     def parse_options(self):
         rt_str_dict = {}
-        #populate from environment variables
-        for option in self.options.values():
-            if not option.envvar is None:
-                if option.envvar in os.environ:
-                    rt_str_dict[option] = os.environ[option.envvar]
         #parse the config file
         parent_opt_path = None
         sub_path = None
@@ -111,7 +110,6 @@ class OptionTree(object):
                 option.on_parse()
 
 opts = OptionTree()
-wds.opts = opts
 
 class Option(object):
     eval_ns = wds.__dict__
@@ -126,17 +124,19 @@ class Option(object):
                  help_="",
                  use_cached=True, 
                  option_tree=opts,
+                 editor_style=None,
                  **kwargs):
         """an option which can be variously specified either by a default value
         in the code, set using the value of a environment variable, evaluated
         dynamically at runtime using a string read from a config file or 
         specified on the command line
         """
-        self.children = {}
+        self.children = OrderedDict()
         self.name = name
         self.on_parse = on_parse
         self.option_style = option_style
-        opt_style_poss = "parent_dict flag raw_string".split()
+        self.editor_style = editor_style
+        opt_style_poss = "parent_dict flag raw_string existing_file new_file".split()
         if not option_style is None:
             if not option_style in opt_style_poss:
                 raise ValueError("option_sytle must be one of {} received {}".format(opt_style_poss, option_style))
@@ -157,6 +157,10 @@ class Option(object):
             self._value = default
             self._valuated = True
         self.envvar = envvar
+        #populate from environment variables
+        if not self.envvar is None:
+            if self.envvar in os.environ:
+                self.runtime_str = os.environ[self.envvar]
         self.help = help_
         self.option_tree = option_tree
         self.register_option(name, parent)
@@ -175,6 +179,13 @@ class Option(object):
             try:
                 if self.option_style == "raw_string":
                     res = self.runtime_str
+                elif self.option_style == "existing_file":
+                    if os.path.exists(self.runtime_str):
+                        res = self.runtime_str
+                    else:
+                        raise OptionSpecificationError("file {} does not exist".format(self.runtime_str))
+                elif self.option_style == "new_file":
+                    res = self.runtime_str
                 else:
                     res = eval(self.runtime_str, self.eval_ns)
                 self._value = res
@@ -182,6 +193,8 @@ class Option(object):
                 return res
             except SyntaxError as e:
                 raise OptionSpecificationError("Evaluation of string:\n{}\nfailed with error {}".format(self.runtime_str, e))
+            except OptionSpecificationError as ose:
+                raise ose
             except Exception as e:
                 raise OptionSpecificationError("Unknown valuation error {}".format(e))
         else:
@@ -204,7 +217,7 @@ class Option(object):
         elif isinstance(parent, basestring):
             parent = opts.traverse_tree(parent)
         if name in parent.children.keys():
-            logger("overwriting option {} in {} with option of same name".format(name, parent))
+            print "overwriting option {} in {} with option of same name".format(name, parent)
         if not (isinstance(parent, Option) or isinstance(parent, OptionTree)):
             raise ValueError("parent option value of type {} not understood".format(type(parent)))
         parent.children[name] = self

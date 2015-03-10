@@ -9,33 +9,55 @@ from thimbles.sqlaimports import *
 from thimbles.thimblesdb import ThimblesTable, Base
 from thimbles.modeling import ParameterGroup, Parameter
 
+input_assoc = sa.Table(
+    "input_assoc", 
+    Base.metadata,
+    Column("model_id", Integer, ForeignKey("Model._id")),
+    Column("parameter_id", Integer, ForeignKey("Parameter._id")),
+)
+
 class Model(ParameterGroup, ThimblesTable, Base):
-    model_type = Column(String)
+    model_class = Column(String)
+    _substrate_id = Column(Integer, ForeignKey("ModelSubstrate._id"))
+    substrate = relationship("ModelSubstrate", backref="models")
     __mapper_args__={
-        "polymorphic_identity": "model",
-        "polymorphic_on": model_type
+        "polymorphic_identity": "Model",
+        "polymorphic_on": model_class
     }
-    parameters = relationship("Parameter", backref="model")
+    parameters = relationship(
+        "Parameter", 
+        secondary=input_assoc, 
+        backref="models",
+    )
+    _output_parameter_id = Column(Integer, ForeignKey("Parameter._id"))
+    output_p = relationship(
+        "Parameter",
+        foreign_keys=_output_parameter_id,
+        backref="mapped_models", 
+    )
     
-    def __init__(self):
-        if len(self.parameters) == 0:
-            self.attach_parameters()
-        ThimblesTable.__init__(self)
+    #class attributes
+    _derivative_helpers = {} 
     
-    def attach_parameters(self):
-        self.parameters = []
-        for attrib in dir(self):
-            try:
-                val = getattr(self, attrib)
-            except Exception:
-                continue
-            if isinstance(val, ParameterFactory):
-                new_param = val.make_parameter()
-                new_param.set_model(self)
-                if new_param.name is None:
-                    new_param.name = attrib
-                new_param.validate()
-                setattr(self, attrib, new_param)
+    def __init__(self, parameters=None, output_p=None, substrate=None):
+        if parameters is None:
+            parameters = []
+        self.parameters = parameters
+        self.output_p = output_p
+        self.substrate=substrate
+    
+    def __call__(self, vdict=None):
+        raise NotImplementedError("Model is intended strictly as a parent class and table place holder, it cannot be executed.")
+    
+    def fire(self):
+        self.output_p.value = self()
+    
+    def get_vdict(self, pvrep=None):
+        if pvrep is None:
+            pvrep = {}
+        values_dict = {p:p.value for p in self.parameters}
+        values_dict.update(pvrep)
+        return values_dict
     
     def parameter_expansion(self, input_vec, **kwargs):
         parameters = self.free_parameters
@@ -75,6 +97,3 @@ class Model(ParameterGroup, ThimblesTable, Base):
                 p.set(flat_pval.reshape(pshape))
         pexp_mat = scipy.sparse.hstack(deriv_vecs)
         return pexp_mat
-    
-    def as_linear_op(self, input_vec, **kwargs):
-        return scipy.sparse.identity(len(input_vec))#implicitly allowing additive model passthrough

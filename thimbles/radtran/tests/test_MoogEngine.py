@@ -11,11 +11,11 @@ import unittest
 
 import thimbles as tmb
 from thimbles.stellar_parameters import StellarParameters
-from thimbles.stellar_parameters import solar_parameters
 from thimbles.radtran import MoogEngine
 from thimbles.radtran import MarcsInterpolator
 
-tmb.options.opts.parse_options()
+#_make_plots = True
+_make_plots = False
 
 class TestRadTranEngine(unittest.TestCase):
     
@@ -28,9 +28,19 @@ class TestRadTranEngine(unittest.TestCase):
         self.sun_mod_file = os.path.join(self.wdir, "sun.mod")
         self.engine = MoogEngine(working_dir = self.wdir)
     
-    #def test_model_spectrum(self):
-    #    spec = self.engine.spectrum(linelist=self.ll, stellar_params=self.sun_mod_file, np.linspace(), normalized=True)
-        #TODO: compare against a precalculated spectrum
+    def test_model_spectrum(self):
+        spec = self.engine.spectrum(linelist=self.ll, stellar_params=self.sun_mod_file, wavelengths=np.linspace(15005, 150020, 500), normalized=True)
+        if _make_plots:
+            import matplotlib.pyplot as plt
+            fig, ax = plt.subplots()
+            ax.plot(spec.wvs, spec.flux)
+            ax.set_xlabel("Wavelength")
+            ax.set_ylabel("Flux")
+            plt.show()
+        assert np.max(spec.flux) > 0.99
+        min_flux = np.min(spec.flux)
+        assert min_flux < 0.99
+        assert min_flux > 0.0
     
     #def test_model_continuum(self):
     #    ctm = self.engine.continuum(stellar_params=self.sun_mod_file) #
@@ -41,9 +51,8 @@ class TestRadTranEngine(unittest.TestCase):
     #    import pdb; pdb.set_trace()
     
     def test_line_abundance (self):
-        import pdb; pdb.set_trace()
         llabs = self.engine.line_abundance(linelist=self.ll,stellar_params=self.sun_mod_file)
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
     
     #def test_abund_to_ew_and_back (self):
     #    """ From abundances to ew and back again, a hobbit's tale by Bilbo Baggins
@@ -59,11 +68,7 @@ class TestRadTranEngine(unittest.TestCase):
     ##def test_create_multiple(self):
     ##    with self.assertRaises(Exception):
     ##        MoogEngine(self.wdir)
-    #
-    #def test_model_continuum(self):
-    #    with self.assertRaises(NotImplementedError):
-    #        super(TestMoogEngine, self).test_model_continuum()
-    
+    #    
 
 # ########################################################################### #
 if __name__ == "__main__":

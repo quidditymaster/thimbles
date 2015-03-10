@@ -1,17 +1,19 @@
-
 from thimbles.thimblesdb import Base, ThimblesTable
-
-from sqlalchemy import create_engine, ForeignKey
-from sqlalchemy import Column, Date, Integer, String, Float
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.ext.declarative import declared_attr
-from sqlalchemy.orm import relationship, backref
+from sqlaimports import *
 
 class Source(Base, ThimblesTable):
-    """the observed astrophysical source"""
+    """astrophysical light source"""
+    source_class = Column(String)
+    __mapper_args__={
+        "polymorphic_identity":"Source",
+        "polymorphic_on":source_class,
+    }
     name = Column(String)
     ra = Column(Float)
     dec = Column(Float)
-    photometry = relationship("Photometry")
-    observations = relationship("SpectrumObservation")
-
+    
+    def __init__(self, name=None, ra=None, dec=None):
+        self.name = name
+        self.ra=ra
+        self.dec=dec
+    

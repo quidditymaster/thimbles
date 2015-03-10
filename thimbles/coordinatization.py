@@ -101,32 +101,47 @@ class Coordinatization(ThimblesTable, Base):
     def __len__(self):
         return self.npts
     
-    def interpolant_matrix(self, input_coord):
-        """generates a constant matrix which when multiplied against a 
-        vector sampled as the input coordinates it results in a vector 
-        sampled as the linear interpolation of that vector at the coordinates
-        of this coordinatization.
+    def interpolant_sampling_matrix(self, sample_coords, extrapolate=False):
+        """generates a  matrix which carries a vector sampled at coordinates
+        corresponding to this coordinatization to a linear interpolation 
+        of those values sampled at coordinates coresponding to sample_coords.
+        
+        parameters:
+        
+        sample_coords: ndarray
+          the coordinates for which the linear interpolation is desired.
         """
-        input_coord = as_coordinatization(input_coord)        
-        nearest_cols = input_coord.get_index(self.coordinates)
-        #the input coordinates most closely lie at these coordinates
-        col_idx_val = input_coord.get_index(self.coordinates)
-        snap_idx = np.clip(np.around(col_idx_val).astype(int), 1, len(input_coord)-2)
-        delta_idx = col_idx_val - snap_idx
-        delta_int = np.where(delta_idx > 0, 1, -1)
-        neighbor_idxs = snap_idx + delta_int
-        snap_alpha = np.abs(delta_idx)
-        neighbor_alpha = 1.0-snap_alpha
-        mat_shape = (len(self), len(input_coord))
+        input_coordinatization = self    
+        sample_coordinatization = as_coordinatization(sample_coords)
+        #the input coordinates most closely lie at these coordinates in the sampling coordinatization
+        float_input_cols = input_coordinatization.get_index(sample_coordinatization.coordinates)
+        clipped_snapped_input_cols = np.clip(np.around(float_input_cols).astype(int), 1, len(input_coordinatization)-2)
+        #col_idx_val = input_coord.get_index(self.coordinates)
+        #snap_idx = np.clip(np.around(col_idx_val).astype(int), 1, len(input_coord)-2)
+        snap_delta = float_input_cols - clipped_snapped_input_cols
+        snap_direction = np.where(snap_delta > 0, 1, -1)
+        neighbor_idxs = clipped_snapped_input_cols + snap_direction
+        neighbor_alpha = np.abs(snap_delta)
+        snap_alpha = 1.0-neighbor_alpha
+        if not extrapolate:
+            close_enough = neighbor_alpha < 2.0
+            neighbor_alpha = np.where(close_enough, neighbor_alpha, 0.0)
+            snap_alpha = np.where(close_enough, snap_alpha, 0.0)
+        #import pdb; pdb.set_trace()
+        nrows = len(sample_coordinatization)
+        ncols = len(input_coordinatization)
+        mat_shape = (nrows, ncols)
         mat_dat = np.hstack([snap_alpha, neighbor_alpha])
-        row_idxs = np.hstack([np.arange(len(self)), np.arange(len(self))])
-        col_idxs = np.hstack([snap_idx, neighbor_idxs])
-        interp_mat = scipy.sparse.coo_matrix((mat_dat, (row_idxs, col_idxs)), shape=mat_shape)
+        row_idxs = np.hstack([np.arange(nrows), np.arange(nrows)])
+        col_idxs = np.hstack([clipped_snapped_input_cols, neighbor_idxs])
+        interp_mat = scipy.sparse.coo_matrix((mat_dat, (row_idxs, col_idxs)), shape=mat_shape).tocsr()
         return interp_mat
 
 class ArbitraryCoordinatization(Coordinatization):
     _id = Column(Integer, ForeignKey("Coordinatization._id"), primary_key=True)
     coordinates = Column(PickleType)
+    _start_dx = Column(Float)
+    _end_dx = Column(Float)
     __mapper_args__={
         "polymorphic_identity":"arbitrarycoordinatization",
     }
@@ -170,6 +185,7 @@ class ArbitraryCoordinatization(Coordinatization):
         min, max = sorted([self.coordinates[0], self.coordinates[-1]])
         self.min = min
         self.max = max
+        self.npts = len(self.coordinates)
         self._cached_prev_bin = (self.bins[0], self.bins[1])
         self._cached_prev_bin_idx = 0
         self._start_dx = self.bins[1] - self.bins[0]
@@ -234,7 +250,7 @@ class ArbitraryCoordinatization(Coordinatization):
         coord = np.asarray(coord)
         in_shape = coord.shape
         coord = np.atleast_1d(coord)
-        out_index = np.zeros(in_shape, dtype=float)
+        out_index = np.zeros(coord.shape, dtype=float)
         coord_idxs = np.argsort(coord)
         cur_idx = 0
         min_x = self.min
@@ -258,9 +274,9 @@ class ArbitraryCoordinatization(Coordinatization):
                 idx = cur_idx + (cur_x - lb)/(ub-lb)
             out_index[cur_i] = idx
         if snap:
-            out_coordinates = np.around(out_index).astype(int)
+            out_index = np.around(out_index).astype(int)
         if clip:
-            out_coordinates = np.clip(out_coordinates, 0, len(self)-1)
+            out_index = np.clip(out_index, 0, len(self)-1)
         return out_index.reshape(in_shape)
 
 class LinearCoordinatization(Coordinatization):

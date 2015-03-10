@@ -32,7 +32,7 @@ class TestEdgeCenterConversionReversed(TestEdgeCenterConversion):
         self.edges = np.asarray([4, 3, 2, 1, 0])
         self.centers = np.asarray([3.5, 2.5, 1.5, 0.5])
         self.tol = 1e-10
-    
+
 class TestIndexConversion(unittest.TestCase):
     
     def setUp(self):
@@ -41,7 +41,7 @@ class TestIndexConversion(unittest.TestCase):
         self.npts = 53
         self.x = np.linspace(self.min, self.max, self.npts)
         self.coord_obj = coord.ArbitraryCoordinatization(self.x)
-        self.tol = 1e-15
+        self.tol = 1e-13
     
     def test_setting(self):
         #test setting the normal way
@@ -58,38 +58,36 @@ class TestIndexConversion(unittest.TestCase):
     def test_get_coord(self):
         coords = self.coord_obj.get_coord(np.arange(self.npts))
         diffs = coords - self.x
-        self.assertTrue(np.std(diffs) < 1e-14)
-        self.assertTrue(np.mean(np.abs(diffs)) < 1e-13)
+        np.testing.assert_almost_equal(coords, self.x)
     
     def test_get_index(self):
         indexes = self.coord_obj.get_index(self.x)
-        diffs = indexes - np.arange(self.npts)
-        self.assertTrue(np.std(diffs) < 1e-14)
-        self.assertTrue(np.mean(np.abs(diffs)) < 1e-13)
+        np.testing.assert_almost_equal(indexes, np.arange(self.npts))
     
     def nest_coord_index(self):
-        xi = self.coord_obj.get_coord(self.coord_obj.get_index(self.x[1:-1]))
+        xi = self.coord_obj.get_coord(self.coord_obj.get_index(self.x))
         ix = self.coord_obj.get_index(self.coord_obj.get_coord(np.arange(self.npts)))
-        self.assertTrue(np.std(xi - self.x[1:-1]) < 1e-14)
-        self.assertTrue(np.std(ix - np.arange(self.npts)[1:-1]) < 1e-14)
+        np.testing.assert_almost_equal(xi , self.x)
+        np.testing.assert_almost_equal(ix , np.arange(self.npts))
     
     def test_nested_extrapolation(self):
         t_idxs = np.array([-1, -5, -10, 21, 32, 97])
         outer_coords = self.coord_obj.get_coord(t_idxs)
         res_idxs = self.coord_obj.get_index(outer_coords)
-        self.assertTrue(np.std(t_idxs - res_idxs) < 1e-14)
-        self.assertTrue(np.mean(np.abs(t_idxs-res_idxs)) < 1e-13)
-
+        np.testing.assert_almost_equal(t_idxs, res_idxs)
+    
     def test_interpolant(self):
-        #test_x = np.sort(np.random.uniform(self.min, self.max, size=(100,)))
-        test_x = np.linspace(self.min, self.max, 100)
-        interp_mat = self.coord_obj.interpolant_matrix(test_x)
-        test_y = interp_mat*test_x
+        tslope, toff= 3.2, 1.3
+        test_y = self.x*tslope + toff
+        test_x = np.sort(np.random.uniform(self.min, self.max, size=(100,)))
+        interp_mat = self.coord_obj.interpolant_sampling_matrix(test_x)
+        target_y = test_x*tslope + toff
         #import matplotlib.pyplot as plt
-        #plt.plot(interp_mat*np.arange(100))
+        #plt.plot(test_x, interp_mat*test_y)
+        #plt.plot(test_x, target_y)
         #plt.show()
         #import pdb; pdb.set_trace()
-        np.testing.assert_allclose(test_y, test_x)
+        np.testing.assert_almost_equal(target_y, interp_mat*test_y)
 
 
 class TestLinearCoordinatization(TestIndexConversion):
@@ -100,7 +98,7 @@ class TestLinearCoordinatization(TestIndexConversion):
         self.npts = 53
         self.x = np.linspace(self.min, self.max, self.npts)
         self.coord_obj = coord.LinearCoordinatization(self.x)
-        self.tol = 1e-15
+        self.tol = 1e-13
 
 class TestLinearCoordinatizationInit(unittest.TestCase):
     
@@ -141,7 +139,7 @@ class TestAsCoordinatization(unittest.TestCase):
     
     def setUp(self):
         pass
-
+    
     def test_to_linear(self):
         res = as_coordinatization(np.linspace(10, 35, 101))
         self.assertTrue(isinstance(res, coord.LinearCoordinatization))

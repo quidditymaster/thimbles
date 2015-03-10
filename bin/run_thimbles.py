@@ -7,7 +7,7 @@ import thimbles as tmb
 from thimbles.tasks import task_registry, task
 from thimbles.options import opts
 
-@task(result_name="greeting")
+@task(result_name="hello")
 def hello_world(greeting="hello", subject="world"):
     greet_str =  "{} {}".format(greeting, subject)
     print greet_str
@@ -17,14 +17,12 @@ from PySide import QtCore,QtGui
 import thimblesgui as tmbg
 from thimblesgui import main_window
 from thimbles import resource_dir
-_resources_dir = os.path.join(os.path.dirname(tmbg.__file__),"resources")
+gui_resource_dir = os.path.join(os.path.dirname(tmbg.__file__),"resources")
 
-#print "main window file", main_window.__file__
-
-class MainApplication(QtGui.QApplication):
+class ThimblesMainApplication(QtGui.QApplication):
     
     def __init__ (self):
-        super(MainApplication,self).__init__([])
+        super(ThimblesMainApplication,self).__init__([])
         self.aboutToQuit.connect(self.on_quit)
         
         ## splash screen for thimbles
@@ -42,7 +40,7 @@ class MainApplication(QtGui.QApplication):
         #    screen_rect = self.desktop().screenGeometry()
         #    size = screen_rect.width(), screen_rect.height()
         
-        self.main_window = main_window.AppForm()
+        self.main_window = main_window.ThimblesMainWindow()
         self.main_window.show()
         #if not options.no_window:    
         #    self.main_window.show()
@@ -58,11 +56,11 @@ class MainApplication(QtGui.QApplication):
 
 if __name__ == "__main__":
     opts.parse_options()
+    QtGui.QApplication.setLibraryPaths([])
     
     if not opts["no_window"]:
-        print "starting main app"
         try:
-            app = MainApplication()
+            app = ThimblesMainApplication()
         except RuntimeError:
-            app = MainApplication.instance()
+            app = ThimblesMainApplication.instance()
         sys.exit(app.exec_())

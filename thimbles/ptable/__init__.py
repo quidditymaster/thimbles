@@ -1,1 +1,0 @@
-from periodictable import ptable

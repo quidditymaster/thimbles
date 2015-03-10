@@ -4,72 +4,173 @@ try:
     import ipdb as pdb
 except ImportError:
     import pdb
-from thimbles.spectrum import LineSpreadFunction,GaussianLSF, BoxLSF
+from thimbles.coordinatization import *
+import thimbles as tmb
+from thimbles.spectrum import Spectrum, WavelengthSolution
 
 # ########################################################################### #
+# np.testing.assert_almost_equal(x, y, nulp)
 
-# TODO: add more tests
-# np.testing.assert_array_almost_equal_nulp(x, y, nulp)
 
+class TestWavelengthSolution(unittest.TestCase):
+    
+    def setUp(self):
+        npts = 100
+        self.min_wv = 5000
+        self.max_wv = 5500
+        flux = np.ones(npts)
+        ivar = np.ones(npts)
+        self.linear_wvs = np.linspace(self.min_wv, self.max_wv, npts)
+        self.log_linear_wvs = np.exp(np.linspace(np.log(self.min_wv), np.log(self.max_wv), npts))
+        self.poly_wvs = self.linear_wvs + np.linspace(0, 1, npts)**2
+        
+        self.linspec = Spectrum(self.linear_wvs, flux, ivar)
+        self.logspec = Spectrum(self.log_linear_wvs, flux, ivar)
+        self.polyspec = Spectrum(self.poly_wvs, flux, ivar)
+        
+        self.spectra = [self.linspec, self.logspec, self.polyspec]
+        
+    def test_coordinatization_types(self):
+        lin_idxer = self.linspec.wv_sample.wv_soln.indexer
+        assert isinstance(lin_idxer, LinearCoordinatization)
+        log_idxer = self.logspec.wv_sample.wv_soln.indexer
+        assert isinstance(log_idxer, LogLinearCoordinatization)
+        poly_idxer = self.polyspec.wv_sample.wv_soln.indexer
+        assert isinstance(poly_idxer, ArbitraryCoordinatization)
+    
+    def test_spec_passthrough(self):
+        for spec in self.spectra:
+            wvs = np.linspace(self.min_wv, self.max_wv, 5)
+            indexes = spec.get_index(wvs)
+            wv_sol_indexes = spec.wv_sample.wv_soln.get_index(wvs)
+            np.testing.assert_almost_equal(indexes, wv_sol_indexes)
+            spec_back_wvs = spec.get_wvs(indexes)
+            wv_soln_back_wvs = spec.wv_sample.wv_soln.get_wvs(indexes)
+            np.testing.assert_almost_equal(spec_back_wvs, wv_soln_back_wvs)
+            np.testing.assert_almost_equal(wvs, spec_back_wvs)
+    
+    def test_scalar_indexing(self):
+        for spec in self.spectra:
+            wvsoln = spec.wv_sample.wv_soln
+            cent_wv = 0.5*(self.max_wv+self.min_wv)
+            cent_idx = wvsoln.get_index(cent_wv)
+            back_wv = wvsoln.get_wvs(cent_idx)
+            assert np.abs(back_wv-cent_wv) < 1e-7
+    
+    def test_index_snap_clip(self):
+        for spec in self.spectra:
+            wvsoln = spec.wv_sample.wv_soln
+            wvs = np.linspace(self.min_wv, self.max_wv, 7)
+            res = wvsoln.get_index(wvs, snap=True)
+            assert isinstance(res[0], int)
+            res = wvsoln.get_index(wvs-10.0, clip=True)
+            assert np.min(res) == 0
+            res = wvsoln.get_index(wvs+10.0, clip=True)
+            assert np.max(res) == len(wvsoln)-1
 
 class TestSpectrum (unittest.TestCase):
     
+    def setUp(self):        
+        npts = 100
+        self.npts = npts
+        self.min_wv = 0
+        self.max_wv = 10
+        self.wvs = np.linspace(self.min_wv, self.max_wv, npts)
+        self.flux_slope = 5
+        self.flux_offset = 1.2
+        self.flux = self.wvs*self.flux_slope + self.flux_offset
+        self.ivar = np.ones(npts)
+        self.spec = Spectrum(self.wvs, self.flux, self.ivar)
+    
+    def test_properties(self):
+        spec = self.spec 
+        self.assertTrue(len(self.spec) == self.npts)
+        np.testing.assert_almost_equal(self.flux, spec.flux)
+        np.testing.assert_almost_equal(self.wvs, spec.wvs)
+        np.testing.assert_almost_equal(self.ivar, spec.ivar)
+        np.testing.assert_almost_equal(1.0/self.ivar, spec.var)
+    
+    def test_repr(self):
+        repr(self.spec)
+    
+    def test_len(self):
+        assert len(self.spec) == self.npts
+    
+    def test_create_wo_ivar(self):
+        wvs = np.linspace(1, 1000, 100)
+        randvals = 5.0+np.random.normal(size=(100,))
+        spec = Spectrum(wvs, randvals)
+        var_mean = np.mean(spec.var)
+        #import pdb; pdb.set_trace()
+        #self.assertTrue(0.8 < var_mean < 1.2)
+    
+    def test_sample_mode_errors(self):
+        def call_sample(mode):
+            self.spec.sample([3, 5], mode=mode)
+        self.assertRaises(ValueError, call_sample, mode="not a mode")
+    
+    def test_bounded_view(self):
+        min_wv = self.min_wv+0.37*(self.max_wv-self.min_wv)
+        max_wv = self.min_wv+0.89*(self.max_wv-self.min_wv)
+        bspec = self.spec.sample([min_wv, max_wv], mode="bounded")
+        bwvs = bspec.wvs
+        xdelt = self.wvs[2]-self.wvs[0]
+        self.assertTrue((min_wv - xdelt) <= bwvs[0] <= (min_wv+xdelt))
+        self.assertTrue(max_wv-xdelt <= bwvs[-1] <= max_wv+xdelt)
+    
+    def test_pseudonorm(self):
+        psnorm = self.spec.pseudonorm()
+        nspec = self.spec.normalized()
+        np.testing.assert_almost_equal(self.spec.flux/psnorm, nspec.flux)
+    
+    def test_interpolate(self):
+        min_wv = self.min_wv+0.37*(self.max_wv-self.min_wv)
+        max_wv = self.min_wv+0.89*(self.max_wv-self.min_wv)
+        iterp_wvs = np.linspace(min_wv, max_wv, 200)
+        perfect_iterp = self.flux_slope*iterp_wvs + self.flux_offset
+        iterp_res = self.spec.sample(iterp_wvs, mode="interpolate")
+        np.testing.assert_almost_equal(iterp_res.flux, perfect_iterp)
+        
+        iterp_res, iterp_mat = self.spec.sample(iterp_wvs, mode="interpolate", return_matrix = True)
+        np.testing.assert_almost_equal(iterp_mat*self.spec.flux, perfect_iterp)
+
+    def test_rebin(self):
+        rebin_wvs = self.spec.wvs[::5]
+        rebin_spec = self.spec.sample(rebin_wvs, mode="rebin")
+        #will still be a line since we preserve normalization
+        perfect_rebin = self.flux_slope*rebin_wvs[1:-1]+self.flux_offset
+        np.testing.assert_almost_equal(rebin_spec.flux[1:-1], perfect_rebin)
+
+core_prop_names = \
+"""
+spectrograph_multiplier    
+spectrograph_adder
+sampling_matrix_multiplier
+inner_multiplier
+inner_adder
+broadening_matrix_multiplier
+feature_multiplier
+feature_adder
+""".split()
+
+class TestCoreSpectrumSubstrate(unittest.TestCase):
+    
     def setUp(self):
-        unittest.TestCase.setUp(self)
-       
-    def test_reference_frame (self):
-        pass 
+        min_wv = 100
+        max_wv = 200
+        npts_spec = 30
+        npts_model = 100
+        spec_wvs = np.linspace(min_wv, max_wv, npts_spec)
+        model_wvs = np.linspace(min_wv, max_wv, npts_model)
+        self.spec = tmb.Spectrum(spec_wvs, np.ones(npts_spec), np.ones(npts_spec))
+        self.spec_core_sub = tmb.spectrum.CoreSpectrumSubstrate(self.spec, model_wvs)
     
-    def test_wv_solution (self):
-        pass
-    
-    def test_spectrum (self):
-        pass
-    
-    def test_continuum (self):
-        pass
-    
-class TestLSF (unittest.TestCase):
-    
-    def setUp(self):
-        unittest.TestCase.setUp(self)
-        np.random.seed(5)
-        self.dmsg = "({},{})"
-                
-    def test_gaussian_lsf (self):
-        kws = dict(widths = np.random.normal(10,5,10),
-                   max_sigma = 5,
-                   wv_soln = None)
-        glsf = GaussianLSF(**kws)
-        
-        value = glsf.get_integral(0,5)
-        correct = 0.65895878128927521
-        msg = self.dmsg.format(value,correct)+ " incorrect integral output"
-        self.assertAlmostEqual(value,correct,8,msg)
-        
-        correct = (-108.7692796751945, 112.7692796751945)
-        value = glsf.get_coordinate_density_range(2)
-        msg = self.dmsg.format(value,correct)+" get_coordinate_density"
-        self.assertEqual(value, correct,msg)
-        
-        correct = 22.153855935038898
-        value = glsf.get_rms_width(2)
-        msg = self.dmsg.format(value,correct)+" get_rms_width"
-        self.assertEqual(value, correct,msg)
-        
-    def test_box_lsf (self):
-        blsf = BoxLSF(None)
-        
-        values = [(blsf.get_integral(5,10),1),
-                  (blsf.get_integral(5,2),0),
-                  (blsf.get_integral(5,5.25),0.75)]
-        
-        for first,second in values:
-            msg = self.dmsg.format(first,second)+" wrong get_integral"
-            self.assertEqual(first, second, msg)
-        
-        
-        # TODO:  add more tests
-        
+    def test_model_properties(self):
+        scs = self.spec_core_sub
+        for prop_name in core_prop_names:
+            #print prop_name
+            assert not (getattr(scs, prop_name) is None)
+
+
 if __name__ == "__main__":
     unittest.main()

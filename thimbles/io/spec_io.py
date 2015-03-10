@@ -32,7 +32,7 @@ __all__ = ["read_spec","read_ascii","read_fits",
            "read_fits","read_fits_hdu","read_bintablehdu",
            "read_many_fits", "read_hdf5"]
 
-def read_hdf5(filepath):
+def read_hdf5(filepath, source=None):
     hf = h5py.File(filepath, "r")
     spectra = []
     spec_keys = hf.keys()
@@ -42,13 +42,13 @@ def read_hdf5(filepath):
         wvs = np.array(hf[wv_soln_path + "/wv_centers"])
         lsf = np.array(hf[wv_soln_path + "/lsf"])
         rv, vhelio = hf[wv_soln_path + "/velocity_offsets"]
-        wvs = WavelengthSolution(wvs, rv=rv, vhelio=vhelio)
+        wvs = WavelengthSolution(wvs, rv=rv, delta_helio=vhelio, lsf=lsf)
         
         quant_path = spec_grp_name + "/spectral_quantities" 
         flux = np.array(hf[quant_path+"/flux/values"])
         ivar = np.array(hf[quant_path+"/flux/ivar"])
-
-        new_spec = Spectrum(wvs, flux, ivar, rv=rv, barycenter_vel=bcvel, lsf=lsf)
+        
+        new_spec = Spectrum(wvs, flux, ivar, source=source)
         spectra.append(new_spec)
     return spectra
 
@@ -449,12 +449,16 @@ def detect_spectrum_file_type(fname):
 
 pass
 # ############################################################################# #
-# This is a swiss army knife spectrum read in function
-@task()
+@task(
+    result_name="spec_list",
+    sub_kwargs=dict(
+        fname=dict(option_style="raw_string", editor_style="file"),
+        file_type={"option_style":"raw_string"},
+))
 def read_spec(fname, file_type="detect", extra_kwargs=None):
     """
-    a swiss army knife read in function for spectra, attempts to read in 
-    a large variety of formats.
+    a swiss army knife read in function for spectra, attempts to detect 
+    and read in a large variety of formats.
     
     file type: string
       "detect"    attempt to determine the file type automatically
@@ -463,8 +467,8 @@ def read_spec(fname, file_type="detect", extra_kwargs=None):
       "ascii"     read a file with ascii columns for wavelength and flux
       "file_list" file is actually a list of files to read in.
     extra_kwargs: dictionary
-      a dictionary to unpack into the readin function that gets called on
-      the basis of the file_type.
+      a dictionary to unpack into the readin function as keyword arguments
+      that gets called on the basis of the file_type.
     """
     if extra_kwargs is None:
         extra_kwargs = {}

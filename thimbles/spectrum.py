@@ -2,6 +2,7 @@
 #
 # ########################################################################### #
 import time
+from copy import copy
 
 # 3rd Party
 import numpy as np
@@ -21,9 +22,15 @@ from thimbles import logger
 #from thimbles.binning import CoordinateBinning
 from scipy.interpolate import interp1d
 from thimbles.thimblesdb import ThimblesTable, Base
-from thimbles.modeling import Model
+from thimbles.modeling import Model, Parameter
+from thimbles.modeling.factor_models import \
+    FluxSumModel, MultiplierModel, MatrixMultiplierModel
+from thimbles.modeling.distributions import VectorNormalDistribution
 from thimbles.coordinatization import Coordinatization, as_coordinatization
 from thimbles.sqlaimports import *
+from sqlalchemy.orm.collections import attribute_mapped_collection
+
+from thimbles import speed_of_light
 
 # ########################################################################### #
 
@@ -31,14 +38,48 @@ __all__ = ["WavelengthSolution","Spectrum"]
 
 # ########################################################################### #
 
-speed_of_light = 299792.458 #speed of light in km/s
+class DeltaHelioParameter(Parameter):
+    """velocity correction for motion around the sun"""
+    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"DeltaHelioParameter"
+    }
+    _value = Column(Float)  #helio centric velocity in km/s
+    
+    #class attributes
+    name = "rv"
+    
+    def __init__(self, value):
+        self._value = value
+
+class RadialVelocityParameter(Parameter):
+    """ Radial Velocity Parameter"""
+    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"RadialVelocityParameter"
+    }
+    _value = Column(Float)  #helio centric velocity in km/s
+    
+    #class attribtues
+    name="delta_helio"
+    
+    def __init__(self, value):
+        self._value = value
 
 class WavelengthSolution(ThimblesTable, Base):
     _indexer_id = Column(Integer, ForeignKey("Coordinatization._id"))
     indexer = relationship("Coordinatization")
+    
+    #the parameters
+    _rv_id = Column(Integer, ForeignKey("Parameter._id"))
+    rv_p = relationship("RadialVelocityParameter", foreign_keys=_rv_id)
+    _delta_helio_id = Column(Integer, ForeignKey("Parameter._id"))
+    delta_helio_p = relationship("DeltaHelioParameter", foreign_keys=_delta_helio_id)
+    
+    #TODO: a polymorphic LSF table/class
     lsf = Column(PickleType)
     
-    def __init__(self, wavelengths, rv=None, vhelio=None, shifted=True, lsf=None):
+    def __init__(self, wavelengths, rv=None, delta_helio=None, shifted=True, lsf=None):
         """a class that encapsulates the manner in which a spectrum is sampled
         
         wavelengths: np.ndarray
@@ -49,7 +90,7 @@ class WavelengthSolution(ThimblesTable, Base):
           the projected velocity along the line of sight not including
           the contribution from the earths motion around the earth sun
           barycenter. [km/s]
-        vhelio: float
+        delta_helio: float
           the velocity around the earth sun barycenter projected onto the
           line of sight. [km/s]
         shifted: bool
@@ -58,22 +99,34 @@ class WavelengthSolution(ThimblesTable, Base):
           wavelengths = wavelengths*(1-(rv+vhelio)/c)
         lsf: ndarray
           the line spread function in units of pixel width.
-        """
+        """       
+        
+        #set up rv
         if rv is None:
             rv = 0.0
-        self._rv = rv
+        if not isinstance(rv, Parameter):
+            rv = RadialVelocityParameter(rv)
+        self.rv_p = rv
+        del rv
         
-        if vhelio is None:
-            vhelio = 0.0
-        self._vhelio = vhelio
+        #set up delta helio
+        if delta_helio is None:
+            delta_helio = 0.0
+        if not isinstance(delta_helio, Parameter):
+            delta_helio = DeltaHelioParameter(delta_helio)
+        self.delta_helio_p = delta_helio
+        del delta_helio
         
-        if not shifted:
-            wavelengths = wavelengths*(1.0-(rv+vhelio)/speed_of_light)
-        
-        self.indexer = as_coordinatization(wavelengths)
+        wavelengths = np.asarray(wavelengths)
+        if shifted:
+            #remove external wavelength corrections
+            correction = 1.0/(1.0 + self.fractional_shift)
+            wavelengths = wavelengths * correction
+        self.indexer = as_coordinatization(wavelengths) 
         
         if lsf is None:
             lsf = np.ones(len(self))
+        lsf = np.asarray(lsf)
         self.lsf = lsf
     
     def __len__(self):
@@ -81,13 +134,11 @@ class WavelengthSolution(ThimblesTable, Base):
     
     @property
     def rv(self):
-        return self._rv
+        return self.rv_p.value
     
     @rv.setter
     def rv(self, value):
-        new_wvs = self.indexer.coordinates*(1.0 - value/speed_of_light)
-        self.indexer.coordinates = new_wvs
-        self._rv = value
+        self.rv_p.value = value
     
     def set_rv(self, rv):
         self.rv = rv
@@ -96,30 +147,38 @@ class WavelengthSolution(ThimblesTable, Base):
         return self.rv
     
     @property
-    def vhelio(self):
-        return self._vhelio
+    def delta_helio(self):
+        return self.delta_helio_p.value
     
-    @vhelio.setter
-    def vhelio(self, value):
-        new_wvs = self.indexer.coordinates*(1.0 - value/speed_of_light)
-        self.indexer.coordinates = new_wvs
-        self._vhelio = value
+    @delta_helio.setter
+    def delta_helio(self, value):
+        self.delta_helio_p = value
+    
+    @property
+    def fractional_shift(self):
+        rv_val = self.rv_p.value
+        dh_val = self.delta_helio_p.value
+        return (rv_val + dh_val)/speed_of_light
     
     def get_wvs(self, pixels=None, clip=False, snap=False):
+        """get object restframe wavelengths from pixel number"""
         if pixels is None:
-            pixels = np.arange(len(self.indexer))            
+            pixels = np.arange(len(self.indexer))
         return self.indexer.get_coord(pixels, clip=clip, snap=snap)
     
     def get_index(self, wvs=None, clip=False, snap=False):
-        if wvs == None:
+        """get pixel number from object rest frame wavelengths"""
+        if wvs is None:
             return np.arange(len(self.indexer))
         return self.indexer.get_index(wvs, clip=clip, snap=snap)
     
-    def interp_matrix(self, wv_soln, fill_mode="zeros"):
+    def interpolant_sampling_matrix(self, wvs):
         """generate an interpolation matrix which will transform from
         an input wavelength solution to this wavelength solution.
         """
-        
+        wvs = as_wavelength_sample(wvs)
+        return self.indexer.interpolant_sampling_matrix(wvs.wvs)
+
 
 def as_wavelength_solution(wavelengths):
     if isinstance(wavelengths, WavelengthSolution):
@@ -127,23 +186,95 @@ def as_wavelength_solution(wavelengths):
     else:
         return WavelengthSolution(wavelengths)
 
-class Spectrum(object): #Model):
+
+class WavelengthSample(ThimblesTable, Base):
+    _wv_soln_id = Column(Integer, ForeignKey("WavelengthSolution._id"))
+    wv_soln = relationship("WavelengthSolution")
+    start = Column(Integer)
+    end = Column(Integer)
+    
+    def __init__(self, wv_soln, start=None, end=None):
+        wv_soln = as_wavelength_solution(wv_soln)
+        self.wv_soln = wv_soln
+        if start is None:
+            start = 0
+        if end is None:
+            end = len(wv_soln)
+        self.start = start
+        self.end = end
+    
+    def __len__(self):
+        return self.end-self.start
+    
+    @property
+    def pixels(self):
+        return np.arange(self.start, self.end)
+    
+    @property
+    def wvs(self):
+        return self.wv_soln.get_wvs(self.pixels)
+    
+    def interpolant_sampling_matrix(self, wavelengths):
+        """calculate the sparse matrix which linearly interpolates"""
+        full_mat = self.wv_soln.interpolant_sampling_matrix(wavelengths)
+        part_mat = full_mat.tocsc()[:, self.start:self.end].copy()
+        return part_mat
+
+def as_wavelength_sample(wvs):
+    if isinstance(wvs, WavelengthSample):
+        return wvs
+    else:
+        return WavelengthSample(wvs)
+
+
+class FluxParameter(Parameter):
+    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"FluxParameter",
+    }
+    _wv_sample_id = Column(Integer, ForeignKey("WavelengthSample._id"))
+    wv_sample = relationship("WavelengthSample")
+    
+    #class attributes
+    name = "flux"
+    
+    def __init__(self, wvs, flux=None):
+        self.wv_sample = as_wavelength_sample(wvs)
+        self._value = flux
+    
+    def __len__(self):
+        return len(self.wv_sample)
+    
+    @property
+    def pixels(self):
+        return np.arange(self.start_index, self.end_index)
+
+
+class Spectrum(ThimblesTable, Base):
     """A representation of a collection of relative flux measurements
     """
-    #_id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
-    #__mapper_args__={"polymorphic_identity":"Spectrum"}
-    #flux = Column(PickleType)
-    #_ivar = Column(PickleType)
-    #_wv_soln_id = Column(Integer, ForeignKey("WavelengthSolution._id"))
-    #wv_soln = relationship("WavelengthSolution")
-    #wv_soln = relationship("WavelengthSolution")    
+    _flux_p_id = Column(Integer, ForeignKey("FluxParameter._id"))
+    flux_p = relationship("FluxParameter")
+    _obs_prior_id = Column(Integer, ForeignKey("Distribution._id"))
+    obs_prior = relationship("Distribution")
+    info = Column(PickleType)
+    _flag_id = Column(Integer, ForeignKey("SpectrumFlags._id"))
+    flags = relationship("SpectrumFlags")
+    _source_id = Column(Integer, ForeignKey("Source._id"))
+    source = relationship("Source", backref="spectroscopy")
     
-    def __init__(self,
-                 wavelengths, 
-                 flux, 
-                 ivar=None,
-                 flags=None
-             ):
+    def __init__(
+            self,
+            wavelengths, 
+            flux, 
+            ivar=None,
+            lsf=None,
+            flags=None,
+            info=None,
+            source=None,
+            pseudonorm_func=None,
+            pseudonorm_kwargs=None,
+    ):
         """makes a spectrum
         wavelengths: ndarray or WavelengthSolution
           the wavelengths at each pixel, if more specific information
@@ -152,72 +283,158 @@ class Spectrum(object): #Model):
           pass that in instead of an ndarray.
         flux: ndarray
           the measured flux in each pixel
-        ivar: ndarray
-          the noise inverse variance of each pixel
+        ivar: ndarray or Distribution
+          the inverse variance of the noise in each pixel
         flags: an optional SpectrumFlags object
-          see flags.py for info
+          see thimbles.flags for info
         """
-        self.wv_soln = as_wavelength_solution(wavelengths)
-        self.flux = np.asarray(flux)
+        if pseudonorm_func is None:
+            pseudonorm_func = tmb.pseudonorms.sorting_norm
+        self.pseudonorm_func=pseudonorm_func
+        if pseudonorm_kwargs is None:
+            pseudonorm_kwargs = {}
+        self.pseudonorm_kwargs = pseudonorm_kwargs
         
+        self.flux_p = FluxParameter(wavelengths)
+        if not lsf is None:
+            self.flux_p.wv_sample.wv_soln.lsf = lsf
+        
+        flux = np.asarray(flux)
         if ivar is None:
-            self._ivar = (self.flux > 0.0)*np.ones(self.flux.shape, dtype=float)
-            ivar = tmb.utils.misc.smoothed_mad_error(self, 1.0)
-        self._ivar = tmb.utils.misc.clean_inverse_variances(ivar)
-        
-        #Model.__init__(self)
-        
-        #TODO:allow for a spectrum context which includes the header.
+            ivar = tmb.utils.misc.smoothed_mad_error(flux)
+        #treat the observed flux as a prior on the flux parameter values
+        self.obs_prior = VectorNormalDistribution(flux, ivar)
         
         if flags is None:
             flags = SpectrumFlags()
-        else:
-            flags = SpectrumFlags(int(flags))
+        elif isinstance(flags, SpectrumFlags):
+            flags = flags
+        elif isinstance(flags, int):
+            flags = SpectrumFlags(flags)
+        elif isinstance(flags, dict):
+            flags = SpectrumFlags(flags)
         self.flags = flags
-    
-    #@parameter(free=False)
-    def flux_p(self):
-        return self.flux
-    
-    #@flux_p.setter
-    def set_flux(self, value):
-        self.flux = value
-    
-    def sample(wavelengths,
-               valuation_mode="interp", 
-               fill_mode="nearest",
-               ):
-        other_wv_soln = as_wavelength_solution(wavelengths)
-        interp_trans = self.wv_soln.interp_matrix(other_wv_soln)
         
-        if mode == "interp":
-            out_lsf = self._lsf
-            trans = self.wv_soln.interp_matrix(other_wv_soln)
+        if info is None:
+            info = {}
+        self.info = info
+        
+        self.source = source
     
-    def matched_filter(self):
-        pass
+    @property
+    def wv_sample(self):
+        return self.flux_p.wv_sample
+    
+    @property
+    def flux(self):
+        return self.obs_prior.mean
+    
+    @flux.setter
+    def flux(self, value):
+        self.obs_prior.mean = value
+    
+    @flux.setter
+    def flux(self, value):
+        self.flux_p.value = value
+    
+    @property
+    def ivar(self):
+        return self.obs_prior.ivar
+    
+    @ivar.setter
+    def ivar(self, value):
+        self.obs_prior.ivar = value
+    
+    @property
+    def var(self):
+        return tmb.utils.misc.inv_var_2_var(self.ivar)
+    
+    @var.setter
+    def var(self, value):
+        self.ivar = tmb.utils.misc.inv_var_2_var(value)
+    
+    def sample(self,
+            wavelengths,
+            mode="interpolate", 
+            return_matrix=None,
+    ):
+        """generate a spectrum subsampled from this one.
+        
+        parameters
+        
+        wavelengths: ndarray or WavelengthSolution 
+          the wavelengths to sample at
+        
+        mode: string
+         the type of sampling to carry out.
+         
+         choices
+          "interpolate"  linearly interpolate onto the given wv
+          "bounded"      ignore all but the first and last wavelengths 
+                           given and sample in between in a manner 
+                           identical to the current spectrum.
+          "rebin"        apply a flux preserving rebinning procedure.
+        
+        return_matrix: bool
+          if true return both a sampled version of the spectrum and the
+          matrix used to generate it via multiplication into this spectrum's
+          flux attribute.
+        """
+        if mode=="bounded":
+            bounds = sorted([wavelengths[0], wavelengths[-1]])
+            l_idx, u_idx = self.get_index(bounds, snap=True, clip=True)
+            if u_idx-l_idx < 1:
+                return None
+            out_flux = self.flux[l_idx:u_idx+1]
+            wv_sample = WavelengthSample(self.wv_sample.wv_soln, l_idx, u_idx+1)
+            out_ivar = self.ivar[l_idx:u_idx+1]
+            sampling_matrix = scipy.sparse.identity(len(out_flux))
+            sampled_spec = Spectrum(wv_sample, out_flux, out_ivar)
+        elif mode == "interpolate":
+            tmat = self.wv_sample.interpolant_sampling_matrix(wavelengths)
+            out_flux = tmat*self.flux
+            out_var = tmat.transpose()*tmat*self.var
+            out_ivar = tmb.utils.misc.var_2_inv_var(out_var)
+            sampled_spec = Spectrum(wavelengths, out_flux, out_ivar)
+            sampling_matrix = tmat
+        elif mode =="rebin":
+            #wv_widths = scipy.gradient(self.wvs)*self.wv_soln.lsf
+            #interp_mat = self.wv_sample.interpolant_matrix(wavlengths)
+            
+            #gdense = resampling.GaussianDensity(model_wvs, interper(model_wvs))
+            #transform = resampling.get_resampling_matrix(model_wvs, self.wv, preserve_normalization=True, pixel_density=gdense)  
+            in_wvs = self.wvs
+            wavelengths = as_wavelength_sample(wavelengths)
+            out_wvs = wavelengths.wvs
+            transform = resampling.get_resampling_matrix(in_wvs, out_wvs, preserve_normalization=True)
+            out_flux = transform*self.flux
+            var = self.var
+            #TODO make this take into account the existing lsfs
+            covar = resampling.\
+                    get_transformed_covariances(transform, var)
+            covar_shape = covar.shape
+            #marginalize over the covariance
+            out_inv_var  = 1.0/(covar*np.ones(covar_shape[0]))
+            sampled_spec = Spectrum(wavelengths, out_flux, out_inv_var)
+            sampling_matrix = transform
+        else:
+            raise ValueError("mode {} not a valid sampling mode".format(mode))
+        if not return_matrix:
+            return sampled_spec
+        else:
+            return sampled_spec, sampling_matrix
     
     def __add__(self, other):
         if isinstance(other, (float, int)):
             return Spectrum(self.wv_soln, self.flux + other, self.ivar)
         else:
-            raise NotImplementedError()
+            return add_spectra(self, other, self.wv_sample)
     
     def __div__(self, other):
         if isinstance(other, (float, int)):
             return Spectrum(self.wv_soln, self.flux/other, self.ivar*other**2)
         else:
-            raise NotImplementedError()
-    
-    def __equal__ (self,other):
-        if not isinstance(other,Spectrum):
-            return False
-        
-        checks = [np.all(other.wv==self.wv),
-                  np.all(other.flux==self.flux),
-                  np.all(other.ivar==self.inv_var),
-                  ]
-        return np.all(checks)
+            return divide_spectra(self, other, self.wv_sample)
     
     def __len__(self):
         return len(self.flux)
@@ -226,169 +443,277 @@ class Spectrum(object): #Model):
         if isinstance(other, (float, int)):
             return Spectrum(self.wv_soln, self.flux*other, self.ivar/other**2)
         else:
-            raise NotImplementedError()
+            return multiply_spectra(self, other, self.wv_sample)
     
     def __repr__(self):
-        wvs = self.wv
-        last_wv = wvs[-1]
-        first_wv = wvs[0]
-        return "<`thimbles.Spectrum` ({0:8.3f},{1:8.3f})>".format(first_wv, last_wv)
+        wvs = self.wvs
+        return "<`thimbles.Spectrum` ({0:8.3f},{1:8.3f})>".format(wvs[0], wvs[-1])
     
     def __sub__(self, other):
         if isinstance(other, (float, int)):
             return Spectrum(self.wv_soln, self.flux - other, self.ivar)
         else:
-            raise NotImplementedError()
-        
+            return subtract_spectra(self, other, self.wv_sample)
+    
     @property
     def rv(self):
-        return self.wv_soln.rv
+        return self.wv_sample.wv_soln.rv
     
     @property
-    def wv(self):
-        return self.wv_soln.get_wvs()
+    def pixels(self):
+        return self.wv_sample.pixels
+    
+    @property
+    def wvs(self):
+        return self.wv_sample.wv_soln.get_wvs(self.pixels)
     
     def set_rv(self, rv):
-        self.wv_soln.set_rv(rv)
+        self.wv_sample.wv_soln.set_rv(rv)
     
     def get_rv(self):
-        return self.wv_soln.get_rv()
+        return self.wv_sample.wv_soln.get_rv()
     
     def get_wvs(self, pixels=None, clip=False, snap=False):
-        return self.wv_soln.get_wvs(pixels, clip=clip, snap=snap)
+        if pixels is None:
+            pixels = self.wv_sample.pixels
+        return self.wv_sample.wv_soln.get_wvs(pixels, clip=clip, snap=snap)
     
-    def get_index(self, wvs, clip=False, snap=False):
-        return self.wv_soln.get_index(wvs, clip=clip, snap=snap)
+    def get_index(self, wvs, clip=False, snap=False, local=False):
+        global_indexes = self.wv_sample.wv_soln.get_index(wvs, clip=clip, snap=snap)
+        if local:
+            return global_indexes - self.wv_sample.start
+        else:
+            return global_indexes
     
-    #def get_inv_var(self):
-    #    return self.inv_var
-    #
-    #def get_var(self):
-    #    #TODO deal with zeros appropriately
-    #    return tmb.utils.misc.inv_var_2_var(self.inv_var)
+    def pseudonorm(self, **kwargs):
+        kwdict = copy(self.pseudonorm_kwargs)
+        kwdict.update(kwargs)
+        return self.pseudonorm_func(self, **kwargs)
     
-    def normalize(self, **kwargs):
-        #TODO: put extra controls in here
-        norm_res = tmb.utils.misc.approximate_normalization(self, overwrite=True, **kwargs)    
-        return norm_res
-    
-    def normalized(self):
-        nspec = Spectrum(self.wv_soln, self.flux/self.norm, self.ivar*self.norm**2)
+    def normalized(self, norm=None, **kwargs):
+        if norm is None:
+            if not self.flags["normalized"]:
+                norm = self.pseudonorm(**kwargs)
+            else:
+                norm = np.ones(len(self))
+        nspec = Spectrum(self.wv_sample, self.flux/norm, self.ivar*norm**2)
+        flux_p_val = nspec.flux_p.value
+        if not flux_p_val is None:
+            nspec.flux_p.value = self.flux_p.value/norm
         nspec.flags["normalized"] = True
         return nspec
     
-    def sample(self, wavelengths, kind="interp", fill=np.nan):
-        if kind == "interp":
-            indexes = self.get_index(wavelengths)
-            int_part = np.around(indexes).astype(int)
-            alphas = indexes - int_part
-            return self.flux[int_part]*(1-alphas) + self.flux[int_part+1]*alphas
-        if kind =="rebin":
-            raise NotImplementedError()
-        
-    def lsf_sampling_matrix(self, model_wvs):
-        wv_widths = scipy.gradient(self.wv)*self.wv_soln.lsf
-        #TODO: use faster interpolation
-        interper = interp1d(self.wv, wv_widths, bounds_error=False, fill_value=1.0)
-        gdense = resampling.GaussianDensity(model_wvs, interper(model_wvs))
-        transform = resampling.get_resampling_matrix(model_wvs, self.wv, preserve_normalization=True, pixel_density=gdense)    
-        return transform
-        
-    def rebin(self, new_wv_soln, frame="emitter"):
-        #check if we have the transform stored
-        if self._last_rebin_wv_soln_id == id(new_wv_soln):
-            transform = self._last_rebin_transform
-        else:
-            in_wvs = self.get_wvs(frame=frame)
-            if not isinstance(new_wv_soln, WavelengthSolution):
-                new_wv_soln = WavelengthSolution(new_wv_soln)
-            out_wvs = new_wv_soln.get_wvs()
-            transform = resampling.get_resampling_matrix(in_wvs, out_wvs, preserve_normalization=True)
-            self._last_rebin_transform = transform
-            self._last_rebin_wv_soln_id = id(new_wv_soln)
-        out_flux = transform*self.flux
-        var = self.get_var()
-        #TODO make this take into account the existing lsfs
-        covar = resampling.\
-        get_transformed_covariances(transform, var)
-        covar_shape = covar.shape
-        #marginalize over the covariance
-        out_inv_var  = 1.0/(covar*np.ones(covar_shape[0]))
-        return Spectrum(new_wv_soln, out_flux, out_inv_var)
-    
-    def sample(self, wvs, frame="emitter"):
-        """samples the spectrum at the provided wavelengths
-        linear interpolation is carried out.
-        
-        returns: Spectrum
-        """
-        #shift the wavelengths to the observed frame
-        index_vals = self.get_index(wvs, frame=frame)
-        upper_index = np.array(np.ceil(index_vals), dtype=int)
-        lower_index = np.array(np.floor(index_vals), dtype=int)
-        alphas = index_vals - lower_index
-        interp_vals =  self.flux[upper_index]*alphas
-        interp_vals += self.flux[lower_index]*(1-alphas)
-        var = self.get_var()
-        sampled_var = var[upper_index]*alphas**2
-        sampled_var += var[lower_index]*(1-alphas)**2
-        return Spectrum(wvs, interp_vals, tmb.utils.misc.var_2_inv_var(sampled_var))
-    
-    def bounding_indexes(self, bounds, frame="emitter"):
-        bvec = np.asarray(bounds)
-        l_idx, u_idx = map(int, np.around(self.get_index(bvec, frame=frame)))
-        l_idx = min(max(0, l_idx), len(self.flux)-1)
-        u_idx = max(min(len(self.flux)-1, u_idx), 0)
-        return l_idx, u_idx
-    
-    def bounded_sample(self, bounds, frame="emitter", copy=True):
-        """returns the wavelengths and corresponding flux values of the 
-        spectrum which are greater than bounds[0] and less than bounds[1]
-        
-        inputs:
-        bounds: (lower_wv, upper_wv)
-        frame: the frame of the bounds
-        
-        outputs:
-        wvs, flux, inv_var
-        """
-        l_idx, u_idx = self.bounding_indexes(bounds, frame)
-        if u_idx-l_idx < 1:
-            return None
-        out_wvs = self.get_wvs(np.arange(l_idx, u_idx+1), frame=frame)
-        out_flux = self.flux[l_idx:u_idx+1]
-        out_invvar = self.inv_var[l_idx:u_idx+1]
-        out_norm = self.norm[l_idx:u_idx+1]
-        if copy:
-            out_flux = out_flux.copy()
-            out_invvar = out_invvar.copy()
-            out_norm = out_norm.copy()
-        return Spectrum(out_wvs, out_flux, out_invvar, norm=out_norm)
-    
-    def plot(self, axes=None, **mpl_kwargs):
-        plot_wvs = self.get_wvs(frame=frame)
-        plot_flux = self.flux
-        if axes == None:
-            axes = plt.figure().add_subplot(111)
-            xlabel = 'Wavelength'
-            axes.set_xlabel(xlabel)
-            axes.set_ylabel('Flux')
-        l, = axes.plot(plot_wvs, plot_flux, **mpl_kwargs)
-        return axes,l
-    
-    @property
-    def var(self):
-        return tmb.utils.misc.inv_var_2_var(self._ivar)
-    
-    @var.setter
-    def var(self, value):
-        self.ivar = tmb.utils.misc.inv_var_2_var(value)
-    
-    @property
-    def ivar(self):
-        return self._ivar
-    
-    @ivar.setter
-    def ivar(self, value):
-        self._ivar = tmb.utils.misc.clean_inverse_variances(value)
+    def plot(self, ax=None, **mpl_kwargs):
+        return tmb.charts.SpectrumChart(self, ax=ax)
 
+
+def add_spectra(
+        spectrum1,
+        spectrum2,
+        target_wvs=None, 
+        sampling_mode="interpolate",
+):
+    if target_wvs is None:
+        target_wvs = spectrum1.wv_sample
+    else:
+        target_wvs = as_wavelength_sample(target_wvs)
+    spec1_samp = spectrum1.sample(target_wvs, mode=sampling_mode)
+    spec2_samp = spectrum2.sample(target_wvs, mode=sampling_mode)
+    
+    out_flux = spec1_samp.flux + spec2_samp.flux
+    out_var = spec1_samp.var + spec2_samp.var
+    out_ivar = tmb.utils.misc.var_2_inv_var(out_var)
+    return tmb.Spectrum(target_wvs, out_flux, out_ivar)
+
+def subtract_spectra(
+        spectrum1,
+        spectrum2,
+        target_wvs=None, 
+        sampling_mode="interpolate",
+):
+    if target_wvs is None:
+        target_wvs = spectrum1.wv_sample
+    else:
+        target_wvs = as_wavelength_sample(target_wvs)
+    spec1_samp = spectrum1.sample(target_wvs, mode=sampling_mode)
+    spec2_samp = spectrum2.sample(target_wvs, mode=sampling_mode)
+    
+    out_flux = spec1_samp.flux - spec2_samp.flux
+    out_var = spec1_samp.var + spec2_samp.var
+    out_ivar = tmb.utils.misc.var_2_inv_var(out_var)
+    return tmb.Spectrum(target_wvs, out_flux, out_ivar)
+
+def multiply_spectra(
+        spectrum1,
+        spectrum2,
+        target_wvs=None, 
+        sampling_mode="interpolate",
+):
+    if target_wvs is None:
+        target_wvs = spectrum1.wv_sample
+    else:
+        target_wvs = as_wavelength_sample(target_wvs)
+    spec1_samp = spectrum1.sample(target_wvs, mode=sampling_mode)
+    spec2_samp = spectrum2.sample(target_wvs, mode=sampling_mode)
+    
+    out_flux = spec1_samp.flux * spec2_samp.flux
+    out_var = spec1_samp.var*spec2_samp.flux**2 + spec1_samp.flux**2*spec2_samp.var
+    out_ivar = tmb.utils.misc.var_2_inv_var(out_var)
+    return tmb.Spectrum(target_wvs, out_flux, out_ivar)
+
+
+def divide_spectra(
+        spectrum1,
+        spectrum2,
+        target_wvs=None, 
+        sampling_mode="interpolate",
+):
+    if target_wvs is None:
+        target_wvs = spectrum1.wv_sample
+    else:
+        target_wvs = as_wavelength_sample(target_wvs)
+    spec1_samp = spectrum1.sample(target_wvs, mode=sampling_mode)
+    spec2_samp = spectrum2.sample(target_wvs, mode=sampling_mode)
+    
+    out_flux = spec1_samp.flux/spec2_samp.flux
+    s2sq = spec2_samp.flux**2
+    out_var = spec1_samp.var/s2sq + (spec1_samp.flux/(2.0*s2sq))**2*spec2_samp.var
+    out_ivar = tmb.utils.misc.var_2_inv_var(out_var)
+    return tmb.Spectrum(target_wvs, out_flux, out_ivar)
+
+
+class CoreSpectrumSubstrate(tmb.modeling.ModelSubstrate):
+    _id = Column(Integer, ForeignKey("ModelSubstrate._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"CoreSpectrumModelSubstrate",
+    }
+    _spectrum_id = Column(Integer, ForeignKey("Spectrum._id"))
+    spectrum = relationship("Spectrum", backref="core_substrate")
+    
+    _spectrograph_multiplier = None    
+    _spectrograph_adder = None
+    _sampling_matrix_multiplier = None
+    _inner_multiplier = None
+    _inner_adder = None
+    _broadening_matrix_multiplier = None
+    _feature_multiplier = None
+    _feature_adder = None
+    
+    def __init__(self, spectrum, model_wv_soln):
+        self.spectrum = spectrum
+        out_wv_soln =spectrum.wv_sample.wv_soln
+        model_wv_soln = as_wavelength_solution(model_wv_soln)
+        spectrograph_multiplier = MultiplierModel(
+            output_p=spectrum.flux_p,
+            name="spectrograph_multiplier",
+            substrate=self,
+        )
+        add1_out = FluxParameter(out_wv_soln)
+        spectrograph_multiplier.parameters.append(add1_out)
+        spectrograph_adder = FluxSumModel(
+            output_p=add1_out,
+            name="spectrograph_adder",
+            substrate=self,
+        )
+        resampled_flux_param = FluxParameter(out_wv_soln)
+        spectrograph_adder.parameters.append(resampled_flux_param)
+        lsfmat_mult = MatrixMultiplierModel(
+            output_p=resampled_flux_param,
+            name="sampling_matrix_multiplier",
+            substrate=self,
+        )
+        inner_mult_out = FluxParameter(model_wv_soln)
+        lsfmat_mult.parameters.append(inner_mult_out)
+        inner_multiplier = MultiplierModel(
+            output_p=inner_mult_out,
+            name="inner_multiplier",
+            substrate=self,
+        )
+        inner_add_out = FluxParameter(model_wv_soln)
+        inner_multiplier.parameters.append(inner_add_out)
+        inner_adder = FluxSumModel(
+            output_p=inner_add_out,
+            name = "inner_adder",
+            substrate=self,
+        )
+        broadened_flux_p = FluxParameter(model_wv_soln)
+        inner_adder.parameters.append(broadened_flux_p)
+        broadening_multiplier = MatrixMultiplierModel(
+            output_p=broadened_flux_p,
+            name="broadening_matrix_multiplier",
+            substrate=self,
+        )
+        feat_mul_out = FluxParameter(model_wv_soln)
+        broadening_multiplier.parameters.append(feat_mul_out)
+        feature_multiplier = MultiplierModel(
+            output_p = feat_mul_out,
+            name="feature_multiplier",
+            substrate=self,
+        )
+        feature_sum_p = FluxParameter(model_wv_soln)
+        feature_adder = FluxSumModel(
+            output_p=feature_sum_p,
+            name="feature_adder",
+            substrate=self,
+        )
+    
+    def find_named_model(self, name):
+        for model in self.models:
+            try:
+                if model.name == name:
+                    return model
+            except AttributeError:
+                pass
+        return None
+    
+    def update_model_property(self, mod_name):
+        attr_name = "_"+mod_name
+        setattr(self, attr_name, self.find_named_model(mod_name))
+    
+    @property
+    def spectrograph_multiplier(self):
+        if self._spectrograph_multiplier is None:
+           self.update_model_property("spectrograph_multiplier")
+        return self._spectrograph_multiplier
+
+    @property
+    def spectrograph_adder(self):
+        if self._spectrograph_adder is None:
+            self.update_model_property("spectrograph_adder")
+        return self._spectrograph_adder
+        
+    @property
+    def sampling_matrix_multiplier(self):
+        if self._sampling_matrix_multiplier is None:
+            self.update_model_property("sampling_matrix_multiplier")
+        return self._sampling_matrix_multiplier
+
+    @property
+    def inner_multiplier(self):
+        if self._inner_multiplier is None:
+            self.update_model_property("inner_multiplier")
+        return self._inner_multiplier
+
+    @property
+    def inner_adder(self):
+        if self._inner_adder is None:
+            self.update_model_property("inner_adder")
+        return self._inner_adder
+    
+    @property
+    def broadening_matrix_multiplier(self):
+        if self._broadening_matrix_multiplier is None:
+            self.update_model_property("broadening_matrix_multiplier")
+        return self._broadening_matrix_multiplier
+    
+    @property
+    def feature_multiplier(self):
+        if self._feature_multiplier is None:
+            self.update_model_property("feature_multiplier")
+        return self._feature_multiplier
+    
+    @property
+    def feature_adder(self):
+        if self._feature_adder is None:
+            self.update_model_property("feature_adder")
+        return self._feature_adder

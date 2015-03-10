@@ -4,13 +4,13 @@ from thimbles.sqlaimports import *
 from thimbles import logger
 
 __all__ = """
-from_chebyshev 
-from_legendre
+from_spectre_chebyshev 
+from_spectre_legendre
 """.split()
 
 # ########################################################################### #
 
-def from_chebyshev(pixels, coefficients):
+def from_spectre_chebyshev(pixels, coefficients):
     # THIS VERSION TAKEN FROM SPECTRE
     #c20    p = (point - c(6))/c(7)
     #c      xpt = (2.*p-(c(9)+c(8)))/(c(9)-c(8))
@@ -23,7 +23,7 @@ def from_chebyshev(pixels, coefficients):
     return np.polynomial.chebyshev.chebval(xpts, coefficients)
 
 
-def from_legendre(pixels, coefficients):
+def from_spectre_legendre(pixels, coefficients):
     logger("generating wavelengths from legendre polynomial coefficients {}".format(coefficients))
     pixels = np.asarray(pixels)
     n = len(pixels)

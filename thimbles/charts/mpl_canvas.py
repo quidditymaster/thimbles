@@ -37,9 +37,21 @@ class MatplotlibCanvas(FigureCanvas):
     
     """
     
-    def __init__(self, nrows, ncols, sharex, sharey):
+    def __init__(self, nrows, ncols, sharex, sharey, subplot_kws=None):
         # setup Matplotlib Figure and Axis
+        kws = dict(
+            top=0.98,
+            bottom=0.1,
+            left=0.06,
+            right=0.98,
+        )
+        if subplot_kws is None:
+           subplot_kws = {}
+        subplot_kws = subplot_kws.copy()
+        for k in kws:
+           subplot_kws.setdefault(k,kws[k])
         self.fig = Figure()
+        self.fig.subplotpars.update(**subplot_kws)
         super(MatplotlibCanvas,self).__init__(self.fig)
         assert nrows >= 1
         assert ncols >= 1
@@ -90,7 +102,9 @@ class MatplotlibCanvas(FigureCanvas):
         #set the current axis to the first axis
         self.ax = self.axes[0]
         self._lock = threading.RLock()
-        
+
+
+
         #import pdb; pdb.set_trace()
         #self.fig.add_subplot(111)
         #self.ax.plot([0, 20], [0, 20])
@@ -111,9 +125,13 @@ class MatplotlibCanvas(FigureCanvas):
         self.ax = self.axis(row_idx, col_idx)
     
     def draw(self):
+        #print "in draw"
         self.lock()
+        #print "in lock"
         super(MatplotlibCanvas, self).draw()
+        #print "unlocking"
         self.unlock()
+        #print "unlocked"
     
     def blit(self, bbox=None):
         self.lock()

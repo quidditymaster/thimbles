@@ -26,21 +26,9 @@ from thimbles.options import Option, opts, EvalError
 
 # ########################################################################### #
 
-class TaskRegister(object):
-    
-    def __init__(self):
-        self.registry = {}
-    
-    def register_task(self, task):
-        self.registry[task.name] = task
-    
-    def __getitem__(self, index):
-        return self.registry[index]
-
-task_registry = TaskRegister()
-
-def task(name=None, result_name="return_value", option_tree=opts, registry=task_registry):
-    new_task = Task(name=name, result_name=result_name, option_tree=option_tree, registry=registry)
+task_registry = {}
+def task(name=None, result_name="return_value", option_tree=opts, registry=task_registry, sub_kwargs=None):
+    new_task = Task(name=name, result_name=result_name, option_tree=option_tree, registry=registry, sub_kwargs=sub_kwargs)
     return new_task.set_func
 
 def argument_dict(func, filler_value=None, return_has_default=False):
@@ -66,7 +54,10 @@ def argument_dict(func, filler_value=None, return_has_default=False):
 class Task(Option):
     target_ns = wds.__dict__
     
-    def __init__(self, result_name, name, option_tree, registry, func=None):
+    def __init__(self, result_name, name, option_tree, registry, sub_kwargs=None, func=None):
+        if sub_kwargs is None:
+            sub_kwargs = {}
+        self.sub_kwargs = sub_kwargs
         self.name = name
         self.result_name = result_name
         self.option_tree = option_tree
@@ -82,19 +73,24 @@ class Task(Option):
             if self.name is None:
                 self.name = self.func.__name__
             super(Task, self).__init__(self.name, default=func)
+            self._generate_child_options()
+            self.registry[self.name] = self
         return func
     
-    def generate_child_options(self):
+    def _generate_child_options(self):
         arg_dict, arg_has_default = argument_dict(self.func, return_has_default=True)
         self.task_kwargs = arg_dict.keys()
         for arg_key in arg_dict:
-            opt_kwargs = {}
+            opt_kwargs = self.sub_kwargs.pop(arg_key, {})
             if arg_has_default[arg_key]:
                 opt_kwargs["default"] = arg_dict[arg_key]
             Option(name=arg_key, parent=self, **opt_kwargs)
+        if len(self.sub_kwargs) > 0:
+            logger("Warning, not all sub_kwargs consumed! in Task.generate_child_options for task {} \n, {} left unconsumed".format(self.name, self.sub_kwargs))
     
-    def run(self):
+    def run(self, **kwargs):
         task_kwargs = {kw:getattr(self, kw).value for kw in self.task_kwargs}
+        task_kwargs.update(**kwargs)
         func_res = self.func(**task_kwargs)
         self.target_ns[self.result_name] = func_res
         return func_res

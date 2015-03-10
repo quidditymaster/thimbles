@@ -19,7 +19,7 @@ import subprocess
 import numpy as np
 
 import thimbles as tmb
-from thimbles import as_wavelength_solution
+from thimbles import as_wavelength_sample
 from thimbles.radtran.engines import RadiativeTransferEngine
 from thimbles.radtran.marcs_engine import MarcsInterpolator
 from thimbles.options import Option,opts
@@ -29,6 +29,7 @@ from thimbles.options import config_dir
 Option('moog',option_style="parent_dict")
 Option("executable",parent="moog", option_style="raw_string",envvar="MOOGSILENT")
 Option("opac_rad", parent="moog", default=3.0)
+Option("delta_wv", parent="moog", default=0.01)
 default_moog_wdir = os.path.join(config_dir, "working_dirs", "moog")
 Option("working_dir", 
        parent="moog",
@@ -43,8 +44,8 @@ default_par_template=\
 freeform       0
 gfstyle        1
 atmosphere     1
-molecules      2
-"""
+molecules      2"""
+
 common_par_components=\
 """
 flux/int       {flux_int}
@@ -63,6 +64,7 @@ synth_template= "synth\n" +opts["moog.par_template"] + common_par_components +\
           {min_wv: 10.5f} {max_wv: 10.5f} {delta_wv: 10.5f} {opac_rad: 10.5f}  
 """
 
+
 class MoogEngine(RadiativeTransferEngine):
     """an abstract class specifying the API for wrapping radiative transfer
     codes.
@@ -79,12 +81,16 @@ class MoogEngine(RadiativeTransferEngine):
         """execute moog silent in this engines working directory"""
         cur_dir = os.getcwd()
         #change to the working directory and execute
+        if opts.moog.executable.runtime_str is None:
+            raise Exception("path to MOOG executable not found, set moog.executable in config file or set an environment variable called MOOGSILENT with the path.")
         os.chdir(self.working_dir)
-        x = opts['moog.executable']
-        p = subprocess.call(x),#stdout=PIPE,stdin=PIPE)
-        #p.wait()
-        #change back to the original directory
-        os.chdir(cur_dir)
+        try:
+            x = opts['moog.executable']
+            p = subprocess.call(x)
+        except Exception as e:
+            print(e)
+        finally:
+            os.chdir(cur_dir)
     
     def ew_to_abundance(self, linelist, stellar_params, central_intensity=False):
         """generate abundances on the basis of equivalent widths
@@ -132,7 +138,7 @@ class MoogEngine(RadiativeTransferEngine):
         result = tmb.io.moog_io.read_moog_abfind_summary(summary_fname)
         return result
     
-    def abundance_to_ew(self, linelist, stellar_params, abundances=None, central_intensity=True):
+    def abundance_to_ew(self, linelist, stellar_params, abundances=None, central_intensity=False):
         self._make_photo_file(stellar_params)
         #write out the linelist in moog format
         line_name = "templines.ln.tmp"
@@ -155,17 +161,19 @@ class MoogEngine(RadiativeTransferEngine):
         result = tmb.io.moog_io.read_moog_ewfind_summary(summary_fname)
         return result
     
-    def spectrum(self, 
-                 linelist, 
-                 stellar_params, 
-                 wavelengths, 
-                 normalized=True, 
-                 delta_wv=None,
-                 opac_rad=None,
-                 central_intensity=False,
+    def spectrum(
+            self, 
+            linelist, 
+            stellar_params, 
+            wavelengths, 
+            sampling_mode="interpolate",
+            normalized=True, 
+            delta_wv=None,
+            opac_rad=None,
+            central_intensity=False,
     ):
         if not normalized:
-            self._not_implemented("moog only generates the normalized spectrum")
+            self._not_implemented("moog only generates normalized spectra")
         self._make_photo_file(stellar_params)
         #write out the linelist in moog format
         line_name = "templines.ln.tmp"
@@ -176,28 +184,35 @@ class MoogEngine(RadiativeTransferEngine):
         if central_intensity:
             flux_int = 1 
         f = open(os.path.join(self.working_dir, "batch.par"), "w")
-        wavelengths = as_wavelength_solution(wavelengths)
+        wavelengths = as_wavelength_sample(wavelengths)
+        wvs = wavelengths.wvs
         if opac_rad is None:
             opac_rad = opts["moog.opac_rad"]
-        f.write(synth_template.format(model_in=photo_name,
-                                      lines_in=line_name,
-                                      outfile=out_fname,
-                                      min_wv=wavelengths.min,
-                                      max_wv=wavelengths.max,
-                                      delta_wv=0.01, #make this depend on the wavelength being synthesized
-                                      opac_rad=opac_rad,
-                                      flux_int=flux_int
-                                      
+        if delta_wv is None:
+            delta_wv = opts["moog.delta_wv"]
+        f.write(synth_template.format(
+            model_in=self._photosphere_fname,
+            lines_in=line_name,
+            outfile=out_fname,
+            min_wv=wvs[0],
+            max_wv=wvs[-1],
+            delta_wv=delta_wv,
+            opac_rad=opac_rad,
+            flux_int=flux_int
         ))
         f.flush()
         f.close()
         self._exec_moog()
         summary_fname = os.path.join(self.working_dir, out_fname + ".sum")
-        result = tmb.io.moog_io.read_moog_ewfind_summary(summary_fname)
+        result = tmb.io.moog_io.read_moog_synth_summary(summary_fname)
+        resampled = result.sample(wavelengths, mode=sampling_mode)
         return result
     
     def continuum(self, stellar_params):
         self._not_implemented()
+
+
+mooger = MoogEngine()
 
 
 def get_model_name (teff,logg,feh,vt,modtype=None):

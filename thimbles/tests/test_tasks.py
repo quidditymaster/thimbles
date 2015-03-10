@@ -1,13 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-PURPOSE: 
-AUTHOR: dylangregersen
 DATE: Mon Aug 25 14:42:00 2014
 """
 # ########################################################################### #
-
-# import modules 
 
 from __future__ import print_function, division
 import os 
@@ -21,7 +17,7 @@ try:
 except ImportError:
     import pdb
 
-from thimbles.tasks import Task, task, TaskRegister
+from thimbles.tasks import Task, task
 from thimbles.options import OptionTree, Option, OptionSpecificationError
 import thimbles.workingdataspace as wds
 
@@ -31,7 +27,7 @@ class _TestTask (object): # unittest.TestCase
     
     def setUp (self):
         self.opts = OptionTree()
-        self.register = TaskRegister()
+        self.register = {}
         
         @task(name="task1", result_name="task1_result", option_tree=self.opts, registry=self.register)
         def func1(x,y,a=2):
@@ -42,16 +38,6 @@ class _TestTask (object): # unittest.TestCase
         def random_task_name():
             return "TADA!"
         self.opts.random_task_name.name = "random_task_name"
-    
-    def test_collisions_raise(self):
-        @task(option_tree = self.opts)
-        def some_task():
-            return "uh-oh"
-        
-        with self.assertRaises(OptionSpecificationError):
-            @task(name="some_task", option_tree = self.opts)
-            def also_some_task():
-                return "uh-oh"
     
     def test_children(self):
         top_cdict = self.opts.children
@@ -93,7 +79,6 @@ class _TestTask (object): # unittest.TestCase
         self.opts.task1.x.set_runtime_str("np.arange(10)")
         self.assertTrue(np.all(np.arange(10) == self.opts["task1.x"]))
 
-pass
 
 if __name__ == "__main__":
     unittest.main()

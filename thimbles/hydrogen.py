@@ -21,18 +21,41 @@ hlines = pd.DataFrame(data=dict(wv=data_cols[:, 0],
                       )
 
 @task()
-def get_H_mask(wvs, masking_radius=10.0):
-    """a mask to remove wavelengths close to hydrogen features"""
+def get_H_mask(wvs, masking_radius=-3.0, nup_max=None):
+    """generates a mask which is false close to hydrogen features
+    
+    inputs
+    wvs: np.ndarray
+      the wavelengths at which to evaluate the mask
+    masking_radius: float
+      the radius around each hydrogen line to exclude.
+      if the radius is positive it is interpreted as a constant number of
+      angstroms to exclude. If the number is negative it is interpreted as
+      the base 10 logarithm of the fraction of the line center wavelength
+      to exclude. That is for a line at wv lambda the radius of exclusion is
+      (10**masking_radius)*lambda.
+    nup_max: int
+      if specified hydrogen lines with upper energy levels above nup_max will
+      not contribute to the mask.
+    """
     min_wv = np.min(wvs)
     max_wv = np.max(wvs)
     mask = np.ones(wvs.shape, dtype=bool)
     for line_idx in range(len(hlines)):
-        lwv = hlines.iloc[line_idx]["wv"]
-        if lwv < (min_wv - masking_radius):
+        line_dat = hlines.iloc[line_idx]
+        lwv = line_dat["wv"]
+        nup = line_dat["nup"]
+        if nup > nup_max:
             continue
-        if lwv > (max_wv + masking_radius):
+        if masking_radius < 0:
+            mrad = np.power(10.0, masking_radius)*lwv
+        else:
+            mrad = masking_radius
+        if lwv < (min_wv - mrad):
             continue
-        mask *= np.abs(wvs-lwv) > masking_radius
+        if lwv > (max_wv + mrad):
+            continue
+        mask *= np.abs(wvs-lwv) > mrad
     return mask
 
 
@@ -84,9 +107,9 @@ class HydrogenLineOpacity(tmb.profiles.LineProfile):
         interped_profile += alpha_profile[np.clip(min_indexes+1, 0, len(alpha_profile)-1)]*mixing_ratio
         return np.exp(interped_profile)
 
-class HydrogenForegroundOpacityModel(Spectrum):
-    _id = Column(Integer, ForeignKey("Spectrum._id"), primary_key=True)
-    __mapper_args__={"polymorphic_identity":"HydrogenForegroundOpacity"}
+class HydrogenForegroundOpacityModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__={"polymorphic_identity":"HydrogenForegroundOpacityModel"}
     
     def __init__(self, wvs, strength, temperature, electron_density):
         Model.__init__(self)

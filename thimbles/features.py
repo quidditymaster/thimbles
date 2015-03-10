@@ -6,19 +6,27 @@ from copy import copy
 import scipy
 import scipy.integrate as integrate
 import scipy.sparse
-from flags import FeatureFlags
-from thimbles.stellar_atmospheres import solar_abundance as ptable
-from thimbles.profiles import voigt
 from thimbles import resource_dir
-from thimbles.modeling import Model
+from flags import FeatureFlags
+from thimbles import ptable
+from thimbles.profiles import voigt
+from thimbles import speed_of_light
+from thimbles.transitions import TransitionGroupingStandard, Transition
+from thimbles.modeling import Model, Parameter
+from thimbles.modeling import factor_models
+from thimbles.spectrum import FluxParameter, WavelengthSample
 from thimbles.utils.misc import smooth_ppol_fit
 import thimbles.utils.piecewise_polynomial as ppol
 from thimbles import logger
 from thimbles import hydrogen
 from latbin import matching
-from thimbles import as_wavelength_solution
+from thimbles import as_wavelength_sample
+from thimbles.thimblesdb import ThimblesTable, Base
+from thimbles.sqlaimports import *
 from thimbles.utils.misc import saturated_voigt_cog
 from thimbles.sqlaimports import *
+from thimbles.radtran import mooger
+
 
 def indicator_factory(indval, tolerance):
     return lambda x: np.abs(x-indval) < tolerance
@@ -58,7 +66,6 @@ class SpeciesGrouper(object):
         self.tolerance = tolerance
     
     def __call__(self, species):
-        #import pdb; pdb.set_trace()
         species = np.atleast_1d(species)
         unique_species, recon_idxs = np.unique(species, return_inverse=True)
         grp_nums = np.zeros(unique_species.shape)
@@ -110,7 +117,7 @@ def voigt_feature_matrix(wv_soln, centers, sigmas, gammas=None):
 
 
 
-class SaturatedVoigtFeatureModel(object):#(Model):
+class SaturatedVoigtFeatureModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     
     def __init__(self, 
@@ -286,7 +293,7 @@ class SaturatedVoigtFeatureModel(object):#(Model):
             else:
                 species_dat = self.fdat.ix[species_ixs]
                 cspecies_pnum = species_dat["Z"].iloc[0]
-                cabund = ptable[cspecies_pnum]["abundance"]
+                cabund = ptable["abundance"].ix[(cspecies_pnum, 0)]
                 rel_strengths = cabund + species_dat["loggf"] - self.theta*species_dat["ep"]
                 strength_sorted_ixs = species_ixs[np.argsort(rel_strengths).values]
                 sorted_strengths = rel_strengths[strength_sorted_ixs]
@@ -603,7 +610,7 @@ class SaturatedVoigtFeatureModel(object):#(Model):
         self.theta = value
     
     def calc_solar_ab(self):
-        self.fdat["solar_ab"] = ptable[self.fdat.species.values]["abundance"]
+        self.fdat["solar_ab"] = ptable["abundance"].ix[(self.fdat.z, 0)]
     
     def calc_therm_widths(self):
         self.fdat["thermal_width"] = tmb.utils.misc.thermal_width(self.fdat, self.teff)
@@ -698,41 +705,277 @@ class SaturatedVoigtFeatureModel(object):#(Model):
         ax.set_xlabel("adjusted relative strength")
         ax.set_ylabel("log(EW/doppler_width)")
 
-class SimpleMatrixOpacityModel(Model):
-    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
-    
-    def __init__(self, model_wvs, opac_matrix, opac_strength):
-        Model.__init__(self)
-        self.wv = model_wvs
-        self.opac_matrix = scipy.sparse.csr_matrix(opac_matrix)
-        assert len(opac_matrix)==len(model_wvs)
-        self.opac_strength = opac_strength
-    
-    #@parameter(free=True, min=0.0001)
-    def opac_strength_p(self):
-        return self.opac_strength
-    
-    #@opac_strength_p.setter
-    def opac_strength(self, value):
-        self.opac_strength = value
-    
-    def __call__(self, input_vec):
-        return self.opac_matrix*self.opac_strength + input_vec
 
-class OpacityToTransmission(Model):
-    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+class EWSumParameter(Parameter):
+    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"EWSumParameter",
+    }
+    _value = Column(Float)
     
-    def __init__(self):
-        Model.__init__(self)
-    
-    def __call__(self, input_vec):
-        return np.exp(-input_vec)
-    
-    def as_linear_op(self, input_vec):
-        npts = len(input_vec)
-        return scipy.sparse.dia_matrix((-np.exp(-input_vec), 0), shape=(npts, npts))
+    def __init__(self, value):
+        self._value = value
 
-class Feature(object):
+
+class FeatureGroupModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"FeatureGroupModel",
+    }
+    _ew_sum_id = Column(Integer, ForeignKey("EWSumParameter._id"))
+    ew_sum_p = relationship("EWSumParameter")
+    _stellar_parameters_id = Column(Integer, ForeignKey("StellarParameters._id"))
+    stellar_parameters = relationship("StellarParameters")
+    
+    def __init__(
+            self, 
+            wv_soln, 
+            group, 
+            stellar_parameters, 
+            share_gamma=True,
+            substrate=None,
+    ):
+        transitions = group.transitions
+        self.ew_sum_p = EWSumParameter(0.01)
+        self.stellar_parameters = stellar_parameters
+        parameters = [self.ew_sum_p]
+        profile_models = []
+        for trans in transitions:
+            gamma_p = None
+            if len(profile_models) > 0:
+                if share_gamma:
+                    gamma_p = profile_models[-1].gamma_p
+            pmod = VoigtProfileModel(
+                wv_soln=wv_soln, 
+                transition=trans,
+                stellar_parameters=stellar_parameters,
+                gamma=gamma_p
+            )
+            profile_models.append(pmod)
+            parameters.append(pmod.output_p)
+        min_start = np.min([pmod.output_p.wv_sample.start for pmod in profile_models])
+        max_end = np.max([pmod.output_p.wv_sample.end for pmod in profile_models])
+        wvsamp = WavelengthSample(wv_soln, start=min_start, end=max_end)
+        self.output_p = FluxParameter(wvsamp)
+        self.parameters = parameters
+        self.substrate = substrate
+    
+    def __call__(self, vprep=None):
+        vdict = self.get_vdict(vprep)
+        if len(vdict) == 0:
+            return None
+        ew_sum_val = vdict.pop(self.ew_sum_p)
+        fparams = vdict.keys()
+        prof_strengths = np.zeros(len(fparams))
+        for prof_idx in range(len(fparams)):
+            profile_param = fparams[prof_idx]
+            transition = profile_param.mapped_models[0].transition
+            if not self.substrate is None:
+                stell_ps = self.substrate.source.stellar_parameters
+            else:
+                stell_ps = None
+            pstrength = transition.pseudo_strength(stellar_parameters=stell_ps)
+            prof_strengths[prof_idx] = np.power(10.0, pstrength)
+        prof_strengths /= np.sum(prof_strengths)
+        output_sample = self.output_p.wv_sample
+        fsum = np.zeros(len(output_sample))
+        out_start = output_sample.start
+        for prof_idx in range(len(fparams)):
+            fp = fparams[prof_idx]
+            start, end = fp.wv_sample.start, fp.wv_sample.end
+            start = start-out_start
+            end = end-out_start
+            fsum[start:end] += -prof_strengths[prof_idx]*fp.value#*ew_sum_value
+        return fsum
+
+
+class GammaParameter(Parameter):
+    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"GammaParameter",
+    }
+    _value = Column(Float)
+    
+    def __init__(self, value=None):
+        if value is None:
+            value = 0.0
+        self._value = value
+
+def as_gamma_parameter(gamma):
+    if isinstance(gamma, GammaParameter):
+        return gamma
+    else:
+        return GammaParameter(gamma)
+
+class VoigtProfileModel(Model):
+    """a model for a voigt profile with the gaussian width determined 
+    by assuming a sqrt(thermal**2 + vmicro**2) = sigma, and a free 
+    gamma parameter.
+    """
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"VoigtProfileModel",
+    }
+    _transition_id = Column(Integer, ForeignKey("Transition._id"))
+    transition = relationship("Transition")
+    max_width = Column(Float)
+    
+    #non-sql attributes
+    _gamma_p = None
+    _teff_p = None
+    _vmicro_p = None
+    
+    def __init__(
+            self, 
+            wv_soln, 
+            transition,
+            stellar_parameters,
+            max_width=None,
+            gamma=0.0,
+            substrate=None,
+    ):
+        self.transition=transition
+        cent_wv = transition.wv
+        if max_width is None:
+            max_width = cent_wv*5e-4
+        self.max_width = max_width
+        gamma_p = as_gamma_parameter(gamma)
+        teff_p = stellar_parameters.teff_p
+        vmicro_p = stellar_parameters.vmicro_p
+        self.parameters = [gamma_p, teff_p, vmicro_p]
+        start, end = wv_soln.get_index([cent_wv-self.max_width, cent_wv+self.max_width], clip=True, snap=True)
+        wvsamp = WavelengthSample(wv_soln, start=start, end=end)
+        self.output_p = FluxParameter(wvsamp)
+        self.substrate=substrate
+    
+    def __call__(self, vprep=None):
+        vdict = self.get_vdict(vprep)
+        teff_val = vdict[self.teff_p]
+        vmicro_val = vdict[self.vmicro_p]
+        twv = self.transition.wv
+        weight = self.transition.ion.weight
+        therm_sig = tmb.utils.misc.thermal_width(teff_val, twv, weight)
+        vmicro_sig = (vmicro_val/speed_of_light)*twv
+        sigma_val = np.sqrt(therm_sig**2 + vmicro_sig**2)
+        gamma_val = vdict[self.gamma_p]
+        wvs = self.output_p.wv_sample.wvs
+        pflux = voigt(wvs, twv, sigma_val, gamma_val)
+        return pflux
+    
+    @property
+    def teff_p(self):
+        if self._teff_p is None:
+            for p in self.parameters:
+                if isinstance(p, tmb.stellar_parameters.TeffParameter):
+                    self._teff_p = p
+                    break
+        return self._teff_p
+    
+    @property
+    def vmicro_p(self):
+        if self._vmicro_p is None:
+            for p in self.parameters:
+                if isinstance(p, tmb.stellar_parameters.VmicroParameter):
+                    self._vmicro_p = p
+                    break
+        return self._vmicro_p
+    
+    @property
+    def gamma_p(self):
+        if self._gamma_p is None:
+            for p in self.parameters:
+                if isinstance(p, GammaParameter):
+                    self._gamma_p = p
+                    break
+        return self._gamma_p
+
+
+class GroupedFeatureSubstrate(tmb.modeling.ModelSubstrate):
+    _id = Column(Integer, ForeignKey("ModelSubstrate._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"GroupedFeatureSubstrate",
+    }
+    _feature_flux_id = Column(Integer, ForeignKey("FluxParameter._id"))
+    feature_flux = relationship("FluxParameter")
+    _source_id = Column(Integer, ForeignKey("Source._id"))
+    source = relationship("Source")
+    
+    def __init__(self, star, database, grouping_standard, wv_soln, flux_socket=None):
+        self.source = star
+        wv_soln = tmb.as_wavelength_solution(wv_soln)
+        self.feature_flux = FluxParameter(wv_soln)
+        if not isinstance(grouping_standard, TransitionGroupingStandard):
+            grouping_standard = database.query(TransitionGroupingStandard)\
+                    .filter(TransitionGroupingStandard.name == grouping_standard)\
+                    .first()
+            if grouping_standard is None:
+                raise TypeError("TransitionGroupingStandard not found")
+        feature_group_models = []
+        for group in grouping_standard.groups:
+            fgm = FeatureGroupModel(
+                wv_soln=wv_soln,
+                group=group,
+                stellar_parameters=star.stellar_parameters,
+                substrate=self,
+            )
+            feature_group_models.append(fgm)
+        feature_adder = factor_models.FluxSumModel(
+            output_p = self.feature_flux,
+            parameters = [fgm.output_p for fgm in feature_group_models],
+            substrate=self,
+        )
+        if not flux_socket is None:
+            flux_socket.append(self.feature_flux)
+
+
+class VoigtFitSingleLineSynthesis(ThimblesTable, Base):
+    """table for caching the values of running MOOG to synthesize an individual
+transition then fitting the resultant spectrum with a voigt profile to determine a sigma, gamma and equivalent width.
+    """
+    _transition_id = Column(Integer, ForeignKey("Transition._id"))
+    transition = relationshp = relationship("Transition")
+    _stellar_parameters_id = Column(Integer, ForeignKey("StellarParameters._id"))
+    stellar_parameters = relationship("StellarParameters")
+    ew = Column(Float)
+    sigma = Column(Float)
+    gamma = Column(Float)
+    rms = Column(Float)
+    
+    #class attributes
+    _teff_delta = 250 #grid points in teff
+    _logg_delta = 0.5 #grid spacing in logg
+    _metalicity_delta = 0.5 #grid spacing in [Fe/H]
+    _vmicro_delta = 0.1 #grid spacing in microturbulence
+    _delta_lambda = 0.01
+    _opac_rad = 10.0
+    
+    engine_instance = mooger
+    
+    def __init__(self, transition, teff, logg, metalicity, vmicro, x_on_fe):
+        self.transtion = transition
+        abund = Abundance(self.transition.ion)
+        self.stellar_parameters = StellarParameters(teff, logg, metalicity, vmicro, abundances=[abund])
+        cent_wv = self.transition.wv
+        min_wv = cent_wv - self._opac_rad
+        max_wv = cent_wv + self._opac_rad
+        targ_npts = int((max_wv-min_wv)/self._delta_lambda)
+        targ_wvs = np.linspace(min_wv, max_wv, targ_npts)
+        synth = self.engine_instance.spectrum(
+            linelist=[self.transition],
+            stellar_params=self.stellar_parameters,
+            wavelengths=targ_wvs,
+            sampling_mode="bounded",
+            delta_wv=self._delta_lambda,
+            opac_rad=self._opac_rad,
+            central_intensity=False,
+        )
+        depths = 1.0-synth.flux
+        fres = tmb.utils.misc.unweighted_voigt_fit(synth.wvs, depths)
+        self.sigma, self.gamma, self.ew = fres
+        #import pdb; pdb.set_trace()
+
+
+class OldFeature(object):
     
     def __init__(self, 
                  profile, 
@@ -832,7 +1075,7 @@ class Feature(object):
         return np.log10(self.eq_width/self.wv)
     
     def thermal_width(self, teff):
-        4.301e-7*np.sqrt(teff/self.molecular_weight)*self.wv
+        return tmb.utils.misc.thermal_width(teff, self.wv, self.molecular_weight)
     
     def get_cog_point(self, teff, vturb=2.0, abundance_offset=0.0):
         #most likely velocity
@@ -847,71 +1090,3 @@ class Feature(object):
         return x, y
 
 
-class AtomicTransition:
-    """
-    Holds parameters for a specific energy transition
-    
-    wavelength,id_,loggf,ep,vwdamp=0,d0=0,info=None
-    Parameters
-    ----------
-    wavelength : float
-        Gives the wavelength, in Angstroms, of the transition 
-    id_ : float
-        Gives the transition id, for atomic transitions this is the species 
-        # TODO: have solar abundance convert string to integer for this
-    loggf : float
-        Oscillator strength of the transition
-    ep : float
-        The excitation potential of the transition
-    vwdamp : float
-        The VanDer Waals Damping constant for the transition
-    d0 : float
-        The dissociation energy for the transition
-    
-    Raises
-    ------
-    none
-    
-    
-    Notes
-    -----
-    __1)__ none
-    
-    
-    Examples
-    --------
-    >>> transition = TransitionProperties(5555.5,26.0,4.0,-1.34)
-    >>>
-    >>>
-    
-    """
-    
-    def __init__ (self,wavelength,id_,loggf,ep,vwdamp=0,d0=0):
-        self.wv = wavelength
-        # if id_ is given as string (e.g. 'Fe I') then this will get the 
-        # appropriate id
-        #if isinstance(id_,basestring):
-        #    id_ = periodic_table[id_][0] 
-        self._id = id_
-        self.loggf = loggf
-        self.ep = ep
-        self.vwdamp = vwdamp
-        self.d0 = d0
-    
-    @property
-    def molecular_weight(self):
-        """molecular weight in amu of the species"""
-        #TODO: use the real molecular weight instead of the species number
-        return np.around(2*self._id)
-    
-    @property
-    def species(self):
-        return self._id
-    
-    def __repr__ (self):
-        out = (format(self.wv,'10.3f'),
-               format(self._id,'5.1'),
-               format(self.loggf,'5.2f'),
-               format(self.ep,'5.2f'))
-        return "  ".join(out)
-    

@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import thimbles as tmb
+from thimbles.modeling import Model
 import matplotlib.pyplot as plt
 import scipy
 import scipy.integrate as integrate
@@ -11,8 +12,8 @@ from thimbles import logger
 from spectrum import Spectrum
 from sqlaimports import *
 
-class BlackBodyContinuumModel(Spectrum):
-    _id = Column(Integer, ForeignKey("Spectrum._id"), primary_key=True)
+class BlackBodyContinuumModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__={"polymorphic_identity":"BlackBodyContinuum"}
     
     def __init__(self, model_wvs, teff):

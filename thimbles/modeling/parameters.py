@@ -16,16 +16,26 @@ def flat_size(shape_tup):
 
 class ParameterGroup(object):
     
-    def __init__(self, parameters):
-        self._parameters = parameters
-    
-    @property
-    def parameters(self):
-        return self._parameters
+    def __init__(self, parameters=None):
+        if parameters is None:
+            parameters = []
+        self.parameters = parameters
     
     @property
     def free_parameters(self):
-        return [param for param in self.parameters if param.is_free]
+        return [param for param in self.parameters if not param.fixed]
+    
+    def sliced_posterior(self, center=None, radius=None, n_max=100):
+        """estimate 
+        """
+        distribs = [p.distributions for p in self.parameters if len(p.distributions) > 0]
+        #TODO: check distributions for a modification time and cache value of sum
+        sum_dist = distribs.pop(0).as_sog(center=center, radius=radius, embedding_space=self)
+        while len(distribs) > 0:
+            cur_dist = distribs.pop(0)
+            cur_dist = cur_dist.as_sog(center=center, radius=radius, embedding_space=self)
+            sum_dist = combine_sog_distributions(sum_dist, cur_dist, n_max=n_max)
+        return sum_dist
     
     def parameter_index(self, parameter):
         return self.parameters.index(parameter)
@@ -109,116 +119,70 @@ class ParameterGroup(object):
             else:
                 setattr(p, attr, val_dict[p])
 
+class FixedParameterException(Exception):
+    pass
 
 class Parameter(ThimblesTable, Base):
-    _value = Column(Float) #a handle for storing and loading our model values
-    model_id = Column(Integer, ForeignKey("Model._id"))
-    
-    parameter_type = Column(String)
+    parameter_class = Column(String)
     __mapper_args__={
         "polymorphic_identity":"parameter",
-        "polymorphic_on": parameter_type
+        "polymorphic_on": parameter_class
     }
     
-    def __init__(self, 
-                 getter,
-                 setter,
-                 expander=None,
-                 free = False,
-                 name = None,
-                 scale= 1.0,
-                 step_scale=1.0,
-                 derivative_scale=1e-4,
-                 convergence_scale=1e-2,
-                 min=-np.inf, 
-                 max=np.inf, 
-                 history_max=10,
-                 ):
-        self._getter=getter
-        self._setter=setter
-        self._expander=expander
-        self.model=None
-        self.name = name
-        self.scale=scale
-        self.step_scale = step_scale
-        self.derivative_scale=derivative_scale
-        self.convergence_scale = convergence_scale
-        self.min = min
-        self.max = max
-        self._free=free
-        self._dist=None
-        #self._parameterizer = None
-        #self._contextualizer = None
-        
-        self.history = ValueHistory(self, history_max)   
+    _value = None
     
-    def __repr__(self):
-        val = None
-        try:
-            val = self.get()
-        except:
-            pass
-        return "Parameter: name={}, value={}".format(self.name, val)
+    #class attributes
+    name = "base parameter class"
+    
+    def __init__(self, value=None,):
+        pass
     
     @property
-    def dist(self):
-        return self._dist
+    def value(self):
+        if self._value is None:
+            m_models = self.mapped_models
+            if len(m_models) >= 1:
+                if len(m_models) > 1:
+                    print "warning parameter value regeneration is non-unique consider changing the model hierarchy to use cached paramters"
+                mod = m_models[0]
+                mod.fire() #should populate our self._value attribute
+        return self._value
     
-    @dist.setter
-    def dist(self, value):
-        if isinstance(value, ParameterDistribution):
-            self._dist=value
-            self._dist.set_parameter(self)
-        else:
-            asndarr = np.asarray(value, dtype=float)
-            if asndarr.shape == tuple():
-                asndarr=np.ones(self.value().shape)*asndarr
-            self._dist = NormalDeltaDistribution(asndarr, parameter=self)
+    @value.setter
+    def value(self, value):
+        self.set(value,)
+    
+    def get(self):
+        return self.value
+    
+    def set(self, value):
+        #import pdb; pdb.set_trace()
+        self._value = value
+        mods = []
+        mod_set = set()
+        mods.extend(self.models)
+        while len(mods) > 0:
+            mod = mods.pop(0)
+            mod_set.add(mod)
+            #execute the model
+            mod.fire()
+            #mark the donwnstream models inputs as invalid
+            downstream = mod.output_p.models
+            for dsmod in downstream:
+                dsmod.output_p._value = None 
+            #TODO: implement incremental updates somehow
+            mods.extend([nmod for nmod in mod.output_p.models if nmod not in mod_set])
     
     @property
     def shape(self):
         return np.asarray(self.get()).shape
-    
-    @property
-    def is_free(self):
-        return self._free
-    
-    def remember(self, value_id=None):
-        self.history.remember(value_id=value_id)
-    
-    def revert(self, value_id, pop=False):
-        self.history.revert(value_id=value_id, pop=pop)
-        
-    def set_model(self, model):
-        self.model = model
-    
-    def set(self, value, **kwargs):
-        min_respected = np.atleast_1d(value) >= self.min
-        max_respected = np.atleast_1d(value) <= self.max
-        self._setter(self.model, np.clip(value, self.min, self.max), **kwargs) 
-        if np.all(min_respected*max_respected):
-            return True
-        else:
-            return False
-    
-    def expand(self, input_vec, **kwargs):
-        return self._expander(self.model, input_vec, **kwargs)
-    
-    def get(self):
-        return self._getter(self.model)
-    
-    def validate(self):
-        if self.model is None:
-            raise ModelingError("parameter.model is None")
-        if self._setter is None:
-            raise ModelingError("parameter has no setter")
-    
-    def weight(self, offset=None):
-        return self.dist.weight(offset)
 
-class VectorParameter(Parameter):
-    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
-    _value = Column(String)
-    __mapper_args__={
-        "polymorphic_identity": "vectorparameter"
-    }
+
+#how to make a parameter subclass
+#class classname(Parameter):
+#    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
+#    _value = Column(Float)
+#    __mapper_args__={
+#        "polymorphic_identity": "classname"
+#    }
+

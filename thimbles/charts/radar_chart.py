@@ -112,13 +112,14 @@ def unit_poly_verts(theta):
     verts = [(r*np.cos(t) + x0, r*np.sin(t) + y0) for t in theta]
     return verts
 
-
 if __name__ == "__main__":
     n_spokes = 5
     theta = radar_factory(n_spokes, frame="polygon")
     fig = plt.figure()
     
     ax = fig.add_subplot(1, 1, 1, projection="radar")
-    ax.plot(theta, np.random.random(n_spokes))
+    datapoints = np.random.random(n_spokes)
+    ax.plot(theta, datapoints)
+    ax.fill(theta, datapoints)
     plt.show()
     

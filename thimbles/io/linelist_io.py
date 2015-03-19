@@ -44,7 +44,13 @@ def read_vald_linelist(fname):
         ldat.append(trans)
     return ldat
 
-@task(result_name="line_data")
+@task(
+    result_name="transitions",
+    sub_kwargs=dict(
+        fname=dict(option_style="raw_string", editor_style="file"),
+        file_type=dict(option_style="raw_string"),
+        )
+)
 def read_linelist(fname, file_type="detect"):
     """
     fname: string

@@ -158,7 +158,7 @@ class TransitionsChart(object):
             tine_min=0.0,
             tine_max=1.0,
             handle_max=1.35,
-            fan_fraction=0.9,
+            fan_fraction=0.75,
             handle_picker=None,
             tine_picker=None,
             tine_tags=None,

@@ -541,13 +541,19 @@ class TransitionExpressionWidget(QtGui.QWidget):
         self.ax.set_ylabel(self.y_expression)
         layout.addWidget(self.y_le, 2, 1, 1, 1)
         
-        self.dummy_trans = Transition(500.0, (26, 1), 1.0, -1.0)
+        self.dummy_trans = Transition(
+            wv=5000.0, 
+            ion=(26, 1), 
+            ep=1.0, 
+            loggf=-1.0,
+            damp=tmb.transitions.Damping(0.0, 0.0, 0.0, 0.0),
+        )
         
         self.x_le.editingFinished.connect(self.on_x_changed)
         self.y_le.editingFinished.connect(self.on_y_changed)
     
     def minimumSizeHint(self):
-        return QtCore.QSize(200, 250)
+        return QtCore.QSize(100, 50)
     
     def on_x_changed(self):
         x_text = self.x_le.text()
@@ -582,63 +588,98 @@ class TransitionExpressionWidget(QtGui.QWidget):
         return good_expr
 
 
-class TransitionGroupBurstPlot(object):
-    _plot_initialized = False
+class XYExpressionResolver(object):
+    
+    def resolve_expression(self, transition_list, expression):
+        try:
+            return [eval(expression) for t in transition_list]
+        except Exception as e:
+            return None
+    
+    def resolve_xy(self, transition_list):
+        xvals = self.resolve_expression(transition_list, self.x_expression)
+        yvals = self.resolve_expression(transition_list, self.y_expression)
+        return xvals, yvals
+
+
+class TransitionGroupBurstPlot(XYExpressionResolver):
+    _bursts_initialized=False
+    _centers_initialized=False
     
     def __init__(
             self,
-            x_expression,
-            y_expression,
+            groups=None,
+            x_expression="t.pseudo_strength()", 
+            y_expression="t.ep",
+            picker=None,
             ax=None,
+            transition_tags=None, 
             **mplkwargs
     ):
-        if ax is None:
-            fig, ax = plt.subplots()
-        self.ax = ax
-    
+        if groups is None:
+            groups = []
+        self.groups = groups
+        self.x_expression=x_expression
+        self.y_expression=y_expression
+        self.picker = picker
+
     @Slot(list)
     def set_groups(self, glist):
+        if glist is None:
+            glist = []
         self.groups = glist
         self.update()
     
+    @Slot(str)
+    def set_x_expression(self, expr_text):
+        self.x_expression = expr_text
+        self.update()
+    
+    @Slot(str)
+    def set_y_expression(self, expr_text):
+        self.y_expression = expr_text
+        self.update()
+    
     def update(self):
-        if not self._plot_initialized:
-            self.bursts = mpl.collections.LineCollection
-    
-    def _line_burst_data(self, x, y, center_x=None, center_y=None):
-        if center_x is None:
-            center_x = np.nanmean(x)
-        if center_y is None:
-            center_y = np.nanmean(y)
-        burst_data = np.zeros((len(x), 2, 2))
-        #start each line at the center
-        burst_data[:, 0, 0] = center_x
-        burst_data[:, 0, 1] = center_y
-        #then move to the position of the transition
-        burst_data[:, 1, 0] = x
-        burst_data[:, 1, 1] = y
-        return burst_data
-    
-    def update_group(self):
-        group = self.group
-        gtrans = group.transitions
-        grp_color = "#99ff33"
-        grp_x, grp_y = self.resolve_xy(gtrans)
-        grp_x_center, grp_y_center = np.nanmean(grp_x), np.nanmean(grp_y)
-        burst_data = self._line_burst_data(grp_x, grp_y, grp_x_center, grp_y_center)
-        if not self._group_initialized:
-            self.group_burst = mpl.collections.LineCollection(burst_data, color=grp_color, linewidth=3.0, zorder=1) #not pickable
-            self.ax.add_artist(self.group_burst)
-            self.group_dot ,= self.ax.plot([grp_x_center], [grp_y_center], picker=6, color=grp_color, markersize=10, zorder=1)
-            self._group_initialized = True
+        groups = self.groups
+        if len(groups) == 0:
+            if self._bursts_initialized:
+                self._bursts.set_visible(False)
+            if self._centers_initialized:
+                self._centers.set_visible(False)
         else:
-            self.group_burst.set_segments(burst_data)
-            self.group_dot.set_data([grp_x_center], [grp_y_center])
-        self.group_dot._md = dict(name="group", group=group)
+            group_xys = []
+            nlines_tot = 0
+            group_xys = [self.resolve_xy(group.transitions) for group in self.groups if len(group.transitions) > 0]
+            nlines_each = [len(gr_xy[0]) for gr_xy in group_xys]
+            burst_data = np.zeros((nlines_tot, 2, 2))
+            x_centers = [np.mean(gr_xy[0]) for gr_xy in group_xys]
+            y_centers = [np.mean(gr_xy[1]) for gr_xy in group_xys]
+            lb = 0
+            for i in range(len(group_xys)):
+                ub = lb + nlines_each[i]
+                burst_data[lb:ub, 0, 0] = x_centers[i]
+                burst_data[lb:ub, 0, 1] = y_centers[i]
+                burst_data[lb:ub, 1, 0] = group_xys[0][i]
+                burst_data[lb:ub, 1, 1] = group_xys[1][i]
+                lb = ub
+            if not self._bursts_initialized:
+                self.bursts = LineCollection(burst_data)
+                self.ax.add_argist(self.bursts)
+                self._bursts_initialized = True
+            else:
+                self.bursts.set_segments(burst_data)
+            if not self._centers_initialized:
+                self.centers ,= self.ax.plot(x_centers, y_centers, picker=self.picker, markersize=10)
+                self._centers_initialized = True
+            else:
+                self.centers.set_data(x_centers, y_centers)
+            
+            self.ax._tmb_redraw=True
 
 
-class TransitionScatterPlot(object):
-    _plot_initialized = False
+class TransitionScatterPlot(XYExpressionResolver):
+    _points_initialized = False
     
     def __init__(
             self,
@@ -684,27 +725,16 @@ class TransitionScatterPlot(object):
         self.ax.set_ylabel(self.y_expression)
         self.update()
     
-    def resolve_expression(self, transition_list, expression):
-        try:
-            return [eval(expression) for t in transition_list]
-        except Exception as e:
-            return None
-    
-    def resolve_xy(self, transition_list):
-        xvals = self.resolve_expression(transition_list, self.x_expression)
-        yvals = self.resolve_expression(transition_list, self.y_expression)
-        return xvals, yvals
-    
     def update(self):
         transitions = self.transitions
         if len(transitions) == 0:
-            if self._plot_initialized:
+            if self._points_initialized:
                 self.scatter.set_visible(False)
         else:
             xvals, yvals = self.resolve_xy(transitions)
-            if not self._plot_initialized:
+            if not self._points_initialized:
                 self.scatter ,= self.ax.plot(xvals, yvals, picker=self.picker, linestyle="none", **self.mplkwargs)
-                self._plot_initialized =True
+                self._points_initialized =True
             else:
                 self.scatter.set_data(xvals, yvals)
             mdat = dict(kind="transitions", transitions=transitions)

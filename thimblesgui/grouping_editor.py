@@ -8,6 +8,7 @@ from PySide.QtCore import QModelIndex
 
 import numpy as np
 import matplotlib as mpl
+from matplotlib.collections import LineCollection
 import matplotlib.pyplot as plt
 
 import thimbles as tmb
@@ -25,13 +26,12 @@ import thimbles.charts as charts
 from thimblesgui import MatplotlibWidget
 from thimblesgui import FluxDisplay
 
-#background transition color gamut
-fgtrans_color = "#4076FF" #darkish blue
-bktrans_focus_color = "#B2ECFF" #highlighted in pale blue-green
+#color gamut
+fg_color = "#CD4619" 
+bk_color = "#4076FF" 
+focus_color = "#F0DB62"
+#bk_focus_color = "#B2ECFF" 
 
-#foreground transition color gamut
-bktrans_color = "#CD4619" #darkish red/ochre
-fgtrans_focus_color = "#F0DB62"#"#FAFF68" #highlighted in mute yellow
 
 class SelectionTier(QtCore.QObject):
     changed = Signal(list)
@@ -94,12 +94,18 @@ class SelectionTier(QtCore.QObject):
         self.focusChanged.emit(self.focused)
         if update_selection:
             if not self._selection_model is None:
-                #print "need to implement selection setting form focus figure this out!"
-                data_model = self._selection_model.parent().model()
+                selection_view = self._selection_model.parent()
+                data_model = selection_view.model()
+                last_col = data_model.columnCount() - 1
                 qidxs = [data_model.index(i, 0) for i in self.focus]
+                end_qidxs = [data_model.index(i, last_col) for i in self.focus]
                 qsel = QtGui.QItemSelection()
-                for qidx in qidxs:
-                    qsel.select(qidx, qidx)
+                if len(qidxs) > 0:
+                    selection_view.scrollTo(qidxs[0])
+                for sel_idx in range(len(qidxs)):
+                    qidx = qidxs[sel_idx]
+                    end_qidx = end_qidxs[sel_idx]
+                    qsel.select(qidx, end_qidx)
                 self._selection_model.select(qsel, QtGui.QItemSelectionModel.SelectCurrent)
     
     def set_values(self, values):
@@ -622,6 +628,9 @@ class TransitionGroupBurstPlot(XYExpressionResolver):
         self.x_expression=x_expression
         self.y_expression=y_expression
         self.picker = picker
+        if ax is None:
+            fig, ax = plt.subplots()
+        self.ax = ax
 
     @Slot(list)
     def set_groups(self, glist):
@@ -641,6 +650,7 @@ class TransitionGroupBurstPlot(XYExpressionResolver):
         self.update()
     
     def update(self):
+        #import pdb; pdb.set_trace()
         groups = self.groups
         if len(groups) == 0:
             if self._bursts_initialized:
@@ -649,9 +659,9 @@ class TransitionGroupBurstPlot(XYExpressionResolver):
                 self._centers.set_visible(False)
         else:
             group_xys = []
-            nlines_tot = 0
             group_xys = [self.resolve_xy(group.transitions) for group in self.groups if len(group.transitions) > 0]
             nlines_each = [len(gr_xy[0]) for gr_xy in group_xys]
+            nlines_tot = sum(nlines_each)
             burst_data = np.zeros((nlines_tot, 2, 2))
             x_centers = [np.mean(gr_xy[0]) for gr_xy in group_xys]
             y_centers = [np.mean(gr_xy[1]) for gr_xy in group_xys]
@@ -660,21 +670,22 @@ class TransitionGroupBurstPlot(XYExpressionResolver):
                 ub = lb + nlines_each[i]
                 burst_data[lb:ub, 0, 0] = x_centers[i]
                 burst_data[lb:ub, 0, 1] = y_centers[i]
-                burst_data[lb:ub, 1, 0] = group_xys[0][i]
-                burst_data[lb:ub, 1, 1] = group_xys[1][i]
+                burst_data[lb:ub, 1, 0] = group_xys[i][0]
+                burst_data[lb:ub, 1, 1] = group_xys[i][1]
                 lb = ub
             if not self._bursts_initialized:
                 self.bursts = LineCollection(burst_data)
-                self.ax.add_argist(self.bursts)
+                self.ax.add_artist(self.bursts)
                 self._bursts_initialized = True
             else:
                 self.bursts.set_segments(burst_data)
             if not self._centers_initialized:
-                self.centers ,= self.ax.plot(x_centers, y_centers, picker=self.picker, markersize=10)
+                self.centers ,= self.ax.plot(x_centers, y_centers, picker=self.picker, markersize=10, marker="o", linestyle="none")
                 self._centers_initialized = True
             else:
                 self.centers.set_data(x_centers, y_centers)
-            
+            mdat = dict(kind="groups", groups=self.groups)
+            self.centers._md = mdat
             self.ax._tmb_redraw=True
 
 
@@ -1133,7 +1144,7 @@ class GroupingStandardEditor(QtGui.QMainWindow):
             lmin=lmin,
             lmax=lmax,
             linewidth=1.0,
-            color=bktrans_color,
+            color=bk_color,
             tine_tags={"tier":"background"},
             ax=self.flux_display.ax,
         )
@@ -1142,7 +1153,7 @@ class GroupingStandardEditor(QtGui.QMainWindow):
         self.foreground_tines = tmb.charts.fork_diagram.TransitionsChart(
             self.selection.transitions.foreground.values,
             #grouping_dict=self.grouping_dict,
-            color=fgtrans_color,
+            color=fg_color,
             tine_picker=6,
             tine_tags={"tier":"foreground"},
             lmin=lmin,
@@ -1156,10 +1167,11 @@ class GroupingStandardEditor(QtGui.QMainWindow):
         self.active_fork_diagram = tmb.charts.fork_diagram.TransitionsChart(
             self.selection.transitions.foreground.focused,
             grouping_dict=self.grouping_dict,
-            color=fgtrans_focus_color,
+            color=focus_color,
             lmin=lmin,
             lmax=lmax,
             linewidth=2.5,
+            handle_picker=6,
             zorder=1,
             ax=self.flux_display.ax,
         )
@@ -1178,7 +1190,7 @@ class GroupingStandardEditor(QtGui.QMainWindow):
             self.selection.transitions.background.values, 
             ax=self.scatter_display.ax, 
             markersize=3, 
-            color=bktrans_color,
+            color=bk_color,
             auto_zoom=True,
             alpha=0.6
         )
@@ -1195,17 +1207,31 @@ class GroupingStandardEditor(QtGui.QMainWindow):
             transition_tags={"tier":"foreground"},
             markersize=6,
             auto_zoom=False,
-            color=fgtrans_color,
+            color=fg_color,
         )
-        self.scatter_display.mplwid.pickEvent.connect(self.on_pick_event)
         self.selection.transitions.foreground.changed.connect(
             self.foreground_scatter.set_transitions)
         self.scatter_display.xExpressionChanged.connect(
             self.foreground_scatter.set_x_expression)
         self.scatter_display.yExpressionChanged.connect(
             self.foreground_scatter.set_y_expression)
+        self.group_bursts = TransitionGroupBurstPlot(
+            self.selection.groups.values, 
+            ax=self.scatter_display.ax, 
+            picker=6,
+            color=fg_color,
+        )
+        self.selection.groups.changed.connect(
+            self.group_bursts.set_groups)
+        self.scatter_display.xExpressionChanged.connect(
+            self.group_bursts.set_x_expression)
+        self.scatter_display.yExpressionChanged.connect(
+            self.group_bursts.set_y_expression)
+        
+        self.scatter_display.mplwid.pickEvent.connect(self.on_pick_event)
         dock.setWidget(self.scatter_display)
         self.addDockWidget(Qt.RightDockWidgetArea, dock)
+        
         
         dock = QtGui.QDockWidget("Background Transitions")
         self.background_view = BackgroundTransitionListWidget(self, parent=dock)
@@ -1276,10 +1302,10 @@ class GroupingStandardEditor(QtGui.QMainWindow):
                 transitions = event.artist._md["transitions"]
                 trans = transitions[event.ind[0]]
                 self.selection.transitions.foreground.set_focus([trans])
-                if metdat["tier"] == "foreground":
-                    group = self.grouping_dict.get(trans)
-                    if not group is None:
-                        self.selection.groups.set_focus([group])
+                #if metdat["tier"] == "foreground":
+                #    group = self.grouping_dict.get(trans)
+                #    if not group is None:
+                #        self.selection.groups.set_focus([group])
             elif metdat["kind"] == "groups":
                 groups = event.artist._md["groups"]
                 group = groups[event.ind[0]]

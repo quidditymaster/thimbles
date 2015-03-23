@@ -280,23 +280,36 @@ class TransitionsChart(object):
             self.update()
     
     def update(self):
+        ntrans = len(self.transitions)
         if self._handles_initialized:
-            self.handles.set_segments(self.get_handle_pts())
-            metdat = dict(
-                kind="groups",
-                groups=self.group_list,
-            )
-            self.handles._md = metdat
+            if ntrans > 0:
+                self.handles.set_segments(self.get_handle_pts())
+                metdat = dict(
+                    kind="groups",
+                    groups=self.group_list,
+                )
+                self.handles._md = metdat
+                self.handles.set_visible(True)
+            else:
+                self.handles.set_visible(False)
         if self._fans_initialized:
-            self.fans.set_segments(self.get_fan_pts())
+            if ntrans > 0:
+                self.fans.set_segments(self.get_fan_pts())
+                self.fans.set_visible(True)
+            else:
+                self.fans.set_visible(False)
         if self._tines_initialized:
-            self.tines.set_segments(self.get_tine_pts())
-            metdat = dict(
-                kind="transitions",
-                transitions=self.transitions,
-            )
-            metdat.update(self.tine_tags)
-            self.tines._md = metdat
+            if ntrans > 0:
+                self.tines.set_segments(self.get_tine_pts())
+                metdat = dict(
+                    kind="transitions",
+                    transitions=self.transitions,
+                )
+                metdat.update(self.tine_tags)
+                self.tines._md = metdat
+                self.tines.set_visible(True)
+            else:
+                self.tines.set_visible(False)
         self.ax._tmb_redraw=True
     
     def set_bounds(self, bounds):

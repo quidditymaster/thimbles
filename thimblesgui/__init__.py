@@ -17,3 +17,4 @@ import widgets
 import models
 import views
 import dialogs
+import thimblesgui.grouping_editor

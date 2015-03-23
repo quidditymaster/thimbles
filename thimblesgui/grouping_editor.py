@@ -27,8 +27,8 @@ from thimblesgui import MatplotlibWidget
 from thimblesgui import FluxDisplay
 
 #color gamut
-fg_color = "#CD4619" 
-bk_color = "#4076FF" 
+fg_color = "#2056DD" 
+bk_color = "#708080" 
 focus_color = "#F0DB62"
 #bk_focus_color = "#B2ECFF" 
 
@@ -559,7 +559,7 @@ class TransitionExpressionWidget(QtGui.QWidget):
         self.y_le.editingFinished.connect(self.on_y_changed)
     
     def minimumSizeHint(self):
-        return QtCore.QSize(100, 50)
+        return QtCore.QSize(200, 200)
     
     def on_x_changed(self):
         x_text = self.x_le.text()
@@ -631,6 +631,7 @@ class TransitionGroupBurstPlot(XYExpressionResolver):
         if ax is None:
             fig, ax = plt.subplots()
         self.ax = ax
+        #print "mplkwargs", mplkwargs
         self.mplkwargs=mplkwargs
     
     @Slot(list)
@@ -660,7 +661,8 @@ class TransitionGroupBurstPlot(XYExpressionResolver):
                 self.centers.set_visible(False)
         else:
             group_xys = []
-            group_xys = [self.resolve_xy(group.transitions) for group in self.groups if len(group.transitions) > 0]
+            nz_groups = [group for group in self.groups if len(group.transitions) > 0]
+            group_xys = [self.resolve_xy(group.transitions) for group in nz_groups]
             nlines_each = [len(gr_xy[0]) for gr_xy in group_xys]
             nlines_tot = sum(nlines_each)
             burst_data = np.zeros((nlines_tot, 2, 2))
@@ -687,7 +689,7 @@ class TransitionGroupBurstPlot(XYExpressionResolver):
             else:
                 self.centers.set_data(x_centers, y_centers)
             self.centers.set_visible(True)
-            mdat = dict(kind="groups", groups=self.groups)
+            mdat = dict(kind="groups", groups=nz_groups, xvals=x_centers, yvals=y_centers)
             self.centers._md = mdat
             self.ax._tmb_redraw=True
 
@@ -751,10 +753,9 @@ class TransitionScatterPlot(XYExpressionResolver):
                 self._points_initialized =True
             else:
                 self.scatter.set_data(xvals, yvals)
-            mdat = dict(kind="transitions", transitions=transitions)
+            mdat = dict(kind="transitions", transitions=transitions, xvals=xvals, yvals=yvals)
             mdat.update(self.transition_tags)
             self.scatter._md = mdat
-            
             self.scatter.set_visible(True)
             if self.auto_zoom:
                 self.zoom_to_data()
@@ -1123,6 +1124,18 @@ class GroupSelectionWidget(QtGui.QWidget):
 
 mplframerate = Option("mplframerate", default=10, parent="GUI")
 
+def pick_line_points(artist, mouseevent):
+    xp, yp = mouseevent.xdata, mouseevent.ydata
+    xdata = artist.get_xdata()
+    ydata = artist.get_ydata()
+    dsquared = (xdata-xp)**2 + (ydata-yp)**2
+    nearest_idx = np.argmin(dsquared)
+    if np.sqrt(dsquared[nearest_idx]) < 0.25:
+        return True, dict(ind=[nearest_idx])
+    else:
+        return False, None
+
+
 class GroupingStandardEditor(QtGui.QMainWindow):
     _redraw_all = False
     
@@ -1132,12 +1145,20 @@ class GroupingStandardEditor(QtGui.QMainWindow):
             tdb,
             spectra=None,
             parent=None,
+            burst_pick=None,
+            scatter_pick=None,
     ):
         super(GroupingStandardEditor, self).__init__(parent)
         if spectra is None:
             spectra = []
         self.spectra = spectra
         self.tdb = tdb
+        if burst_pick is None:
+            burst_pick = pick_line_points
+        self.burst_pick = burst_pick
+        if scatter_pick is None:
+            scatter_pick = pick_line_points
+        self.scatter_pick = scatter_pick
         gstand = tdb.query(tmb.transitions.TransitionGroupingStandard)\
                     .filter(TransitionGroupingStandard.name==standard_name).one()
         
@@ -1148,7 +1169,7 @@ class GroupingStandardEditor(QtGui.QMainWindow):
                 self.grouping_dict[trans] = group
         
         blue_trans = tdb.query(Transition).order_by(Transition.wv).first()
-        self.wv_span = WavelengthSpan(blue_trans.wv, blue_trans.wv*(1.0015))
+        self.wv_span = WavelengthSpan(blue_trans.wv, blue_trans.wv*(1.002))
         background_transitions = tdb.query(Transition)\
                 .filter(Transition.wv >= self.wv_span.min_wv-0.1)\
                 .filter(Transition.wv <= self.wv_span.max_wv+0.1)\
@@ -1178,19 +1199,21 @@ class GroupingStandardEditor(QtGui.QMainWindow):
             schart = charts.SpectrumChart(spec, **chart_kwargs)
             self.flux_display.add_chart(schart)
         
-        lmin = -1.5
-        lmax = 5.0
+        lmin = -1.0
+        lmax = 4.5
+        l_nub = 0.02
         self.background_tines = tmb.charts.fork_diagram.TransitionsChart(
             self.selection.transitions.background.values,
             lmin=lmin,
             lmax=lmax,
+            l_nub=l_nub,
             linewidth=1.0,
             color=bk_color,
             tine_tags={"tier":"background"},
             ax=self.flux_display.ax,
         )
         self.flux_display.add_chart(self.background_tines)
-        self.selection.transitions.background.changed.connect(self.background_tines.set_transitions)
+        
         self.foreground_tines = tmb.charts.fork_diagram.TransitionsChart(
             self.selection.transitions.foreground.values,
             #grouping_dict=self.grouping_dict,
@@ -1199,25 +1222,26 @@ class GroupingStandardEditor(QtGui.QMainWindow):
             tine_tags={"tier":"foreground"},
             lmin=lmin,
             lmax=lmax,
+            l_nub=l_nub,
             linewidth=1.0,
             zorder=2,
             ax=self.flux_display.ax,
         )
         self.flux_display.add_chart(self.foreground_tines)
-        self.selection.transitions.foreground.changed.connect(self.foreground_tines.set_transitions)
+        
         self.active_fork_diagram = tmb.charts.fork_diagram.TransitionsChart(
             self.selection.transitions.foreground.focused,
             grouping_dict=self.grouping_dict,
             color=focus_color,
             lmin=lmin,
             lmax=lmax,
+            l_nub=l_nub,
             linewidth=2.5,
             handle_picker=True,
             zorder=3,
             ax=self.flux_display.ax,
         )
         self.flux_display.add_chart(self.active_fork_diagram)
-        self.selection.transitions.foreground.focusChanged.connect(self.active_fork_diagram.set_transitions)#self.on_focused_transitions_changed)
         
         #set up transition scatter dock
         dock = QtGui.QDockWidget("Transition Scatter", self)
@@ -1232,33 +1256,23 @@ class GroupingStandardEditor(QtGui.QMainWindow):
         self.background_scatter = TransitionScatterPlot(
             self.selection.transitions.background.values, 
             ax=self.scatter_display.ax, 
-            markersize=3, 
+            markersize=4, 
             color=bk_color,
             auto_zoom=True,
             alpha=0.75
         )
-        self.selection.transitions.background.changed.connect(
-            self.background_scatter.set_transitions)
-        self.scatter_display.xExpressionChanged.connect(
-            self.background_scatter.set_x_expression)
-        self.scatter_display.yExpressionChanged.connect(
-            self.background_scatter.set_y_expression)
+        
         #foreground transitions
         self.foreground_scatter = TransitionScatterPlot(
             self.selection.transitions.foreground.values, 
             ax=self.scatter_display.ax, 
-            picker=True, 
+            picker=self.scatter_pick, 
             transition_tags={"tier":"foreground"},
             markersize=6,
             auto_zoom=False,
             color=fg_color,
         )
-        self.selection.transitions.foreground.changed.connect(
-            self.foreground_scatter.set_transitions)
-        self.scatter_display.xExpressionChanged.connect(
-            self.foreground_scatter.set_x_expression)
-        self.scatter_display.yExpressionChanged.connect(
-            self.foreground_scatter.set_y_expression)
+        
         #focused transitions
         self.focus_scatter = TransitionScatterPlot(
             self.selection.transitions.foreground.focused, 
@@ -1269,25 +1283,14 @@ class GroupingStandardEditor(QtGui.QMainWindow):
             auto_zoom=False,
             color=focus_color,
         )
-        self.selection.transitions.foreground.focusChanged.connect(
-            self.focus_scatter.set_transitions)
-        self.scatter_display.xExpressionChanged.connect(
-            self.focus_scatter.set_x_expression)
-        self.scatter_display.yExpressionChanged.connect(
-            self.focus_scatter.set_y_expression)
+        
         #current transition groups
         self.group_bursts = TransitionGroupBurstPlot(
             self.selection.groups.values, 
             ax=self.scatter_display.ax, 
-            picker=6,
+            picker=self.burst_pick,
             color=fg_color,
         )
-        self.selection.groups.changed.connect(
-            self.group_bursts.set_groups)
-        self.scatter_display.xExpressionChanged.connect(
-            self.group_bursts.set_x_expression)
-        self.scatter_display.yExpressionChanged.connect(
-            self.group_bursts.set_y_expression)
         #focused group
         self.focused_group_bursts = TransitionGroupBurstPlot(
             self.selection.groups.focused, 
@@ -1295,12 +1298,6 @@ class GroupingStandardEditor(QtGui.QMainWindow):
             color=focus_color,
             zorder=2,
         )
-        self.selection.groups.focusChanged.connect(
-            self.focused_group_bursts.set_groups)
-        self.scatter_display.xExpressionChanged.connect(
-            self.focused_group_bursts.set_x_expression)
-        self.scatter_display.yExpressionChanged.connect(
-            self.focused_group_bursts.set_y_expression)
         
         self.scatter_display.mplwid.pickEvent.connect(self.on_pick_event)
         dock.setWidget(self.scatter_display)
@@ -1322,8 +1319,44 @@ class GroupingStandardEditor(QtGui.QMainWindow):
         dock.setWidget(self.group_view)
         self.addDockWidget(Qt.TopDockWidgetArea, dock)
         
+        self._connect_plot_events()
         #trigger update cascades
         self.wv_span.emit_bounds_changed()
+    
+    def _connect_plot_events(self):
+        #tine diagrams listening to selection changes.
+        #background
+        self.selection.transitions.background.changed.connect(self.background_tines.set_transitions)
+        #foreground
+        self.selection.transitions.foreground.changed.connect(self.foreground_tines.set_transitions)
+        #active
+        self.selection.transitions.foreground.focusChanged.connect(self.active_fork_diagram.set_transitions)
+        
+        #scatter connections
+        scatter_grams = [
+            self.background_scatter,
+            self.foreground_scatter,
+            self.focus_scatter,
+            self.group_bursts,
+            self.focused_group_bursts,
+        ]
+        for scg in scatter_grams:
+            self.scatter_display.xExpressionChanged.connect(
+                scg.set_x_expression)
+            self.scatter_display.yExpressionChanged.connect(
+                scg.set_y_expression)
+        #scatter plots
+        self.selection.transitions.background.changed.connect(
+            self.background_scatter.set_transitions)
+        self.selection.transitions.foreground.changed.connect(
+            self.foreground_scatter.set_transitions)
+        self.selection.transitions.foreground.focusChanged.connect(
+            self.focus_scatter.set_transitions)
+        #burst diagrams
+        self.selection.groups.changed.connect(
+            self.group_bursts.set_groups)
+        self.selection.groups.focusChanged.connect(
+            self.focused_group_bursts.set_groups)
         
         self.draw_timer = QtCore.QTimer(self)
         self.draw_timer.start(1000.0/mplframerate.value)
@@ -1369,30 +1402,20 @@ class GroupingStandardEditor(QtGui.QMainWindow):
     
     @Slot(list)
     def on_pick_event(self, event_l):
+        #print "pick event"
         event ,= event_l
+        #print "kind", event.artist._md["kind"]
+        #print event.ind
         if hasattr(event.artist, "_md"):
             metdat = event.artist._md
             if metdat["kind"] == "transitions":
                 transitions = event.artist._md["transitions"]
                 trans = transitions[event.ind[0]]
                 self.selection.transitions.foreground.set_focus([trans])
-                #if metdat["tier"] == "foreground":
-                #    group = self.grouping_dict.get(trans)
-                #    if not group is None:
-                #        self.selection.groups.set_focus([group])
             elif metdat["kind"] == "groups":
                 groups = event.artist._md["groups"]
                 group = groups[event.ind[0]]
                 self.selection.groups.set_focus([group])
-    
-    @Slot(list)
-    def on_focused_transitions_changed(self, focused_transitions):
-        self.active_fork_diagram.set_transitions(focused_transitions)
-        self.trigger_redraw()
-    
-    @Slot(list)
-    def on_focused_groups_changed(self, focused_groups):
-        pass
     
     def on_save(self):
         try:

@@ -1042,6 +1042,44 @@ class ActiveGroupWidget(QtGui.QWidget):
     
     def on_remove(self):
         print "remove!"
+        selmod = self.grouped_trans_view.selectionModel()
+        sel = selmod.selection()
+        print [ind.row() for ind in sel.indexes()]
+        return
+        #focus_indexes = self.selection.groups.focus
+        sbar = self.parent_editor.statusBar()
+        if len(focus_indexes) == 0:
+            sbar.showMessage("injection failed, no group selected!")
+        elif len(focus_indexes) > 1:
+            sbar.showMessage("injection failed, multiple groups selected!")
+        else:
+            group ,= self.selection.groups.focused
+            to_inject = self.selection.transitions.foreground.focused
+            old_trans = group.transitions
+            new_trans = [t for t in to_inject if not (t in old_trans)]
+            gdict = self.parent_editor.grouping_dict
+            if len(new_trans) > 0:
+                for t in new_trans:
+                    old_group = gdict.get(t)
+                    if not old_group is None:
+                        old_group.transitions.remove(t)
+                        if len(old_group.transitions) == 0:
+                            #get the current group model
+                            old_group_index = self.selection.groups.index(old_group)
+                            #old_gmod = self.parent_editor.group_view.groups_model
+                            #gmod.beginDeleteRows(QModelIndex(), old_group_index, old_group_index)
+                            cur_group_tier = self.selection.groups
+                            cur_group_tier.values.pop(old_group_index)
+                            #trigger updates
+                            cur_group_tier.set_values(cur_group_tier.values)
+                            #delete the empty group
+                            self.parent_editor.tdb.delete(old_group)
+                    group.transitions.append(t)
+                    gdict[t] = group
+                sbar.showMessage(
+                    "{} transitions injected".format(len(new_trans)))
+            else:
+                sbar.showMessage("no new transitions selected")
 
 class GroupSelectionWidget(QtGui.QWidget):
     
@@ -1157,7 +1195,7 @@ class GroupingStandardEditor(QtGui.QMainWindow):
             self.selection.transitions.foreground.values,
             #grouping_dict=self.grouping_dict,
             color=fg_color,
-            tine_picker=6,
+            tine_picker=True,
             tine_tags={"tier":"foreground"},
             lmin=lmin,
             lmax=lmax,
@@ -1174,8 +1212,8 @@ class GroupingStandardEditor(QtGui.QMainWindow):
             lmin=lmin,
             lmax=lmax,
             linewidth=2.5,
-            handle_picker=6,
-            zorder=1,
+            handle_picker=True,
+            zorder=3,
             ax=self.flux_display.ax,
         )
         self.flux_display.add_chart(self.active_fork_diagram)
@@ -1209,7 +1247,7 @@ class GroupingStandardEditor(QtGui.QMainWindow):
         self.foreground_scatter = TransitionScatterPlot(
             self.selection.transitions.foreground.values, 
             ax=self.scatter_display.ax, 
-            picker=6, 
+            picker=True, 
             transition_tags={"tier":"foreground"},
             markersize=6,
             auto_zoom=False,

@@ -16,10 +16,11 @@ if __name__ == "__main__":
         ll = tmb.io.read_linelist(args.line_list)
         tdb.add_all(ll)
     
-    tmb.transitions.segmented_grouping_standard(
+    tstand = tmb.transitions.segmented_grouping_standard(
         standard_name = args.standard_name,
         tdb=tdb,
     )
+    tdb.add(tstand)
     
     tdb.commit()
     tdb.close()

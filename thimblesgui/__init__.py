@@ -15,8 +15,6 @@ from thimblesgui.mplwidget import MatplotlibWidget
 from thimblesgui.spec_widget import FluxDisplay
 
 import main_window
-import widgets
 import models
 import views
-import dialogs
 import thimblesgui.grouping_editor

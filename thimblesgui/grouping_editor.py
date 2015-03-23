@@ -1347,14 +1347,14 @@ class GroupingStandardEditor(QtGui.QMainWindow):
                 group = groups[event.ind[0]]
                 self.selection.groups.set_focus([group])
     
-    #@Slot(list)
-    #def on_focused_transitions_changed(self, active_list):
-    #    self.active_fork_diagram.set_transitions(active_list)
-    #    self.trigger_redraw()
+    @Slot(list)
+    def on_focused_transitions_changed(self, focused_transitions):
+        self.active_fork_diagram.set_transitions(focused_transitions)
+        self.trigger_redraw()
     
-    #@Slot(list)
-    #def on_focused_groups_changed(self, focused_groups):
-    #    self.
+    @Slot(list)
+    def on_focused_groups_changed(self, focused_groups):
+        pass
     
     def on_save(self):
         try:
@@ -1375,23 +1375,14 @@ class GroupingStandardEditor(QtGui.QMainWindow):
     
     def prev_wv_region(self):
         self.wv_span_widget.step_back()
-    
-    def remove_transition(self):
-        """remove current transition from the current group if applicable"""
-        pass
-    
-    def add_transition(self):
-        """add current transition to current group"""
-        pass
-    
-    def select_parent_group(self):
-        """set current group to group containing current transition"""
-        pass
-    
-    def new_group(self):
-        """begin a new group with the current transition"""
-        pass
 
+
+@tmb.task(
+    result_name="grouping_standard",
+)
+def edit_grouping_standard(standard_name, tdb, spectra):
+    gse = GroupingStandardEditor(standard_name, tdb, spectra=spectra)
+    gse.show()
 
 
 if __name__ == "__main__":

@@ -1022,13 +1022,16 @@ class ActiveGroupWidget(QtGui.QWidget):
         self.grouped_trans_view = QtGui.QTableView(parent=self)
         self.grouped_trans_view.setModel(self.grouped_trans_model)
         self.grouped_trans_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectionBehavior.SelectRows)
-        layout.addWidget(self.grouped_trans_view, 0,0, 1, 2)
-        self.remove_btn = QtGui.QPushButton("remove\nselected")
+        layout.addWidget(self.grouped_trans_view, 0,0, 1, 3)
+        self.remove_btn = QtGui.QPushButton("remove")
         self.remove_btn.clicked.connect(self.on_remove)
         layout.addWidget(self.remove_btn, 1, 0, 1, 1)
-    
-    def make_control_btns(self):
-        groupbox = QtGui.QGroupBox()
+        layout.addWidget(QtGui.QLabel("Lock"), 1, 1, 1, 1)
+        self.lock_cb = QtGui.QCheckBox(parent=self)
+        layout.addWidget(self.lock_cb, 1, 2, 1, 1)
+        self.empty_group_btn = QtGui.QPushButton("add empty")
+        layout.addWidget(self.empty_group_btn, 2, 0, 1, 1)
+        self.empty_group_btn.clicked.connect(self.on_add_empty)
     
     def on_focused_group_changed(self):
         fgroups = self.selection.groups.focused
@@ -1039,18 +1042,25 @@ class ActiveGroupWidget(QtGui.QWidget):
         self.grouped_trans_model.set_mapped_list(ftrans)
     
     def sizeHint(self):
-        return QtCore.QSize(500, 300)
+        return QtCore.QSize(300, 300)
     
+    def on_add_empty(self):
+        pass
+
     def on_remove(self):
         print "remove!"
         selmod = self.grouped_trans_view.selectionModel()
         sel = selmod.selection()
-        print [ind.row() for ind in sel.indexes()]
+        indicies = [ind for ind in sel.indexes()]
+        if len(indicies) == 0:
+            sbar.showMessage("injection failed, no group selected!")
+        else:
+            rows = np.unique([ind.row() for ind in indicies])
+        
         return
         #focus_indexes = self.selection.groups.focus
         sbar = self.parent_editor.statusBar()
-        if len(focus_indexes) == 0:
-            sbar.showMessage("injection failed, no group selected!")
+
         elif len(focus_indexes) > 1:
             sbar.showMessage("injection failed, multiple groups selected!")
         else:

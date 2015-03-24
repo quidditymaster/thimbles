@@ -144,10 +144,7 @@ def read_fits (filepath, which_hdu=0, band=0, preference=None):
     if len(hdulist) > 1 and isinstance(hdulist[1],astropy.io.fits.hdu.table.BinTableHDU):
         return read_bintablehdu(hdulist)
     
-    kws = dict(which_hdu=which_hdu,
-               band=band,
-               preference=preference)
-    return read_fits_hdu(hdulist,**kws)
+    return read_fits_hdu(hdulist, which_hdu=which_hdu, band=band, preference=preference)
 
 read_fits.__doc__ = """
     Takes a astropy.io.fits hdulist and then for a particular hdu and band

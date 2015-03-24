@@ -804,7 +804,7 @@ class ListMappedColumn(object):
     def set(self, data_obj, value, role):
         if role == Qt.EditRole:
             self.setter(data_obj, self.string_converter(value))
-    
+
 
 class MappedListModel(QtCore.QAbstractTableModel):
     
@@ -852,6 +852,7 @@ class MappedListModel(QtCore.QAbstractTableModel):
         except Exception as e:
             print e
             return False
+
 
 class TransitionListModel(MappedListModel):
     
@@ -952,12 +953,12 @@ class ForegroundTransitionListWidget(QtGui.QWidget):
         self.selection.transitions.foreground.set_selection_model(self.table_view.selectionModel())
         table_selection = self.table_view.selectionModel()
         layout.addWidget(self.table_view, 1, 0, 1, 3)
-        self.clear_btn = QtGui.QPushButton("Clear")
-        self.clear_btn.clicked.connect(self.on_clear)
-        layout.addWidget(self.clear_btn, 2, 0, 1, 1)
-        self.inject_btn = QtGui.QPushButton("inject")
+        self.inject_btn = QtGui.QPushButton("group+")
         self.inject_btn.clicked.connect(self.on_inject)
-        layout.addWidget(self.inject_btn, 2, 1, 1, 1)
+        layout.addWidget(self.inject_btn, 2, 0, 1, 1)
+        self.remove_btn = QtGui.QPushButton("group-")
+        self.remove_btn.clicked.connect(self.on_remove)
+        layout.addWidget(self.remove_btn, 2, 1, 1, 1)
     
     @Slot(list)
     def set_transition_constraints(self, constraint_list):
@@ -969,8 +970,47 @@ class ForegroundTransitionListWidget(QtGui.QWidget):
         self.selection.transitions.foreground.set_values(trans)
         self.table_model.endResetModel()
     
-    def on_clear(self):
-        self.selection.transitions.foreground.clear()
+    def purge_groups(self, groups):
+        #get the current group model
+        #old_gmod = self.parent_editor.group_view.groups_model
+        #gmod.beginDeleteRows(QModelIndex(), old_group_index, old_group_index)
+        #remove from selection
+        cur_group_tier = self.selection.groups
+        needs_reset = False
+        for group in groups:
+            try:
+                group_index = self.selection.groups.index(group)
+                cur_group_tier.values.pop(group_index)
+                needs_reset = True
+            except ValueError:
+                pass
+            self.parent_editor.tdb.delete(group)
+        if needs_reset:
+            cur_group_tier.set_values(cur_group_tier.values)#trigger updates
+    
+    def on_remove(self):
+        focus_indexes = self.selection.groups.focus
+        sbar = self.parent_editor.statusBar()
+        to_remove = self.selection.transitions.foreground.focused
+        if len(to_remove) == 0:
+            sbar.showMessage("removal failed no transitions selected")
+        else:
+            gdict = self.parent_editor.grouping_dict
+            groups_to_purge = []
+            n_removed = 0
+            for t in to_remove:
+                group = gdict.get(t)
+                if group is None:
+                    pass #transition is not grouped
+                else:
+                    group.transitions.remove(t)
+                    n_removed += 1
+                    gdict.pop(t)
+                    if len(group.transitions) == 0:
+                        groups_to_purge.append(group)
+            self.purge_groups(groups_to_purge)
+            sbar.showMessage(
+                "removed {} transitions; purged {} empty groups".format(n_removed, len(groups_to_purge)))
     
     def on_inject(self):
         focus_indexes = self.selection.groups.focus
@@ -986,27 +1026,20 @@ class ForegroundTransitionListWidget(QtGui.QWidget):
             new_trans = [t for t in to_inject if not (t in old_trans)]
             gdict = self.parent_editor.grouping_dict
             if len(new_trans) > 0:
+                groups_to_purge = []
                 for t in new_trans:
                     old_group = gdict.get(t)
                     if not old_group is None:
                         old_group.transitions.remove(t)
                         if len(old_group.transitions) == 0:
-                            #get the current group model
-                            old_group_index = self.selection.groups.index(old_group)
-                            #old_gmod = self.parent_editor.group_view.groups_model
-                            #gmod.beginDeleteRows(QModelIndex(), old_group_index, old_group_index)
-                            cur_group_tier = self.selection.groups
-                            cur_group_tier.values.pop(old_group_index)
-                            #trigger updates
-                            cur_group_tier.set_values(cur_group_tier.values)
-                            #delete the empty group
-                            self.parent_editor.tdb.delete(old_group)
+                            groups_to_purge.append(old_group)
                     group.transitions.append(t)
                     gdict[t] = group
+                self.purge_groups(groups_to_purge)
                 sbar.showMessage(
-                    "{} transitions injected".format(len(new_trans)))
+                    "{} transitions added {} empty groups purged".format(len(new_trans), len(groups_to_purge)))
             else:
-                sbar.showMessage("no new transitions selected")
+                sbar.showMessage("all selected transitions already in selected group!")
 
 
 class ActiveGroupWidget(QtGui.QWidget):
@@ -1018,20 +1051,11 @@ class ActiveGroupWidget(QtGui.QWidget):
         layout = QtGui.QGridLayout()
         self.setLayout(layout)
         self.grouped_trans_model = TransitionListModel()
-        self.selection.groups.focusChanged.connect(self.on_focused_group_changed)
+        #self.selection.groups.focusChanged.connect(self.on_focused_group_changed)
         self.grouped_trans_view = QtGui.QTableView(parent=self)
         self.grouped_trans_view.setModel(self.grouped_trans_model)
         self.grouped_trans_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectionBehavior.SelectRows)
-        layout.addWidget(self.grouped_trans_view, 0,0, 1, 3)
-        self.remove_btn = QtGui.QPushButton("remove")
-        self.remove_btn.clicked.connect(self.on_remove)
-        layout.addWidget(self.remove_btn, 1, 0, 1, 1)
-        layout.addWidget(QtGui.QLabel("Lock"), 1, 1, 1, 1)
-        self.lock_cb = QtGui.QCheckBox(parent=self)
-        layout.addWidget(self.lock_cb, 1, 2, 1, 1)
-        self.empty_group_btn = QtGui.QPushButton("add empty")
-        layout.addWidget(self.empty_group_btn, 2, 0, 1, 1)
-        self.empty_group_btn.clicked.connect(self.on_add_empty)
+
     
     def on_focused_group_changed(self):
         fgroups = self.selection.groups.focused
@@ -1041,56 +1065,9 @@ class ActiveGroupWidget(QtGui.QWidget):
             ftrans = fgroups[0].transitions
         self.grouped_trans_model.set_mapped_list(ftrans)
     
-    def sizeHint(self):
-        return QtCore.QSize(300, 300)
-    
-    def on_add_empty(self):
-        pass
+    #def sizeHint(self):
+    #    return QtCore.QSize(300, 300)
 
-    def on_remove(self):
-        print "remove!"
-        selmod = self.grouped_trans_view.selectionModel()
-        sel = selmod.selection()
-        indicies = [ind for ind in sel.indexes()]
-        if len(indicies) == 0:
-            sbar.showMessage("injection failed, no group selected!")
-        else:
-            rows = np.unique([ind.row() for ind in indicies])
-        
-        return
-        #focus_indexes = self.selection.groups.focus
-        sbar = self.parent_editor.statusBar()
-
-        elif len(focus_indexes) > 1:
-            sbar.showMessage("injection failed, multiple groups selected!")
-        else:
-            group ,= self.selection.groups.focused
-            to_inject = self.selection.transitions.foreground.focused
-            old_trans = group.transitions
-            new_trans = [t for t in to_inject if not (t in old_trans)]
-            gdict = self.parent_editor.grouping_dict
-            if len(new_trans) > 0:
-                for t in new_trans:
-                    old_group = gdict.get(t)
-                    if not old_group is None:
-                        old_group.transitions.remove(t)
-                        if len(old_group.transitions) == 0:
-                            #get the current group model
-                            old_group_index = self.selection.groups.index(old_group)
-                            #old_gmod = self.parent_editor.group_view.groups_model
-                            #gmod.beginDeleteRows(QModelIndex(), old_group_index, old_group_index)
-                            cur_group_tier = self.selection.groups
-                            cur_group_tier.values.pop(old_group_index)
-                            #trigger updates
-                            cur_group_tier.set_values(cur_group_tier.values)
-                            #delete the empty group
-                            self.parent_editor.tdb.delete(old_group)
-                    group.transitions.append(t)
-                    gdict[t] = group
-                sbar.showMessage(
-                    "{} transitions injected".format(len(new_trans)))
-            else:
-                sbar.showMessage("no new transitions selected")
 
 class GroupSelectionWidget(QtGui.QWidget):
     
@@ -1099,7 +1076,7 @@ class GroupSelectionWidget(QtGui.QWidget):
         self.parent_editor = grouping_standard_editor
         self.grouping_dict = grouping_standard_editor.grouping_dict
         super(GroupSelectionWidget, self).__init__(parent)
-        layout = QtGui.QHBoxLayout()
+        layout = QtGui.QGridLayout()
         self.setLayout(layout)
         
         cur_groups = self.transition_groups(self.selection.transitions.foreground.values)
@@ -1108,14 +1085,28 @@ class GroupSelectionWidget(QtGui.QWidget):
         group_tier = self.selection.groups
         group_tier.changed.connect(self.groups_model.set_mapped_list)
         self.selection.transitions.foreground.changed.connect(self.set_groups_from_transitions)
+        
         self.groups_view = QtGui.QTableView(parent=self)
         self.groups_view.setModel(self.groups_model)
         self.groups_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectionBehavior.SelectRows)
         #self.groups_view.setSelectionMode(QtGui.QAbstractItemView.SelectionMode.SingleSelection)
         self.selection.groups.set_selection_model(self.groups_view.selectionModel())
-        layout.addWidget(self.groups_view)
-        self.active_group_widget = ActiveGroupWidget(grouping_standard_editor, parent=self)
-        layout.addWidget(self.active_group_widget)
+        layout.addWidget(self.groups_view, 0, 0, 1, 3)
+        
+        self.add_empty_btn = QtGui.QPushButton("add_empty")
+        self.add_empty_btn.clicked.connect(self.on_add_empty)
+        layout.addWidget(self.add_empty_btn, 1, 0, 1, 1)
+        self.lock_cb = QtGui.QCheckBox("lock", parent=self)
+        layout.addWidget(self.lock_cb, 1, 1, 1, 1)
+        
+        #self.active_group_widget = ActiveGroupWidget(grouping_standard_editor, parent=self)
+        #layout.addWidget(self.active_group_widget)
+    
+    def on_add_empty(self):
+        cur_groups = self.selection.groups.values
+        empty_group = tmb.transitions.TransitionGroup()
+        cur_groups.append(empty_group)
+        self.selection.groups.set_values(cur_groups)
     
     def transition_groups(self, transitions):
         groups = set()
@@ -1127,9 +1118,12 @@ class GroupSelectionWidget(QtGui.QWidget):
     
     @Slot(list)
     def set_groups_from_transitions(self, transitions):
-        transitions = self.selection.transitions.foreground.values
-        groups = self.transition_groups(transitions)
-        self.selection.groups.set_values(groups)
+        if self.lock_cb.checkState():
+            return
+        else:
+            transitions = self.selection.transitions.foreground.values
+            groups = self.transition_groups(transitions)
+            self.selection.groups.set_values(groups)
 
 
 mplframerate = Option("mplframerate", default=10, parent="GUI")

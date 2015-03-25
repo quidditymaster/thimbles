@@ -127,7 +127,7 @@ class TransitionGroup(ThimblesTable, Base):
     def extend(self, in_list):
         self.transitions.extend(in_list)
     
-    def aggregate(self, attr, reduce_func=np.nanmean, empty_val=np.nan):
+    def aggregate(self, attr, reduce_func=np.mean, empty_val=np.nan):
         if len(self) == 0:
             return empty_val
         attrvals = [getattr(t, attr) for t in self.transitions]

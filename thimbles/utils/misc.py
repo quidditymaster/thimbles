@@ -994,6 +994,7 @@ def blackbody_flux(sampling_wavelengths, temperature,  normalize = True):
         bbspec /= peak_val
     return bbspec
 
+
 def fit_blackbody_phirls(spectrum, start_teff=5000.0, gamma_frac=3.0):
     flux = spectrum.flux
     variance = spectrum.var

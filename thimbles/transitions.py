@@ -162,8 +162,14 @@ def as_transition_group(tgroup):
     else:
         return TransitionGroup(tgroup)
 
-@task(result_name="grouping_standard")
-def make_grouping_standard(
+
+@task(
+    result_name="grouping_standard",
+    sub_kwargs=dict(
+        standard_name=dict(option_style="raw_string")
+    )
+)
+def segmented_grouping_standard(
         standard_name, 
         tdb, 
         transition_filters=None, 

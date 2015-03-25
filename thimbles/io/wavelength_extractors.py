@@ -3,6 +3,7 @@ import warnings
 import numpy as np
 from thimbles.io.pixel_wavelength_functions import *
 from thimbles import logger
+import thimbles as tmb
 
 # ########################################################################### #
 
@@ -128,7 +129,7 @@ def from_w0 (header):
     # create and return
     c1 = wpc 
     c0 = w0     
-    return [Linear(pixels,c1,c0)]    
+    return [pixels*c1+c0]    
 
 from_functions['w0'] = from_w0
 
@@ -172,9 +173,9 @@ def from_crval (header):
     c1 = cdelt1
     # implement correct wavelength solution
     if ctype1.upper() == 'LINEAR':
-        return [Linear(pixels,c1,c0)]
+        return [pixels*c1+c0]
     elif ctype1.upper() == "LOG-LINEAR":
-        return [LogLinear(pixels,c1,c0)]
+        return [np.power(10.0, pixels*c1+c0)]
     else:
         raise IncompatibleWavelengthSolution("unknown value for keyword CTYPE={}".format(ctype1))
 
@@ -192,7 +193,7 @@ def _order_from_crvl_ (header,order,pixels,linintrp):
     if linintrp == 'linear':
         c1 = cdlt1_
         c0 = crvl1_
-        return Linear(pixels,c1,c0) 
+        return pixels*c1+c0 
     else:
         # NOTE : if you can fix this and make it better, do so 
         raise IncompatibleWavelengthSolution("Keyword LININTRP was missing or not 'linear', I don't know how to deal with this")    
@@ -260,7 +261,7 @@ pass
 # ===================== From MAKEE WV keywords
 
 def _order_from_makee_wv (header,order,base,pixels):    
-    b1,b2 = base    
+    b1,b2 = base
     b_0 = header.get("{0}{1:02}".format(b1,order))
     b_4 = header.get("{0}{1:02}".format(b2,order))    
     if b_0 is None or b_4 is None:
@@ -269,8 +270,8 @@ def _order_from_makee_wv (header,order,base,pixels):
     func = lambda c: float(c or 0)       
     coeff = map(func,reversed(b_4.split()))
     coeff += map(func,reversed(b_0.split()))
-    
-    return Polynomial(pixels,coeff)
+    print "Warning wavelengths from _order_from_makee_wv double check logic wavelength_extractors.py line 273"""
+    return np.polyval(coeff, pixels)
 
 def from_makee_wv (header):
     """ Looks at all the WV_0_?? and WV)4_?? keywords where ?? is all the possible orders
@@ -315,7 +316,7 @@ def from_makee_wv (header):
         if wv_soln is None:
             break         
         wv_solns.append(wv_soln)
-        
+    
     # check that length makes sense   
     n = len(wv_solns)
     if n == 0:
@@ -336,10 +337,10 @@ def _wcs_string_dispersion_format (pixels,spec_args_str):
     # - change the format of scientific notiation 1.0D+10 to 1.0E+10
     # - and make "+" signs implicit
     spec_args_str = spec_args_str.strip().replace('D','E').replace("+","")
-
+    
     # split by spaces            
     spec_args = spec_args_str.split()
-
+    
     # Create argument list
     args = []
 
@@ -481,27 +482,26 @@ def _wcs_dispersion_format (pixels,*args):
         
     # ===================== use the variables to get wavelength solution
     
-    pixels = np.arange(npts)+1
+    pixels = np.arange(npts)#+1?
     
-    # the redshift
-    rv = 1.0/(1.0+z)
-
     # dispersion type flag        
     if dcflag == -1:
         return NoSolution(pixels,rv=rv)
     elif dcflag == 0:
-        return Linear(pixels,c1,c0,rv=rv)
+        coords = pixels*c1+c0
+        return tmb.as_wavelength_solution(coords)
     elif dcflag == 1:        
-        return LogLinear(pixels,c1,c0,rv=rv) 
+        coords = np.power(10.0, c1*pixels+c0)
+        return tmb.as_wavelength_solution(coords)
     elif dcflag != 2:
-        raise IncompatibleWavelengthSolution("Unknown value for WCS dcflag={}".format(dcflag))
+        raise IncompatibleWavelengthSolution("value for WCS dcflag={} not implemented".format(dcflag))
     # dcflag = 2 # non-linear
     
     wt_i = args[9]
     zeropoint = args[10]
     func_type = args[11]
     par_coef = args[12:]
-
+    
     if func_type == 1:
         # chebyshev polynomial
         msg = "WCS chebyshev specification is incorrect"
@@ -513,7 +513,10 @@ def _wcs_dispersion_format (pixels,*args):
         xxmin = args[13]
         xxmax = args[14]
         coefficients = args[15:15+order]
-        return ChebyshevPolynomial(pixels,coefficients)
+        print "WARNING! check thimbles logic in wavelength_extractors.py line 517 may need coefficient order reversing, and/or may need to be evaluated as fn of pixel instead of linspace(-1, 1, n)"
+        cheby_poly = np.polynomial.Chebyshev(coefficients)
+        return cheby_poly(np.linspace(-1, 1, len(pixels)))
+        #return ChebyshevPolynomial(pixels,coefficients)
     elif func_type == 2:
         # legendre polyomial 
         raise NotImplementedError("Legendre polynomial wavelength solution from WCS")
@@ -531,7 +534,7 @@ def _wcs_dispersion_format (pixels,*args):
         raise NotImplementedError("sample coordinate array wavelength solution from WCS")
     else: 
         raise IncompatibleWavelengthSolution("Unknown value for WCS polynomial type={}".format(func_type))
-  
+
 def _multi_line_to_single (header,base="WAT2_"):
     """
     WAT2_001= 'wtype=multispec spec1 = "  1  1 0  4719.01928834982 0.02057153630613'
@@ -856,7 +859,9 @@ def from_spectre (header):
     elif disp_type == 'chebyshev poly':
         return [from_spectre_chebyshev(pixels,coeffs)]
     elif disp_type == 'legendre poly':   
-        return [LegendrePolynomial(pixels,coeffs)]
+        print "warning check logic in wavelength_extractors.py line 862"
+        np.polynomial.Legen
+        return [np.polynomial.Legendre(coeffs)(np.linspace(-1, 1, len(pixels)))]
     elif disp_type == 'spline3':
         warnings.warn("spectre spline3 wavelength solution is unvetted, check output")        
         # from SPECTRE: s = (point-1.)/(real(npt)-1.)*c(8)
@@ -865,9 +870,10 @@ def from_spectre (header):
     elif disp_type == 'linear':
         c1 = coeffs[-2]
         c0 = coeffs[-1]
-        return [Linear(pixels,c1,c0)]
+        return [pixels*c1+c0]
     else:
-        return [Polynomial(pixels,coeffs)]    
+        print "warning check ogic in wavelength_extractors.py line 875"
+        return [np.polyval(coeffs, pixels)]    
 
 from_functions['spectre'] = from_spectre
 
@@ -904,9 +910,9 @@ def from_header (header,preference=None):
     if preference is not None:
         func = from_functions.get(preference)
         if func is None:
-            raise ValueError("preference needs to be in {}".format(from_functions))
+            raise ValueError("preference chosen from {}".format(from_functions))
         return func(header)
-        
+    
     # get all the wavelength solutions
     wv_solutions = []
     compatible_solutions = []

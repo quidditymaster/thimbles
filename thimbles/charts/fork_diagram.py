@@ -151,14 +151,14 @@ class TransitionsChart(object):
     def __init__(
             self, 
             transitions,
-            length_map=None,
             lmax=None,
             lmin=None,
+            l_nub=0.02,
             grouping_dict=None,
             tine_min=0.0,
             tine_max=1.0,
             handle_max=1.35,
-            fan_fraction=0.9,
+            fan_fraction=0.75,
             handle_picker=None,
             tine_picker=None,
             tine_tags=None,
@@ -172,7 +172,7 @@ class TransitionsChart(object):
         self.fan_fraction = fan_fraction
         self.lmax=lmax
         self.lmin=lmin
-        self.length_map=length_map
+        self.l_nub = l_nub
         if grouping_dict is None:
             grouping_dict = {}
         self.grouping_dict=grouping_dict
@@ -246,7 +246,7 @@ class TransitionsChart(object):
             if self.lmax is None:
                 self.lmax = np.max(tlens)
             tlens = (tlens-self.lmin)/(self.lmax-self.lmin)
-            tlens = np.clip(tlens, 0, 1)
+            tlens = np.clip(tlens, self.l_nub, 1)
             
             grouping_vec = np.repeat(-1, len(transitions))
             group_to_idx = {}
@@ -280,23 +280,37 @@ class TransitionsChart(object):
             self.update()
     
     def update(self):
+        ntrans = len(self.transitions)
         if self._handles_initialized:
-            self.handles.set_segments(self.get_handle_pts())
-            metdat = dict(
-                kind="groups",
-                groups=self.group_list,
-            )
-            self.handles._md = metdat
+            if ntrans > 0:
+                self.handles.set_segments(self.get_handle_pts())
+                metdat = dict(
+                    kind="groups",
+                    groups=self.group_list,
+                )
+                self.handles._md = metdat
+                self.handles.set_visible(True)
+            else:
+                self.handles.set_visible(False)
         if self._fans_initialized:
-            self.fans.set_segments(self.get_fan_pts())
+            if ntrans > 0:
+                self.fans.set_segments(self.get_fan_pts())
+                self.fans.set_visible(True)
+            else:
+                self.fans.set_visible(False)
         if self._tines_initialized:
-            self.tines.set_segments(self.get_tine_pts())
-            metdat = dict(
-                kind="transitions",
-                transitions=self.transitions,
-            )
-            metdat.update(self.tine_tags)
-            self.tines._md = metdat
+            if ntrans > 0:
+                self.tines.set_segments(self.get_tine_pts())
+                metdat = dict(
+                    kind="transitions",
+                    transitions=self.transitions,
+                )
+                metdat.update(self.tine_tags)
+                self.tines._md = metdat
+                self.tines.set_visible(True)
+            else:
+                self.tines.set_visible(False)
+        self.ax._tmb_redraw=True
     
     def set_bounds(self, bounds):
         pass

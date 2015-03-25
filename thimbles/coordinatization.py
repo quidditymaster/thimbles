@@ -286,6 +286,8 @@ class LinearCoordinatization(Coordinatization):
         "polymorphic_identity":"linearcoordinatization"
     }
     
+    _recalc_coords = True
+    
     def __init__(self, coordinates=None, min=None, max=None, npts=None, dx=None):
         """a class representing a linear mapping between a coordinate and
         the index number of an array.
@@ -307,7 +309,6 @@ class LinearCoordinatization(Coordinatization):
         to allow for an integer npts with npts >= 2.
         
         """
-        self._recalc_coords = True
         if not (coordinates is None):
             if not all([(val is None) for val in [min, max, npts, dx]]):
                 raise ValueError("if coordinates are specified min, max, npts and dx may not be")
@@ -388,8 +389,9 @@ class LogLinearCoordinatization(Coordinatization):
         "polymorphic_identity":"loglinearcoordinatization"
     }
     
+    _recalc_coords = True
+    
     def __init__(self, coordinates=None, min=None, max=None, npts=None, R=None):
-        self._recalc_coords = True
         if not (coordinates is None):
             if not all([(val is None) for val in [min, max, npts, R]]):
                 raise ValueError("if coordinates are specified none of min, max, npts or R may be")
@@ -468,19 +470,36 @@ class LogLinearCoordinatization(Coordinatization):
             coords = np.clip(coords, self.min, self.max)
         return coords
 
-class TensoredCoordinatization(object):
+
+
+tensored_coord_assoc = sa.Table(
+    "tensored_coord_assoc", 
+    Base.metadata,
+    Column("coordinatization_id", Integer, ForeignKey("Coordinatization._id")),
+    Column("tensored_coordinatization_id", Integer, ForeignKey("TensoredCoordinatization._id")),
+)
+
+class TensoredCoordinatization(ThimblesTable, Base):
     """A class for handling coordinatizations in multiple dimensions.
     The multidimensional coordinates are built up by tensoring together
-    coordinates along each dimension. 
+    independent coordinatizations for each dimension. 
     """
+    coordinatizations = relationship("Coordinatization", secondary=tensored_coord_assoc)
     
-    def __init__(self, bin_centers_list):
+    _shape = None
+    
+    def __init__(self, coordinates_list):
         """    
         inputs
             bins_list: a list of the bins along each dimension
         """
-        self.coordinatizations = [as_coordinatization(bin_centers) for bin_centers in bin_centers_list]
-        self.shape = tuple([len(b) for b in self.coordinatizations])
+        self.coordinatizations = [as_coordinatization(bin_centers) for bin_centers in coordinates_list]
+    
+    @property
+    def shape(self):
+        if self._shape is None:
+            self._shape = tuple([len(b) for b in self.coordinatizations])
+        return self._shape
     
     def get_index(self, coord, clip=False, snap=False):
         coord = np.asarray(coord)
@@ -503,3 +522,108 @@ class TensoredCoordinatization(object):
             coord_vec = cur_cdn.get_coord(index[:, dim_idx], clip=clip,snap=snap)
             coord_list.append(coord_vec.reshape((-1, 1)))
         return np.hstack(indexes_list).reshape(in_shape)
+    
+    @property
+    def coordinates(self):
+        coordinates = []
+        ones_block = np.ones(self.shape)
+        for coord_idx in range(len(self.coordinatizations)):
+            coord_n = self.coordinatizations[coord_idx].coordinates
+            reshape_tup = np.ones(len(self.shape), dtype=int)
+            reshape_tup[coord_idx] = -1
+            reshape_tup = tuple(reshape_tup)
+            coord_n = coord_n.reshape(reshape_tup)
+            cur_c = ones_block * coord_n
+            coordinates.append(cur_c)
+        coordinates = np.dstack(coordinates)
+        return coordinates
+    
+    @property
+    def indexes(self):
+        indexes = []
+        ones_block = np.ones(self.shape, dtype=int)
+        for coord_idx in range(len(self.coordinatizations)):
+            idx_n = np.arange(self.shape[coord_idx])
+            reshape_tup = np.ones(len(self.shape), dtype=int)
+            reshape_tup[coord_idx] = -1
+            reshape_tup = tuple(reshape_tup)
+            coord_n = idx_n.reshape(reshape_tup)
+            cur_c = ones_block * coord_n
+            indexes.append(cur_c)
+            indexes = np.dstack(indexes)
+        return indexes    
+    
+    def interpolant_sampling_matrix(self, coord_arr, extrapolate=False):
+        coord_vec = np.atleast_2d(coord_arr)
+        input_shape = coord_vec.shape
+        if not input_shape[-1] == len(self.shape):
+            raise ValueError("final dimension of input coordinates does not match number of specified coordinate dimensions")
+        if len(input_shape) > 2:
+            raise ValueError("can't make a sparse matrix if coord_arr.ndim > 2 reshape your array to be (npts x ndim) and then reshape back again after applying sampling matrix""")
+        continuous_idxs = self.get_index(coord_vec)
+        max_vec = np.asarray(self.shape) - 2
+        nearest_idxs = np.around(np.clip(continuous_idxs, 1, max_vec)).astype(int)
+        idx_deltas = continuous_idxs - nearest_idxs
+        delta_int = np.where(idx_deltas > 0, 1, -1)
+        neighbor_idxs = nearest_idxs + delta_int
+        neighbor_weights = np.abs(idx_deltas)
+        nearest_weight = 1.0-np.sum(neighbor_weights, axis=1)
+        #import pdb;pdb.set_trace()
+        if not extrapolate:
+            close_enough = np.abs(nearest_weight) < 2.0
+            neighbor_weights *= close_enough.reshape((-1, 1))
+            nearest_weight *= close_enough
+        
+        nrows = len(coord_vec)
+        ncols = reduce(lambda x, y: x*y , self.shape)
+        n_entries = nrows*(len(self.shape)+1)
+        row_idxs = np.zeros(n_entries)
+        col_idxs = np.zeros(n_entries)
+        mat_entries = np.zeros(n_entries)
+        mat_shape = (nrows, ncols)
+        
+        clb = 0
+        cub = clb + nrows
+        n_idx_tup = [nearest_idxs[:, i] for i in range(len(self.shape))]
+        col_idxs[clb:cub] = np.ravel_multi_index(n_idx_tup, self.shape)
+        row_idxs[clb:cub] = np.arange(nrows)
+        mat_entries[clb:cub] = nearest_weight
+        
+        #mat_dat = np.hstack([snap_alpha, neighbor_alpha])
+        #row_idxs = np.hstack([np.arange(nrows), np.arange(nrows)])
+        #col_idxs = np.hstack([clipped_snapped_input_cols, neighbor_idxs])
+        
+        for dim_idx in range(len(self.shape)):
+            clb = cub
+            cub = clb + nrows
+            neighbor_idx_tup = copy(n_idx_tup)
+            neighbor_idx_tup[dim_idx] = neighbor_idxs[:, dim_idx]
+            col_idxs[clb:cub] = np.ravel_multi_index(neighbor_idx_tup, self.shape)
+            row_idxs[clb:cub] = np.arange(nrows)
+            mat_entries[clb:cub] = neighbor_weights[:, dim_idx]
+            
+            #interped_data += self.grid_data[neighbor_idx_tup]*neighbor_weights[:, dim_idx]
+        interp_mat = scipy.sparse.coo_matrix((mat_entries, (row_idxs, col_idxs)), shape=mat_shape).tocsr()
+        return interp_mat
+    
+    
+    def unraveled_curvature_matrices(self):
+        curvature_mats = []
+        nrows = reduce(lambda x, y: x*y , self.shape)
+        index_brick = self.indexes.reshape((-1, len(self.shape)))
+        identity_idxs = [index_brick[:, i] for i in range(len(self.shape))]
+        mat_data = np.repeat(-0.5, 3*nrows)
+        mat_data[:nrows] = 1.0
+        for dim_idx in range(len(self.shape)):
+            to_ravel_plus = copy(identity_idxs)
+            to_ravel_plus[dim_idx] = to_ravel_plus[dim_idx]+1
+            plus_idxs = np.ravel_multi_index(to_ravel_plus, self.shape, mode="clip")
+            to_ravel_minus = copy(identity_idxs)
+            to_ravel_minus[dim_idx] = to_ravel_minus[dim_idx]-1
+            minus_idxs = np.ravel_multi_index(to_ravel_minus, self.shape, mode="clip")       
+            row_idxs = np.hstack([np.arange(nrows), plus_idxs, minus_idxs])
+            col_idxs = np.hstack([np.arange(nrows), np.arange(nrows), np.arange(nrows)])
+            cmat = scipy.sparse.coo_matrix((mat_data, (row_idxs, col_idxs)), shape=(nrows, nrows))
+            curvature_mats.append(cmat)
+        return curvature_mats
+

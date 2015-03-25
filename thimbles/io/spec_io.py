@@ -163,7 +163,7 @@ read_fits.__doc__ = """
     band : integer
         If the hdu has NAXIS3 != 0 then this will select which
         value that dimension should be
-    preference : {}, or None
+    preference : string, or None
         
     Returns
     -------

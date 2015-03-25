@@ -172,9 +172,12 @@ def from_crval (header):
     c0 = crval1 
     c1 = cdelt1
     # implement correct wavelength solution
-    if ctype1.upper() == 'LINEAR':
+    ctype1 = ctype1.upper()
+    if ctype1 == "WAVELENGTH":
         return [pixels*c1+c0]
-    elif ctype1.upper() == "LOG-LINEAR":
+    elif ctype1 == 'LINEAR':
+        return [pixels*c1+c0]
+    elif ctype1 == "LOG-LINEAR":
         return [np.power(10.0, pixels*c1+c0)]
     else:
         raise IncompatibleWavelengthSolution("unknown value for keyword CTYPE={}".format(ctype1))
@@ -243,7 +246,7 @@ def from_crvl (header):
         if wv_soln is None:
             break         
         wv_solns.append(wv_soln)
-        
+    
     # check that length makes sense   
     n = len(wv_solns)
     if n == 0:

@@ -30,8 +30,6 @@ from thimblesgui import FluxDisplay
 fg_color = "#2056DD" 
 bk_color = "#708080" 
 focus_color = "#F0DB62"
-#bk_focus_color = "#B2ECFF" 
-
 
 class SelectionTier(QtCore.QObject):
     changed = Signal(list)

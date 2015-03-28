@@ -16,4 +16,22 @@ class Source(Base, ThimblesTable):
         self.name = name
         self.ra=ra
         self.dec=dec
-    
+
+
+grouping_assoc = sa.Table(
+    "source_group_assoc", 
+    Base.metadata,
+    Column("source_id", Integer, ForeignKey("Source._id")),
+    Column("group_id", Integer, ForeignKey("SourceGroup._id")),
+)
+
+class SourceGroup(Base, ThimblesTable):
+    name = Column(String)
+    sources = relationship("Source", secondary=grouping_assoc)
+
+    def __init__(self, name="", sources=None):
+        self.name = name
+        if sources is None:
+            sources = []
+        self.sources = sources
+

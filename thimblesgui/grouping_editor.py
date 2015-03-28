@@ -326,6 +326,7 @@ class WavelengthSpanWidget(SpanWidgetBase, QtGui.QWidget):
             return
         super(WavelengthSpanWidget, self).keyPressEvent(event)
 
+
 def _to_z(val):
     try:
         z = int(val)
@@ -1009,6 +1010,7 @@ class ForegroundTransitionListWidget(QtGui.QWidget):
                     if len(group.transitions) == 0:
                         groups_to_purge.append(group)
             self.purge_groups(groups_to_purge)
+            self.selection.groups.changed.emit(self.selection.groups.values)
             sbar.showMessage(
                 "removed {} transitions; purged {} empty groups".format(n_removed, len(groups_to_purge)))
     
@@ -1036,37 +1038,12 @@ class ForegroundTransitionListWidget(QtGui.QWidget):
                     group.transitions.append(t)
                     gdict[t] = group
                 self.purge_groups(groups_to_purge)
+                self.selection.groups.changed.emit(self.selection.groups.values)
+                self.selection.groups.set_focus([group])
                 sbar.showMessage(
-                    "{} transitions added {} empty groups purged".format(len(new_trans), len(groups_to_purge)))
+                    "{} transitions added; {} empty groups purged".format(len(new_trans), len(groups_to_purge)))
             else:
                 sbar.showMessage("all selected transitions already in selected group!")
-
-
-class ActiveGroupWidget(QtGui.QWidget):
-    
-    def __init__(self, grouping_standard_editor, parent=None):
-        self.selection = grouping_standard_editor.selection
-        self.parent_editor = grouping_standard_editor
-        super(ActiveGroupWidget, self).__init__(parent)
-        layout = QtGui.QGridLayout()
-        self.setLayout(layout)
-        self.grouped_trans_model = TransitionListModel()
-        #self.selection.groups.focusChanged.connect(self.on_focused_group_changed)
-        self.grouped_trans_view = QtGui.QTableView(parent=self)
-        self.grouped_trans_view.setModel(self.grouped_trans_model)
-        self.grouped_trans_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectionBehavior.SelectRows)
-
-    
-    def on_focused_group_changed(self):
-        fgroups = self.selection.groups.focused
-        if len(fgroups) == 0:
-            ftrans = []
-        else:
-            ftrans = fgroups[0].transitions
-        self.grouped_trans_model.set_mapped_list(ftrans)
-    
-    #def sizeHint(self):
-    #    return QtCore.QSize(300, 300)
 
 
 class GroupSelectionWidget(QtGui.QWidget):
@@ -1089,18 +1066,12 @@ class GroupSelectionWidget(QtGui.QWidget):
         self.groups_view = QtGui.QTableView(parent=self)
         self.groups_view.setModel(self.groups_model)
         self.groups_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectionBehavior.SelectRows)
-        #self.groups_view.setSelectionMode(QtGui.QAbstractItemView.SelectionMode.SingleSelection)
         self.selection.groups.set_selection_model(self.groups_view.selectionModel())
         layout.addWidget(self.groups_view, 0, 0, 1, 3)
         
         self.add_empty_btn = QtGui.QPushButton("add_empty")
         self.add_empty_btn.clicked.connect(self.on_add_empty)
         layout.addWidget(self.add_empty_btn, 1, 0, 1, 1)
-        self.lock_cb = QtGui.QCheckBox("lock", parent=self)
-        layout.addWidget(self.lock_cb, 1, 1, 1, 1)
-        
-        #self.active_group_widget = ActiveGroupWidget(grouping_standard_editor, parent=self)
-        #layout.addWidget(self.active_group_widget)
     
     def on_add_empty(self):
         cur_groups = self.selection.groups.values
@@ -1118,9 +1089,7 @@ class GroupSelectionWidget(QtGui.QWidget):
     
     @Slot(list)
     def set_groups_from_transitions(self, transitions):
-        if self.lock_cb.checkState():
-            return
-        else:
+        if self.parent_editor.group_cascade_cb.checkState():
             transitions = self.selection.transitions.foreground.values
             groups = self.transition_groups(transitions)
             self.selection.groups.set_values(groups)
@@ -1397,12 +1366,28 @@ class GroupingStandardEditor(QtGui.QMainWindow):
         self.fileMenu.addAction(self.save_act)
     
     def make_toolbars(self):
-        self.wavelength_toolbar = self.addToolBar("Wavelength")
+        self.sel_toolbar = self.addToolBar("Selection")
+        #grouping selection cascade toggle
+        self.group_cascade_cb = QtGui.QCheckBox("Transition->Group Cascade", parent=self)
+        self.group_cascade_cb.setCheckState(Qt.CheckState.Checked)
+        self.sel_toolbar.addWidget(self.group_cascade_cb)
+        #zoom to selection toggle
+        self.selection_zoom_cb = QtGui.QCheckBox("Zoom to Selection", parent=self)
+        self.selection_zoom_cb.setCheckState(Qt.CheckState.Checked)
+        self.sel_toolbar.addWidget(self.selection_zoom_cb)
+        #wavelength stepper widget
         self.global_wv_span_widget = FlatWavelengthSpanWidget(self.wv_span)
-        self.wavelength_toolbar.addWidget(self.global_wv_span_widget)
+        self.sel_toolbar.addWidget(self.global_wv_span_widget)
     
     def make_status_bar(self):
         self.statusBar().showMessage("Ready")
+    
+    @Slot(list)
+    def on_transition_selection(self, translist):
+        if self.selection_zoom_cb.checkState():
+            twvs = [t.wv for t in translist]
+            min_wv = np.min(twvs)
+            max_wv = np.max(twvs)
     
     @Slot(list)
     def on_pick_event(self, event_l):

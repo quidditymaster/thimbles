@@ -98,7 +98,7 @@ class Flags(object):
     def __repr__(self):
         return repr(self.asdict())
 
-#NOTE: don't change the order of these calls it is implicitly setting the bit_indexes
+#NOTE: The order of these calls it is implicitly setting the bit_indexes
 feature_flag_space = FlagSpace()
 feature_flag_space.add_dimension("use", default=True)
 feature_flag_space.add_dimension("bad_data")
@@ -111,20 +111,14 @@ class FeatureFlags(Flags, Base, ThimblesTable):
     def __init__(self, flag_int=None):
         super(FeatureFlags, self).__init__(feature_flag_space, flag_int)
 
+
 spectrum_flag_space = FlagSpace()
 spectrum_flag_space.add_dimension("normalized")
 spectrum_flag_space.add_dimension("fluxed")
 spectrum_flag_space.add_dimension("observed", default=True)
-spectrum_flag_space.add_dimension("oversampled")
 spectrum_flag_space.add_dimension("telluric")
 spectrum_flag_space.add_dimension("sky")
-# rv_applied
-# continuum_divided
-# co-added
-# telluric_divided
-# smoothed
-# rebinned
-# re-sampled
+
 
 class SpectrumFlags(Flags, ThimblesTable, Base):
     flag_int= Column(Integer)    

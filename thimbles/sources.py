@@ -1,5 +1,5 @@
 from thimbles.thimblesdb import Base, ThimblesTable
-from sqlaimports import *
+from .sqlaimports import *
 
 class Source(Base, ThimblesTable):
     """astrophysical light source"""

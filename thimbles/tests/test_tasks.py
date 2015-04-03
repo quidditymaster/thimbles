@@ -5,7 +5,7 @@ DATE: Mon Aug 25 14:42:00 2014
 """
 # ########################################################################### #
 
-from __future__ import print_function, division
+
 import os 
 import sys 
 import re 
@@ -63,7 +63,7 @@ class _TestTask (object): # unittest.TestCase
         task1.y.set_runtime_str("5")
         task1.a.set_runtime_str("-2")
         task1.run()
-        self.assertEquals(wds.task1_result, -2*3 + 5)
+        self.assertEqual(wds.task1_result, -2*3 + 5)
     
     def test_option_path(self):
         self.assertTrue(self.opts.task1.option_path == "task1")

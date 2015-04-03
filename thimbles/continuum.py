@@ -9,8 +9,8 @@ import scipy.sparse
 from thimbles.utils.misc import smooth_ppol_fit
 import thimbles.utils.piecewise_polynomial as ppol
 from thimbles import logger
-from spectrum import Spectrum
-from sqlaimports import *
+from .spectrum import Spectrum
+from .sqlaimports import *
 
 class BlackBodyContinuumModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)

@@ -17,6 +17,7 @@ from astropy import units
 from astropy import coordinates
 import astropy.io.fits as fits
 import scipy.optimize
+from functools import reduce
 try:
     import cvxopt
     import cvxopt.solvers
@@ -139,7 +140,7 @@ def clean_inverse_variances(inverse_variance):
 def reduce_output_shape (arr):
     shape = arr.shape
     new_shape = tuple()
-    for i in xrange(len(shape)): 
+    for i in range(len(shape)): 
         if shape[i] != 1: 
             new_shape += (shape[i],)
     return arr.reshape(new_shape)
@@ -159,7 +160,7 @@ def cross_corr(arr1, arr2, offset_number, overlap_adj=False):
     npts = len(arr1)
     offs = int(offset_number)
     cor_out = np.zeros(2*offs+1)
-    offsets = range(-offs, offs+1)
+    offsets = list(range(-offs, offs+1))
     for offset_idx in range(len(offsets)):
         #print "offsets", offsets[offset_idx]
         #print "shapes", arr1.shape, arr2.shape
@@ -271,7 +272,7 @@ def wavelet_transform_fft(values, g_widths):
     n_g_widths = len(g_widths)
     val_fft = fftpack.fft(values, n=n_trans)
     out_dat = np.zeros((n_g_widths, n_pts), dtype=float)
-    for g_width_idx in xrange(n_g_widths):
+    for g_width_idx in range(n_g_widths):
         c_g_width = g_widths[g_width_idx]
         l2norm = np.power(1.0/(np.pi*c_g_width), 0.25)
         deltas = np.arange(n_pts, dtype=float) - n_pts/2
@@ -299,7 +300,7 @@ def wavelet_transform(values, g_widths, mask):
     deltas = np.arange(2*max_delt+1) - max_delt
     if mask==None:
         mask = np.ones(values.shape)
-    for g_width_idx in xrange(n_g_widths):
+    for g_width_idx in range(n_g_widths):
         c_g_width = g_widths[g_width_idx]
         lprof = np.exp(-0.5*(deltas/c_g_width)**2)
         conv_norm = np.convolve(lprof, mask, mode="same")
@@ -640,7 +641,7 @@ def smooth_ppol_fit(x, y, y_inv=None, order=3, mask=None, mult=None, partition="
     n_polys = len(partition) + 1
     n_coeffs = order+1
     out_coeffs = np.zeros((n_polys, n_coeffs))
-    for basis_idx in xrange(pp_gen.n_basis):
+    for basis_idx in range(pp_gen.n_basis):
         c_coeffs = pp_gen.basis_coefficients[basis_idx].reshape((n_polys, n_coeffs))
         out_coeffs += c_coeffs*fit_coeffs[basis_idx]
     out_ppol = piecewise_polynomial.PiecewisePolynomial(out_coeffs, partition, centers=pp_gen.centers, scales=pp_gen.scales, bounds=pp_gen.bounds)
@@ -667,7 +668,7 @@ def echelle_normalize(spectra, masks="layered median", partition="adaptive", mas
     
     masked_pixels = np.hstack([np.arange(len(spectra[i].flux))[masks[i]] for i in range(n_spec)])
     masked_wvs = np.hstack([spectra[i].wv[masks[i]] for i in range(n_spec)])
-    order_set = range(1, n_spec+1)
+    order_set = list(range(1, n_spec+1))
     order_nums = np.hstack([np.ones(len(spectra[i-1].flux), dtype=float)[masks[i-1]]*i for i in order_set])
     masked_fluxes = np.hstack([spectra[i].flux[masks[i]] for i in range(n_spec)])
     masked_inv_var = np.hstack([spectra[i].inv_var[masks[i]] for i in range(n_spec)])
@@ -743,7 +744,7 @@ def lad_fit(A, y):
     the target output vector.
     """
     if not with_cvxopt:
-        print "lad_fit function requires cvxopt but the import failed!"
+        print("lad_fit function requires cvxopt but the import failed!")
     neg_ident_mat = -np.diag(np.ones(len(A)), 0)
     nrows, ncols = A.shape
     const_mat = np.empty((3*nrows, ncols+nrows))
@@ -777,7 +778,7 @@ def vec_sort_lad(e, u):
     unz *= signum
     enz = np.asarray(signum*e[nz], dtype=float)
     ratios = enz/unz
-    srat, sunz = zip(*sorted(zip(ratios, unz)))
+    srat, sunz = list(zip(*sorted(zip(ratios, unz))))
     sunz = np.asarray(sunz)
     usum = -np.sum(sunz)
     usum_idx = 0
@@ -1043,7 +1044,7 @@ def saturated_voigt_cog(gamma_ratio=0.1):
     n_coeffs = 2
     out_coeffs = np.zeros((n_polys, n_coeffs))
     fit_coeffs = np.linalg.lstsq(linear_basis.transpose(), extended_slopes)[0]
-    for basis_idx in xrange(constrained_ppol.n_basis):
+    for basis_idx in range(constrained_ppol.n_basis):
         c_coeffs = constrained_ppol.basis_coefficients[basis_idx].reshape((n_polys, n_coeffs))
         out_coeffs += c_coeffs*fit_coeffs[basis_idx]
     #linear_ppol = ppol.fit_piecewise_polynomial(extended_log_strengths, extended_slopes, order=1, control_points=cpoints)
@@ -1183,7 +1184,7 @@ def running_box_segmentation(
     grouping_id = np.zeros((n_pts, n_cascade), dtype=int)
     for cascade_idx in range(n_cascade):
         gvec = grouping_vecs[cascade_idx]
-        if isinstance(gvec, basestring):
+        if isinstance(gvec, str):
             gvec = df[gvec].values
         mscale = merge_scale[cascade_idx]
         gvec = np.around(gvec/mscale)*mscale

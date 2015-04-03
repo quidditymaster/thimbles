@@ -7,8 +7,8 @@ import warnings
 import thimbles as tmb
 from thimbles.modeling import Model
 from thimbles import resource_dir
-from profiles import convolved_stark
-from spectrum import Spectrum
+from .profiles import convolved_stark
+from .spectrum import Spectrum
 from thimbles.tasks import task
 from thimbles.sqlaimports import *
 
@@ -77,8 +77,8 @@ class HydrogenLineOpacity(tmb.profiles.LineProfile):
         self.wv = wv
         low_str = "{}".format(int(nlow))
         up_str = "{}".format(int(nup))
-        if low_str in lemke_dat.keys():
-            if up_str in lemke_dat[low_str].keys():
+        if low_str in list(lemke_dat.keys()):
+            if up_str in list(lemke_dat[low_str].keys()):
                 pass
         base_group = "{}/{}/".format(low_str, up_str)
         

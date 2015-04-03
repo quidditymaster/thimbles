@@ -1,5 +1,5 @@
 # Standard Library
-from __future__ import print_function, division
+
 from copy import deepcopy
 
 # 3rd Party
@@ -43,7 +43,7 @@ class MetaData (dict):
     def __iadd__ (self,other):
         self._type_check_other(other)
         for key in other:
-            if self.has_key(key):
+            if key in self:
                 continue
             self[key] = other[key]
         return self    
@@ -106,18 +106,18 @@ class MetaData (dict):
         
         if key_conflicts=='merge':
             for key in other:
-                if self.has_key(key) and self[key]==other[key]:
+                if key in self and self[key]==other[key]:
                     continue
                 i = 0   
                 base_key = deepcopy(key)
-                while self.has_key(key):            
+                while key in self:            
                     key = str(base_key)+"_"+str(i)
                     i += 1    
                 out[key] = other[base_key]
             return out
         # else:
         for key in other:
-            if self.has_key(key):
+            if key in self:
                 # if the data's the same don't worry about it
                 if self[key]==other[key]:
                     continue
@@ -138,7 +138,7 @@ class MetaData (dict):
     
     def header_list(self):
         """returns a list of the values belonging to keys beginning header_ """
-        keys = self.keys()
+        keys = list(self.keys())
         headers = []
         for key in keys:
             try:

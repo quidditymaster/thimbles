@@ -49,7 +49,7 @@ class PolynomialBasis:
         self.center = center
         self.scale = scale
         self.basis_polys = []
-        for poly_idx in xrange(self.n_basis):
+        for poly_idx in range(self.n_basis):
             new_poly = Polynomial(self.coefficients[poly_idx], self.center, self.scale)
             self.basis_polys.append(new_poly)
     
@@ -64,7 +64,7 @@ class PolynomialBasis:
         containing the polynomials evaluated at the positions in xvals"""
         xvec = np.array(xvals)
         out_basis = np.zeros((self.n_basis, len(xvec)))
-        for basis_idx in xrange(self.n_basis):
+        for basis_idx in range(self.n_basis):
             out_basis[basis_idx] = self.basis_polys[basis_idx](xvec)
         return out_basis
     
@@ -122,11 +122,11 @@ class MultiVariatePolynomial:
         new_coeffs = []
         new_powers = []
         powers_dict = {}
-        for coeff_idx in xrange(self.n_coeffs):
+        for coeff_idx in range(self.n_coeffs):
             new_coeffs.append(self.coeffs[coeff_idx])
             new_powers.append(self.powers[coeff_idx])
             powers_dict[tuple(self.powers[coeff_idx])] = coeff_idx
-        for coeff_idx in xrange(B.n_coeffs):
+        for coeff_idx in range(B.n_coeffs):
             cpow = tuple(B.powers[coeff_idx])
             out_idx = powers_dict.get(cpow)
             if out_idx != None:
@@ -143,8 +143,8 @@ class MultiVariatePolynomial:
         new_powers = []
         powers_dict = {}
         cur_out_idx = 0
-        for coeff_idx_1 in xrange(self.n_coeffs):
-            for coeff_idx_2 in xrange(B.n_coeffs):
+        for coeff_idx_1 in range(self.n_coeffs):
+            for coeff_idx_2 in range(B.n_coeffs):
                 cpow = self.powers[coeff_idx_1] + B.powers[coeff_idx_2]
                 tcpow = tuple(cpow)
                 ccoeff = self.coeffs[coeff_idx_1]*B.coeffs[coeff_idx_2]
@@ -175,9 +175,9 @@ class MultiVariatePolynomial:
         npts, n_cols = x2d.shape
         n_terms = len(self.powers)
         pofx = np.empty((npts, n_terms))
-        for term_idx in xrange(n_terms):
+        for term_idx in range(n_terms):
             result_col = np.ones(npts)
-            for var_idx in xrange(n_cols):
+            for var_idx in range(n_cols):
                 cpow = self.powers[term_idx, var_idx]
                 result_col *= np.power(x2d[:, var_idx], cpow)
             pofx[:, term_idx] = result_col
@@ -210,7 +210,7 @@ class Binning:
     def get_bin_index(self, xvec):
         xv = np.array(xvec)
         out_idxs = np.zeros(len(xv.flat), dtype = int)
-        for x_idx in xrange(len(xv.flat)):
+        for x_idx in range(len(xv.flat)):
             if np.isnan(xv[x_idx]):
                 out_idxs[x_idx] = -3
                 break
@@ -311,7 +311,7 @@ class PiecewisePolynomial:
         output = np.zeros(x_in.shape)
         poly_idxs = self.binning.get_bin_index(x_in)
         output[np.isnan(poly_idxs)] = self.fill_value
-        for p_idx in xrange(self.n_polys):
+        for p_idx in range(self.n_polys):
             pmask = poly_idxs == p_idx
             output[pmask] = self.poly_list[p_idx](x_in[pmask])
         return output
@@ -331,7 +331,7 @@ class PiecewisePolynomial:
         #import pdb; pdb.set_trace()
         integ_polys = [pol.integ() for pol in self.poly_list]
         integ_polys[0].poly.coeffs[-1] = integration_constant
-        for interface_idx in xrange(len(self.poly_list)-1):
+        for interface_idx in range(len(self.poly_list)-1):
             interface_pt = self.binning.bins[interface_idx+1]
             rval = integ_polys[interface_idx](interface_pt)
             lval = integ_polys[interface_idx+1](interface_pt)
@@ -369,7 +369,7 @@ class InvertiblePiecewiseQuadratic(PiecewisePolynomial):
         output = np.zeros(yvals.shape)
         poly_idxs = self.y_binning.get_bin_index(yvals)
         output[np.isnan(poly_idxs)] = self.fill_value
-        for p_idx in xrange(self.n_polys):
+        for p_idx in range(self.n_polys):
             pmask = poly_idxs == p_idx
             a, b, c = self.poly_list[p_idx].poly.coeffs
             x = (-b+self.branch_sign*np.sqrt(b**2-4.0*a*(c-yvals[pmask])))/(2.0*a)
@@ -398,7 +398,7 @@ class PiecewisePolynomialBasis(PolynomialBasis):
         self.bounds = bounds
         self.fill_value = fill_value
         self.basis_piecewise_polys = []
-        for basis_idx in xrange(self.n_basis):
+        for basis_idx in range(self.n_basis):
             cur_coeffs = self.coefficients[basis_idx, ]
             new_ppol = PiecewisePolynomial(cur_coeffs, self.control_points, 
                                            centers=self.centers, scales=self.scales,
@@ -420,7 +420,7 @@ class PiecewisePolynomialBasis(PolynomialBasis):
         containing the polynomials evaluated at the positions in xvals"""
         xvec = np.array(xvals)
         out_basis = np.zeros((self.n_basis, len(xvec)))
-        for basis_idx in xrange(self.n_basis):
+        for basis_idx in range(self.n_basis):
             out_basis[basis_idx] = self.basis_piecewise_polys[basis_idx](xvec)
         return out_basis
 
@@ -620,8 +620,8 @@ class RegularityConstrainedPiecewisePolynomialBasis:
         xvec = np.array(in_vec)
         poly_idxs = self.binning.get_bin_index(xvec)
         out_basis = np.zeros((self.n_basis, len(xvec)))
-        for basis_idx in xrange(self.n_basis):
-            for poly_idx in xrange(self.n_polys):
+        for basis_idx in range(self.n_basis):
+            for poly_idx in range(self.n_polys):
                 xmask = poly_idxs == poly_idx 
                 cx = xvec[xmask]
                 out_basis[basis_idx][xmask] = self.basis_polys[basis_idx][poly_idx](cx)
@@ -637,7 +637,7 @@ def fit_piecewise_polynomial(x, y, order, control_points, bounds = (float("-inf"
     n_coeffs = order+1
     out_coeffs = np.zeros((n_polys, n_coeffs))
     fit_coeffs = np.linalg.lstsq(gbasis.transpose(), y)[0]
-    for basis_idx in xrange(pp_gen.n_basis):
+    for basis_idx in range(pp_gen.n_basis):
         c_coeffs = pp_gen.basis_coefficients[basis_idx].reshape((n_polys, n_coeffs))
         out_coeffs += c_coeffs*fit_coeffs[basis_idx]
     return PiecewisePolynomial(out_coeffs, control_points, centers=centers, scales=scales, bounds=bounds)
@@ -652,9 +652,9 @@ if __name__ == "__main__":
     p1d = p1.deriv()
     pol_der_pass = False
     if (p1d.poly[0] == 2.0) and (p1d.poly[1] == 2.0):
-        print "PASSED simple poly derivative test"
+        print("PASSED simple poly derivative test")
     else:
-        print "FAILED simple poly derivative test"
+        print("FAILED simple poly derivative test")
     
     test_x = np.linspace(-1, 1, 4000)
     #test_y = np.sin(2.1*np.pi*test_x)
@@ -662,11 +662,11 @@ if __name__ == "__main__":
     
     ppol = fit_piecewise_polynomial(test_x, test_y, 2, np.array([-0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75]))
     fit_y = ppol(test_x)
-    print "starting 1d piecewise poly tests"
+    print("starting 1d piecewise poly tests")
     if np.sum(np.abs(test_y-fit_y)) <= 1e-10:
-        print "PASSED exact fit test"
+        print("PASSED exact fit test")
     else:
-        print "FAILED exact fit test"
+        print("FAILED exact fit test")
     
     #piecewise polynomial integration and differentiation tests
     ppol_to_int = PiecewisePolynomial(coefficients=np.array([[2.0, 0.5], [0.15, 1.15]]),
@@ -682,14 +682,14 @@ if __name__ == "__main__":
     yint_true = proper_integ(x)
     yint_test = int_ppol(x)
     if np.sum(np.abs(yint_test-yint_true)) < 1e-10:
-        print "PASSED simple piecewise poly integration test"
+        print("PASSED simple piecewise poly integration test")
     else:
-        print "FAILED simple piecewise poly integration test"
+        print("FAILED simple piecewise poly integration test")
     
     #test the invertible quadratic
     inv_qp = InvertiblePiecewiseQuadratic(proper_integ.coefficients, control_points=[1], centers=[0.0, 0.0])
     
-    print "starting multi variate polynomial tests"
+    print("starting multi variate polynomial tests")
     A = MultiVariatePolynomial([2.3, 1], [[0, 0], [0, 1]], center = 0.0, scale = 1.0)
     B = MultiVariatePolynomial([1, 2], [[1, 1], [0, 2]], center = 0.0, scale = 1.0)
     
@@ -706,9 +706,9 @@ if __name__ == "__main__":
     if B(pi_e) != np.pi*np.e + np.e**2*2:
         evaluation_test_passed = False
     if evaluation_test_passed:
-        print "PASSED evaluation test"
+        print("PASSED evaluation test")
     else:
-        print "FAILED evaluation test"
+        print("FAILED evaluation test")
     
     ##orthogonalization 
     #randx = np.random.random(30)-0.5

@@ -4,21 +4,16 @@ from itertools import cycle, product
 import os
 import sys
 import time
-import cPickle
+import pickle
 
 # 3rd party packages
-import matplotlib
-matplotlib.use('Qt4Agg')
-from PySide import QtCore
-Qt = QtCore.Qt
-from PySide import QtGui
-matplotlib.rcParams['backend.qt4'] = 'PySide'
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy
 import scipy.optimize
 
 #internal imports
+from thimblesgui import QtCore, QtGui, Qt
 from thimbles.options import Option, opts
 from thimbles.tasks import task_registry
 from thimbles import workingdataspace as wds
@@ -146,8 +141,8 @@ class OldAppForm(QtGui.QMainWindow):
     def print_args(self, *args, **kwargs):
         """prints the arguments passed in
         useful for connecting to events during gui debugging"""
-        print "in print_args"
-        print args, kwargs
+        print("in print_args")
+        print(args, kwargs)
     
     def _init_operations_groups(self):
         all_op_box = QGroupBox("spectral operations")
@@ -257,7 +252,7 @@ class OldAppForm(QtGui.QMainWindow):
             ax = fig.add_subplot(111)
             if cur_type == "spectra":
                 for spec_set in row_data:
-                    cur_c = color_cycle.next()
+                    cur_c = next(color_cycle)
                     for spec in spec_set:
                         ax.plot(spec.wv, spec.flux/spec.norm, c=cur_c)
             plt.show()
@@ -418,7 +413,7 @@ class OldAppForm(QtGui.QMainWindow):
                                 accepted = True
                         elif precull_opt=="none":
                             accepted = True
-                            print "no pre culling of linelist done"
+                            print("no pre culling of linelist done")
                         else:
                             raise Exception("unknown line culling option %s" % precull_opt)
                     if accepted:
@@ -457,14 +452,14 @@ class OldAppForm(QtGui.QMainWindow):
                 ll_row = tmbg.models.LineListRow(ldat, ll_base_name)
                 self.main_table_model.addRow(ll_row)
             except Exception as e:
-                print "there was an error reading file %s" % self.options.line_list
-                print e
+                print("there was an error reading file %s" % self.options.line_list)
+                print(e)
         self.ldat = ldat
     
     def save_features(self, fname, features):
         out_fname=fname.split(".")[0] + ".features.pkl"
         out_fpath = os.path.join(self.options.output_dir, out_fname)
-        cPickle.dump(features, open(out_fpath, "w"))
+        pickle.dump(features, open(out_fpath, "w"))
     
     def save_moog_from_features(self, fname, features):
         out_fname=fname.split(".")[0] + ".features.ln"
@@ -489,7 +484,7 @@ class OldAppForm(QtGui.QMainWindow):
             spec.set_rv(rv)
         
         if self.ldat is None:
-            print "cannot carry out a fit without a feature line list"
+            print("cannot carry out a fit without a feature line list")
             return None
         
         if self.options.fit == "individual":
@@ -507,15 +502,15 @@ class OldAppForm(QtGui.QMainWindow):
         sig_over_wv = lparams[:, 1]/cent_wvs
         sig_med = np.median(sig_over_wv)
         sig_mad = np.median(np.abs(sig_over_wv-sig_med))
-        print "sig_med", sig_med, "sig_mad", sig_mad
+        print("sig_med", sig_med, "sig_mad", sig_mad)
         
         vel_med = np.median(vel_offs)
         vel_mad = np.median(np.abs(vel_offs - vel_med))
-        print "vel median", vel_med, "vel mad", vel_mad
+        print("vel median", vel_med, "vel mad", vel_mad)
         
         gam_med = np.median(np.abs(lparams[:, 2]))
         gam_mad = np.median(np.abs(lparams[:, 2]-gam_med))
-        print "gam med", gam_med, "gam_mad", gam_mad
+        print("gam med", gam_med, "gam_mad", gam_mad)
         
         gam_thresh = self.options.gamma_max
         mpt = 1.4*self.options.inlier_threshold
@@ -550,7 +545,7 @@ class OldAppForm(QtGui.QMainWindow):
             cwv = feat.wv
             delta_wv = np.abs(feat.data_sample.wv[-1]-feat.data_sample.wv[0])/len(feat.data_sample)
             fit_width = self.options.fit_width
-            if isinstance(fit_width, basestring):
+            if isinstance(fit_width, str):
                 if "average" == fit_width:
                     delta_wv=max(4.2*sig_med*cwv, 5*delta_wv)
             else:

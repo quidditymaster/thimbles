@@ -30,7 +30,7 @@ class OptionTree(object):
         return self.children[opt_name]
     
     def traverse_tree(self, index):
-        if not isinstance(index, basestring):
+        if not isinstance(index, str):
             raise ValueError("option index should be a string not {}".format(type(index)))
         spl = index.split(".")
         cur_opt = self
@@ -169,7 +169,7 @@ class Option(object):
         return self.children[opt_name]
     
     def set_runtime_str(self, value):
-        if not isinstance(value, basestring):
+        if not isinstance(value, str):
             raise TypeError("runtime_str must be of type string not type {}".format(type(value)))
         self.runtime_str = value
         self._valuated = False
@@ -210,14 +210,14 @@ class Option(object):
         return self._value
     
     def register_option(self, name, parent):
-        if not isinstance(name, basestring):
+        if not isinstance(name, str):
             raise ValueError("option name must be a string! not {}".format(type(name)))
         if parent is None:
             parent = self.option_tree
-        elif isinstance(parent, basestring):
+        elif isinstance(parent, str):
             parent = opts.traverse_tree(parent)
-        if name in parent.children.keys():
-            print "overwriting option {} in {} with option of same name".format(name, parent)
+        if name in list(parent.children.keys()):
+            print("overwriting option {} in {} with option of same name".format(name, parent))
         if not (isinstance(parent, Option) or isinstance(parent, OptionTree)):
             raise ValueError("parent option value of type {} not understood".format(type(parent)))
         parent.children[name] = self
@@ -264,13 +264,13 @@ Option(name="window_width", default=-4.5, parent="spec_display", help_=_help)
 
 
 def print_option_help():
-    print thimbles_header_str
+    print(thimbles_header_str)
     help_str = "{name}  :  {help}"#\n  value: {value}\n  runtime string:{run_str}" 
-    print "Top Level Options"
+    print("Top Level Options")
     top_opts = opts.children
     for op_name in top_opts:
         help_ = top_opts[op_name].help
-        print help_str.format(name=op_name, help=help_)
+        print(help_str.format(name=op_name, help=help_))
     #for op in opts.options.values():
     #    try:
     #        value = op.value

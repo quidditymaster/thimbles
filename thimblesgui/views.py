@@ -1,9 +1,7 @@
 from thimblesgui.models import ObjectTree
 import thimbles as tmb
 
-import PySide.QtGui as QtGui
-import PySide.QtCore as QtCore
-from PySide.QtCore import Qt
+from thimblesgui import QtGui, QtCore, Qt
 
 class LineListView(QtGui.QTableView):
     

@@ -96,20 +96,20 @@ class FloatSlider(QtGui.QWidget):
     def set_value(self, val):
         try:
             if val > self.c_max:
-                print "value above slider max, truncating"
+                print("value above slider max, truncating")
                 val = self.c_max
             elif val < self.c_min:
-                print "value below slider min, truncating"
+                print("value below slider min, truncating")
                 val = self.c_min
             elif val == np.nan:
-                print "value is nan, using minimum"
+                print("value is nan, using minimum")
                 val = self.c_min
             vfrac = (val-self.c_min)/self.delta
             opt_idx = int(np.around(vfrac*self.n_steps))
             self.slider.setValue(opt_idx)
             self.refresh_indicator()
         except Exception as e:
-            print "failed slider value setting resulted in error %s" % e
+            print("failed slider value setting resulted in error %s" % e)
 
 
 class SliderCascade(QtGui.QWidget):

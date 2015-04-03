@@ -1,6 +1,5 @@
 
-from PySide import QtGui, QtCore
-Qt = QtCore.Qt
+from thimblesgui import QtGui, QtCore, Qt
 
 import numpy as np
 
@@ -47,8 +46,8 @@ class FluxDisplay(QtGui.QWidget):
     
     @QtCore.Slot(list)
     def set_bounds(self, bounds):
-        print "calling set_bounds in flux display"
-        print "bounds", bounds
+        print("calling set_bounds in flux display")
+        print("bounds", bounds)
         self.ax.set_xlim(*bounds)
         for schart in self.charts:
             schart.set_bounds(bounds)

@@ -1,7 +1,17 @@
 
+try:
+    from PyQt4 import QtGui
+    from PyQt4 import QtCore
+    which_qt = "PyQt4"
+except ImportError:
+    from PySide import QtGui
+    from PySide import QtCore
+    which_qt = "PySide"
+Qt = QtCore.Qt
+
 import matplotlib as mpl
 mpl.use('Qt4Agg')
-mpl.rcParams['backend.qt4'] = 'PySide'
+mpl.rcParams['backend.qt4'] = which_qt
 import matplotlib.pyplot as plt
 
 import thimbles as tmb
@@ -14,7 +24,7 @@ mpl.rcParams.update(style_dict)
 from thimblesgui.mplwidget import MatplotlibWidget
 from thimblesgui.spec_widget import FluxDisplay
 
-import main_window
-import models
-import views
+from . import main_window
+from . import models
+from . import views
 import thimblesgui.grouping_editor

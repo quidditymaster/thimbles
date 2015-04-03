@@ -68,7 +68,7 @@ class NamedRow(object):
         editor_style="file")},
 )
 def load_tdb(fname):
-    print "running load_tdb"
+    print("running load_tdb")
     return ThimblesDB(fname)
 
 @task(result_name="injection_success")

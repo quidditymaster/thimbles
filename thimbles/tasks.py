@@ -9,7 +9,7 @@ DATE: Mon Aug 25 14:39:11 2014
 
 # import modules 
 
-from __future__ import print_function, division
+
 import os 
 import sys 
 import re 
@@ -18,11 +18,12 @@ import inspect
 from collections import OrderedDict
 from types import LambdaType
 
-import cPickle
+import pickle
 import numpy as np 
 
-import workingdataspace as wds
+from . import workingdataspace as wds
 from thimbles.options import Option, opts, EvalError
+import collections
 
 # ########################################################################### #
 
@@ -41,12 +42,12 @@ def argument_dict(func, filler_value=None, return_has_default=False):
     defaults = [filler_value for i in range(n_args_total-n_defaults)]
     if not argspec.defaults is None:
         defaults.extend(argspec.defaults)
-    arg_dict = OrderedDict(zip(argspec.args, defaults))
+    arg_dict = OrderedDict(list(zip(argspec.args, defaults)))
     
     if return_has_default:
         has_defaults = [False for i in range(n_args_total-n_defaults)]
         has_defaults.extend([True for i in range(n_defaults)])
-        has_defaults_dict = OrderedDict(zip(argspec.args, has_defaults))
+        has_defaults_dict = OrderedDict(list(zip(argspec.args, has_defaults)))
         return arg_dict, has_defaults_dict
     else:
         return arg_dict 
@@ -62,7 +63,7 @@ class Task(Option):
         self.result_name = result_name
         self.option_tree = option_tree
         self.registry = registry
-        if not isinstance(self.result_name, basestring):
+        if not isinstance(self.result_name, str):
             raise ValueError("result_name must be of type string not type {}".format(type(result_name))) 
         if not func is None:
             self.set_func(func)
@@ -79,7 +80,7 @@ class Task(Option):
     
     def _generate_child_options(self):
         arg_dict, arg_has_default = argument_dict(self.func, return_has_default=True)
-        self.task_kwargs = arg_dict.keys()
+        self.task_kwargs = list(arg_dict.keys())
         for arg_key in arg_dict:
             opt_kwargs = self.sub_kwargs.pop(arg_key, {})
             if arg_has_default[arg_key]:
@@ -273,7 +274,7 @@ class DylanTask (object):
         
         if argstrings is not None:
             for key in argstrings:
-                if not isinstance(argstrings[key],basestring):
+                if not isinstance(argstrings[key],str):
                     raise TypeError("every value in argstrings must be a string which can be evaluated")
                 if key in self.argstrings:
                     self.argstrings[key] = argstrings[key]
@@ -298,12 +299,12 @@ class DylanTask (object):
                     repr for it. 
                                     
         """    
-        if isinstance(value,(basestring,float,int,complex,list,dict)):
+        if isinstance(value,(str,float,int,complex,list,dict)):
             return repr(value)
         if isinstance(value,LambdaType):
             rep = inspect.getsource(hey).rstrip()
             return rep[rep.find("=")+1:]        
-        elif callable(value):
+        elif isinstance(value, collections.Callable):
             # perhaps use the memory address to instanciate a python object
             raise EvalError("Don't know how to turn function into a re-evaluatable thing")
         else:

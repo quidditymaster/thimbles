@@ -4,7 +4,7 @@ import scipy
 from scipy.interpolate import interp1d
 import thimbles as tmb
 from thimbles.modeling.modeling import Model
-from sqlaimports import *
+from .sqlaimports import *
 from thimbles.thimblesdb import ThimblesTable
 
 n_delts = 1024

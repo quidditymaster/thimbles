@@ -81,7 +81,7 @@ class PrevNext(QtGui.QWidget):
                 raise Exception("duration too small")
             new_duration_success = True
         except:
-            print "could not recognize new duration reverting to old"
+            print("could not recognize new duration reverting to old")
             new_duration_success = False
             self.duration_le.setText("%5.5f" % self.duration)
         if new_duration_success:

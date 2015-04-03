@@ -1,10 +1,10 @@
 from copy import copy
 import thimblesgui as tmbg
 
-from PySide import QtGui, QtCore
-Qt = QtCore.Qt
-from PySide.QtCore import Signal, Slot
-from PySide.QtCore import QModelIndex
+from thimblesgui import QtGui, QtCore, Qt
+Signal = QtCore.Signal
+Slot = QtCore.Slot
+QModelIndex = QtCore.QModelIndex
 
 import numpy as np
 import matplotlib as mpl
@@ -143,7 +143,7 @@ class WavelengthSpan(QtCore.QObject):
         self._max_wv = max_wv
     
     def emit_bounds_changed(self):
-        print "bounds changed! {} < {}".format(self.min_wv, self.max_wv)
+        print("bounds changed! {} < {}".format(self.min_wv, self.max_wv))
         self.boundsChanged.emit([self.min_wv, self.max_wv])
     
     @property
@@ -266,7 +266,7 @@ class FlatWavelengthSpanWidget(SpanWidgetBase, QtGui.QWidget):
     
     def keyPressEvent(self, event):
         ekey = event.key()
-        print ekey
+        print(ekey)
         if (ekey == Qt.Key_Enter) or (ekey == Qt.Key_Return):
             #self.on_set()
             return
@@ -318,7 +318,7 @@ class WavelengthSpanWidget(SpanWidgetBase, QtGui.QWidget):
     
     def keyPressEvent(self, event):
         ekey = event.key()
-        print ekey
+        print(ekey)
         if (ekey == Qt.Key_Enter) or (ekey == Qt.Key_Return):
             #self.on_set()
             return
@@ -363,7 +363,7 @@ class SpeciesSelectorWidget(QtGui.QWidget):
     
     def keyPressEvent(self, event):
         ekey = event.key()
-        print "key event {}".format(ekey)
+        print("key event {}".format(ekey))
         if (ekey == Qt.Key_Enter) or (ekey == Qt.Key_Return):
             #self.on_set()
             return
@@ -381,9 +381,9 @@ class SpeciesSelectorWidget(QtGui.QWidget):
                 z_vals.extend(spl)
             elif len(spl) == 2:
                 z1, z2 = sorted(spl)
-                z_vals.extend(range(z1, z2))
+                z_vals.extend(list(range(z1, z2)))
         self.zvals = z_vals
-        print "zvals", self.zvals
+        print("zvals", self.zvals)
         self.species_le.setStyleSheet(_parse_success_style)
     
     @property
@@ -433,12 +433,12 @@ class BaseExpressionWidget(QtGui.QWidget):
                 self.expression_le.setStyleSheet(_parse_success_style)
                 self.expressionChanged.emit()
             except Exception as e:
-                print e
+                print(e)
                 self.expression_le.setStyleSheet(_parse_error_style)
     
     def keyPressEvent(self, event):
         ekey = event.key()
-        print "key event in arbfilt {}".format(ekey)
+        print("key event in arbfilt {}".format(ekey))
         if (ekey == Qt.Key_Enter) or (ekey == Qt.Key_Return):
             return
         super(BaseExpressionWidget, self).keyPressEvent(event)
@@ -476,7 +476,7 @@ class TransitionConstraints(QtGui.QWidget):
         self.expr_wid.expressionChanged.connect(self.on_expression_changed)
     
     def emit_constraints(self, bounds=None):
-        print "emitting constraints"
+        print("emitting constraints")
         tc = self.transition_constraints()
         self.constraintsChanged.emit(tc)
     
@@ -848,7 +848,7 @@ class MappedListModel(QtCore.QAbstractTableModel):
             col_obj.set(data_obj, value, role)
             return True
         except Exception as e:
-            print e
+            print(e)
             return False
 
 
@@ -1429,8 +1429,8 @@ class GroupingStandardEditor(QtGui.QMainWindow):
             self.statusBar().showMessage(
                 "save failed with error {}"\
                 .format(e))
-            print "save action failed"
-            print e
+            print("save action failed")
+            print(e)
             #TODO: raise a warning dialog
     
     def next_wv_region(self):

@@ -7,6 +7,7 @@ import scipy.ndimage
 import scipy.fftpack as fftpack
 import thimbles as tmb
 from thimbles import speed_of_light
+from functools import reduce
 sqrt2pi = np.sqrt(2*np.pi)
 
 profile_functions = {}
@@ -62,7 +63,7 @@ def rotational(wvs, center, vsini, limb_dark = 0):
     norm = np.pi*ml*(1-eps/3.0)
     result = (np.abs(wvs-center) <= ml)*(indep_part + limb_part)/norm
     if np.sum(np.abs(result)) == 0: #rotation too small to detect at this resolution
-        print "rot_too small", len(wvs)
+        print("rot_too small", len(wvs))
         nwvs = len(wvs)
         result[int(nwvs/2)] = 1.0
     return result
@@ -227,7 +228,7 @@ class LineProfile:
     def __init__(self, center, parameters, profile_func="voigt"):
         self.center = center
         self.parameters = np.asarray(parameters)
-        if isinstance(profile_func, basestring):
+        if isinstance(profile_func, str):
             profile_func = profile_functions[profile_func]
         self.profile_func = profile_func
     

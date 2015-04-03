@@ -60,20 +60,20 @@ class FeatureFitWidget(QtGui.QWidget):
         return QtGui.QSize(500, 500)
     
     def save_feature_fits(self, fname):
-        import cPickle
-        cPickle.dump(self.features, open(fname, "wb"))
+        import pickle
+        pickle.dump(self.features, open(fname, "wb"))
     
     def save_measurements(self):
         fname, file_filter = QtGui.QFileDialog.getSaveFileName(self, "save measurements")
         try:
             tmb.io.linelist_io.write_moog_from_features(fname, self.features)
         except Exception as e:
-            print e
+            print(e)
         try:
             feat_fname = ".".join(fname.split(".")[:]) + ".features.pkl"
             self.save_feature_fits(feat_fname)
         except Exception as e:
-            print e
+            print(e)
     
     @property
     def hint_click_on(self):
@@ -116,7 +116,7 @@ class FeatureFitWidget(QtGui.QWidget):
         self.feature.flags["use"] = state_val > 0
     
     def on_selection_change(self, row):
-        print "in on selection change", row
+        print("in on selection change", row)
         #print "in on_selection_change", selection
         #print dir(selection)
     

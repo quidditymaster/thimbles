@@ -2,10 +2,7 @@ import threading
 import numpy as np
 import matplotlib as mpl
 
-from PySide import QtCore
-from PySide import QtGui
-from PySide.QtCore import Signal, Slot
-Qt = QtCore.Qt
+from thimblesgui import QtCore, QtGui, Qt
 
 from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT as NavigationToolbar
 from thimbles.charts import MatplotlibCanvas
@@ -30,9 +27,9 @@ class MatplotlibWidget(QtGui.QWidget):
         http://www.packtpub.com/matplotlib-python-development/book
         
     """
-    buttonPressed = Signal(list)#mpl.backend_bases.Event)
-    buttonReleased = Signal(list)#mpl.backend_bases.Event)
-    pickEvent = Signal(list)#mpl.backend_bases.Event)
+    buttonPressed = QtCore.Signal(list)#mpl.backend_bases.Event)
+    buttonReleased = QtCore.Signal(list)#mpl.backend_bases.Event)
+    pickEvent = QtCore.Signal(list)#mpl.backend_bases.Event)
     
     def __init__(
             self, 

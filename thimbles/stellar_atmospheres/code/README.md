@@ -1,1 +1,0 @@
-This directory contains copies of the code used for the stellar atmopshere code

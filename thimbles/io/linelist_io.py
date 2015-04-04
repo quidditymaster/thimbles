@@ -30,9 +30,9 @@ def read_vald_linelist(fname):
         species_name, ion_number = spl[0].replace("'", "").split()
         charge = int(ion_number) - 1
         proton_number = atomic_number[species_name]
-        wv, loggf, elow, jlo, eup, jup = map(float, spl[1:7])
-        l_lande, u_lande, m_lande = map(float_or_nan, spl[8:11])
-        rad_damp, stark_damp, waals_damp = map(float_or_nan, spl[12:15])
+        wv, loggf, elow, jlo, eup, jup = list(map(float, spl[1:7]))
+        l_lande, u_lande, m_lande = list(map(float_or_nan, spl[8:11]))
+        rad_damp, stark_damp, waals_damp = list(map(float_or_nan, spl[12:15]))
         
         trans = Transition(
             wv=wv, 

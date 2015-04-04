@@ -104,7 +104,7 @@ def species_similarity(transitions):
             group_result = []
         group_result.append(trans)
         tgroups[trans.species] = group_result
-    value_lens = [len(vl) for vl in tgroups.values()]
+    value_lens = [len(vl) for vl in list(tgroups.values())]
     max_value = max(value_lens)
     value_lens.remove(max_value)
     return max_value - sum(value_lens)
@@ -141,7 +141,7 @@ class BoxTransitionGrouper(TransitionGrouper):
             ctrans = self.transitions[trans_idx]
             belonging_transitions[reg_idx].append(ctrans)
         boxes = [TransitionBox(i, belonging_transitions[i]) for i in range(self.n_regions)]
-        self._regions_to_boxes = dict(zip(range(self.n_regions), [[bx] for bx in boxes]))
+        self._regions_to_boxes = dict(list(zip(list(range(self.n_regions)), [[bx] for bx in boxes])))
     
     def add_box(self, region_idx, transitions):
         box = TransitionBox(region_idx, transitions)
@@ -149,7 +149,7 @@ class BoxTransitionGrouper(TransitionGrouper):
         reg_res.append(box)
     
     def groups(self):
-        return self._regions_to_boxes.values()
+        return list(self._regions_to_boxes.values())
     
     def iterate(self):
         for transition in self.transitions:

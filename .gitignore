@@ -13,4 +13,6 @@ data
 *~
 \#*\#
 
+#backup files
+*.bak
 

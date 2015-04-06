@@ -9,7 +9,7 @@ DATE: Sun Nov  9 15:12:50 2014
 
 # import modules
 
-from __future__ import print_function, division, unicode_literals
+
 import os
 import shutil
 import sys
@@ -273,7 +273,7 @@ def _moog_par_format_fluxlimits (fluxlimits):
         return ""
     lines = [\
         "fluxlimits",
-        (" {:10}"*3).format(*map(float,fluxlimits))
+        (" {:10}"*3).format(*list(map(float,fluxlimits)))
         ]
     return "\n".join(lines)
 
@@ -330,7 +330,7 @@ def _moog_par_format_synlimits (synlimits):
         return ""
     lines = ["synlimits "]
     # synstart,synend,wlstep,opacity_width
-    lines.append((" "+" {:<.2f}"*4).format(*map(float,synlimits)))
+    lines.append((" "+" {:<.2f}"*4).format(*list(map(float,synlimits))))
     return "\n".join(lines)
 
 def _moog_par_format_abundances (abundances):
@@ -636,7 +636,7 @@ def write_moog_par (driver,filename='batch.par',clobber=True,max_filename_length
 
     # ----------------------- 
     if len(moogpars):
-        raise KeyError("These keywords are not supported {}".format(moogpars.keys()))
+        raise KeyError("These keywords are not supported {}".format(list(moogpars.keys())))
 
     # ----------------------- 
     parlines.append("\n")

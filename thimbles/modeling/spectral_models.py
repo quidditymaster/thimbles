@@ -8,7 +8,7 @@ from thimbles.profiles import voigt
 from ..spectrum import Spectrum
 from . import factor_models
 from . import predictors
-from predictors import GaussianPredictor
+from .predictors import GaussianPredictor
 
 __all__ = ["fit_single_voigt", "quick_quadratic_fit"]
 
@@ -50,23 +50,23 @@ def feature_predictors_from_ensemble(features, verbose=False):
     sig_med = np.median(sig_over_wv)
     sig_mad = np.median(np.abs(sig_over_wv-sig_med))
     if verbose:
-        print "sigma median", sig_med, "sigma mad", sig_mad
+        print("sigma median", sig_med, "sigma mad", sig_mad)
     
     vel_offs = lparams[:, 0]/cent_wvs
     vel_med = np.median(vel_offs)
     vel_mad = np.median(np.abs(vel_offs - vel_med))
     if verbose:
-        print "velocity median", vel_med, "velocity mad", vel_mad
+        print("velocity median", vel_med, "velocity mad", vel_mad)
     
     gam_med = np.median(np.abs(lparams[:, 2]))
     gam_mad = np.median(np.abs(lparams[:, 2]-gam_med))
     if verbose:
-        print "gamma median", gam_med, "gamma mad", gam_mad
+        print("gamma median", gam_med, "gamma mad", gam_mad)
     
     rel_med = np.median(rel_norms)
     rel_mad = np.median(np.abs(rel_norms-rel_med))
     if verbose:
-        print "rel_norm median", gam_med, "rel_norm mad", gam_mad
+        print("rel_norm median", gam_med, "rel_norm mad", gam_mad)
     
     predictors = {}
     

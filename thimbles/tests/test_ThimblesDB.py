@@ -56,7 +56,7 @@ class TestPersistence(unittest.TestCase):
         self.tdb.add(dum_spec)
         self.tdb.commit()
         res = self.tdb.query(Dummy).all()
-        print res
+        print(res)
         self.assertTrue(len(res) == 2)
         d1_res = self.tdb.query(Dummy).filter(Dummy.name == "groot").first()
         self.assertTrue(d1_res._id == dummy1._id)

@@ -142,7 +142,7 @@ def feature_masked_partitioned_lad_norm(
     ppol_basis = pp_gen.get_basis(mwv).transpose()
     in_sig = 1.0/np.sqrt(minv)
     med_sig = np.median(in_sig)
-    print med_sig, "med sig"
+    print(med_sig, "med sig")
     fit_coeffs = pseudo_huber_irls(ppol_basis, mflux, 
                       sigma=in_sig, 
                       gamma=2.0*med_sig, 
@@ -150,7 +150,7 @@ def feature_masked_partitioned_lad_norm(
     n_polys = len(break_wvs) + 1
     n_coeffs = poly_order+1
     out_coeffs = np.zeros((n_polys, n_coeffs))
-    for basis_idx in xrange(pp_gen.n_basis):
+    for basis_idx in range(pp_gen.n_basis):
         c_coeffs = pp_gen.basis_coefficients[basis_idx].reshape((n_polys, n_coeffs))
         out_coeffs += c_coeffs*fit_coeffs[basis_idx]
     continuum_ppol = piecewise_polynomial.PiecewisePolynomial(out_coeffs, break_wvs, centers=pp_gen.centers, scales=pp_gen.scales, bounds=pp_gen.bounds)

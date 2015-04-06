@@ -7,7 +7,7 @@ import scipy
 import scipy.integrate as integrate
 import scipy.sparse
 from thimbles import resource_dir
-from flags import FeatureFlags
+from .flags import FeatureFlags
 from thimbles import ptable
 from thimbles.profiles import voigt
 from thimbles import speed_of_light
@@ -186,7 +186,7 @@ class SaturatedVoigtFeatureModel(Model):
         self._check_initialize_column("fit_group", 0)
         self._check_initialize_column("species_group", 0)
         
-        if isinstance(species_grouper, basestring):
+        if isinstance(species_grouper, str):
             species_grouper = SpeciesGrouper([], ungrouped_val=species_grouper) 
         self.species_grouper = species_grouper
         
@@ -459,7 +459,7 @@ class SaturatedVoigtFeatureModel(Model):
                     elif meets_snr_threshold and non_degen and is_last_match:
                         add_group = True
                     if add_group:
-                        print "accum n {}, accum dof {: 5.2f} accum snr {: 5.2f}".format(len(group_ixs), accum_dof, np.sqrt(accum_snr2))
+                        print("accum n {}, accum dof {: 5.2f} accum snr {: 5.2f}".format(len(group_ixs), accum_dof, np.sqrt(accum_snr2)))
                         #this is a good enough group add it to the set of groups
                         all_fit_groups.append(group_ixs)
                         #pick a group exemplar at random
@@ -497,7 +497,7 @@ class SaturatedVoigtFeatureModel(Model):
         return np.clip(self.gamma*(self.fdat["wv"]/5000.0)**2+gam_offs, 0.0001, np.inf)
     
     def calc_feature_matrix(self, overwrite=True):
-        print "generating full feature matrix"
+        print("generating full feature matrix")
         wvs = self.fdat["wv"].values
         sigmas = self.sigma_widths().values
         gammas = self.gamma_widths().values
@@ -765,7 +765,7 @@ class FeatureGroupModel(Model):
         if len(vdict) == 0:
             return None
         ew_sum_val = vdict.pop(self.ew_sum_p)
-        fparams = vdict.keys()
+        fparams = list(vdict.keys())
         prof_strengths = np.zeros(len(fparams))
         for prof_idx in range(len(fparams)):
             profile_param = fparams[prof_idx]

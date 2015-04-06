@@ -9,13 +9,13 @@ DATE: Mon Aug 25 14:45:46 2014
 
 # import modules
 
-from __future__ import print_function, division
+
 import os
 import sys
 import re
 import time
 import numpy as np
-from PySide import QtCore,QtGui
+from thimblesgui import QtCore,QtGui,Qt
 try:
     import ipdb as pdb
 except ImportError:
@@ -39,7 +39,7 @@ class ListTasksWidget (QtGui.QWidget):
             self.tasks[pt.task_name] = pt
         self.initUI()
         self.junk = []
-        
+    
     def initUI(self):                               
         layout = QtGui.QVBoxLayout()
         # list of tasks

@@ -62,7 +62,7 @@ class TestWavelengthSolution(unittest.TestCase):
             wvsoln = spec.wv_sample.wv_soln
             wvs = np.linspace(self.min_wv, self.max_wv, 7)
             res = wvsoln.get_index(wvs, snap=True)
-            assert isinstance(res[0], int)
+            assert res.astype(int).dtype == res.dtype
             res = wvsoln.get_index(wvs-10.0, clip=True)
             assert np.min(res) == 0
             res = wvsoln.get_index(wvs+10.0, clip=True)

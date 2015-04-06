@@ -1,11 +1,9 @@
-from PySide import QtCore
-from PySide import QtGui
-from PySide.QtCore import Signal, Slot
-Qt = QtCore.Qt
+
+from thimblesgui import QtCore, QtGui, Qt
 
 class PrevNext(QtGui.QWidget):
-    prev = Signal()
-    next = Signal()
+    prev = QtCore.Signal()
+    next = QtCore.Signal()
     
     def __init__(self, duration=1, with_play=False, parent=None):
         super(PrevNext, self).__init__(parent)
@@ -81,7 +79,7 @@ class PrevNext(QtGui.QWidget):
                 raise Exception("duration too small")
             new_duration_success = True
         except:
-            print "could not recognize new duration reverting to old"
+            print("could not recognize new duration reverting to old")
             new_duration_success = False
             self.duration_le.setText("%5.5f" % self.duration)
         if new_duration_success:

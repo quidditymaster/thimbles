@@ -41,7 +41,6 @@ from thimbles.spectrum import \
     Spectrum, as_wavelength_sample, as_wavelength_solution
 from thimbles import features
 #from thimbles import velocity
-from thimbles import stellar_atmospheres
 from thimbles import continuum
 from thimbles import radtran
 from thimbles import resampling

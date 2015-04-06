@@ -205,7 +205,7 @@ def segmented_grouping_standard(
     ]
     if split_charge:
         split_scales.append(("charge", 0.1))
-    attr_list, split_vec= zip(*split_scales)
+    attr_list, split_vec= list(zip(*split_scales))
     trans_df = tmb.utils.misc.attribute_df(transitions, attr_list)
     grouping_vec = tmb.utils.misc.running_box_segmentation(
         df=trans_df, 

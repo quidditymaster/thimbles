@@ -7,14 +7,13 @@ DATE: Mon Aug 25 14:44:30 2014
 """
 # ########################################################################### #
 
-from __future__ import print_function, division
+
 import os 
 import sys 
 import re 
 import time
 import numpy as np  
-from PySide import QtCore,QtGui
-from PySide.QtCore import Qt
+from thimblesgui import QtCore, QtGui, Qt
 
 # ########################################################################### #
 from thimbles.options import OptionSpecificationError
@@ -225,7 +224,7 @@ class RunTaskDialog(QtGui.QDialog):
         self.scroll.setWidgetResizable(True)
         
         child_options = self.task.children
-        opt_list = child_options.values()
+        opt_list = list(child_options.values())
         n_opt = len(child_options)
         for opt_idx, option in enumerate(opt_list):
             #print("in option iter", option)
@@ -280,7 +279,7 @@ class TaskLauncher(QtGui.QWidget):
         self.setLayout(layout)
         self.task_buttons = []
         self.dialog_functions = []
-        for cur_task in task_registry.values():
+        for cur_task in list(task_registry.values()):
             cbutton = QtGui.QPushButton(cur_task.name)
             layout.addWidget(cbutton)
             task_runner_func = task_runner_factory(cur_task, parent=self)

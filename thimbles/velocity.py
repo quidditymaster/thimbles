@@ -8,10 +8,10 @@ import numpy as np
 import h5py
 
 # Internal
-from spectrum import Spectrum
-from utils.misc import cross_corr
-from utils.misc import local_gaussian_fit
-from spectrum import WavelengthSolution
+from .spectrum import Spectrum
+from .utils.misc import cross_corr
+from .utils.misc import local_gaussian_fit
+from .spectrum import WavelengthSolution
 from thimbles.tasks import task
 # ########################################################################### #
 

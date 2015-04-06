@@ -25,7 +25,7 @@ class FlagSpace(object):
         """
         if not self.flag_masks.get(name) is None:
             raise ValueError("the name %s is already in this flag space" % name)
-        bit_nums = self.flag_bits.values()
+        bit_nums = list(self.flag_bits.values())
         if bit_index is None:
             bit_index = 0
             #assign the lowest currently unused bit number
@@ -41,7 +41,7 @@ class FlagSpace(object):
         """decomposes a flag integer into a dictionary of the form {name:bool, ...}
         """
         out_dict = {}
-        for key in self.flag_masks.keys():
+        for key in list(self.flag_masks.keys()):
             out_dict[key] = bool(self.flag_masks[key] & flag_int)
         return out_dict
     
@@ -49,7 +49,7 @@ class FlagSpace(object):
         """converts a flag dictionary into a corresponding integer in flag space
         """
         int_out = 0
-        for key in flag_dict.keys():
+        for key in list(flag_dict.keys()):
             fmask = self.flag_masks.get(key)
             if fmask is None:
                 raise ValueError("key %s does not belong to this flag space" % key)

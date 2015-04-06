@@ -7,7 +7,7 @@ import scipy.sparse
 import matplotlib.pyplot as plt
 import h5py
 import argparse
-import cPickle
+import pickle
 import multiprocessing
 from copy import copy
 import json
@@ -42,7 +42,7 @@ def get_max_resolution(spectra):
     return np.max(reses)
     
 def get_data_transforms(spectra, model_wv):
-    print "generating data transforms"
+    print("generating data transforms")
     transforms = []
     for spec in spectra:
         t = spec.lsf_sampling_matrix(model_wv)
@@ -88,13 +88,13 @@ def thaw_params(fstate, teff=True, gamma_ratio_5000=True, vmicro=True):
         fstate.model_network.feature_mod.vmicro_p._free = True
 
 def iter_cleanup(fstate):
-    print "in fstate {}".format(fstate)
+    print(("in fstate {}".format(fstate)))
     mnet = fstate.model_network
     spec_idx = mnet.spectrum_id
     teff = mnet.feature_mod.teff
     vmicro = mnet.feature_mod.vmicro
     gamma_rat = mnet.feature_mod.gamma_ratio_5000
-    print "teff {:5.3f}  vmicro {:5.3f} gamma_ratio {:5.4f} ".format(teff, vmicro, gamma_rat)
+    print(("teff {:5.3f}  vmicro {:5.3f} gamma_ratio {:5.4f} ".format(teff, vmicro, gamma_rat)))
     
     spec = mnet.target_spectra[0]
     if False:
@@ -159,10 +159,10 @@ class SpectralModeler(modeling.DataModelNetwork):
             species_grouper=species_grouper
         )
         
-        print "generating model components"
+        print("generating model components")
         model_wv = self.feature_mod.model_wv
         
-        print "generating molecular opacity model"
+        print("generating molecular opacity model")
         hf = h5py.File(os.path.join(resource_dir, "transition_data", "molecules", "effective_mean_opacities.h5"))
         molec_wvs = np.array(hf["wvs"])
         opac_vecs =[np.array(hf["molecules/{}".format(mol_str)]).reshape((-1,1)) for mol_str in "Mg:H C:H N:C Si:H C:C".split()]
@@ -181,11 +181,11 @@ class SpectralModeler(modeling.DataModelNetwork):
         #print "hmod"
         #self.hmod = tmb.hydrogen.HydrogenForegroundModel(model_wv, np.array([2.5, 0.1]), 5300, 5e12)
         self.lsf_models = lsf_models
-        print "blaze mods"
+        print("blaze mods")
         #blaze_models = [ConstantMultiplierModel(spec.norm) for spec in spectra]
         self.blaze_models = [tmb.spectrographs.PiecewisePolynomialSpectrographEfficiencyModel(spec.wv, n_max_part=4.5, degree=2) for spec in target_spectra]
         
-        print "stitching models together"
+        print("stitching models together")
         data_model_trees = []
         for spec_idx in range(len(target_spectra)):
             mods = [self.feature_mod, self.molec_mod, self.exp_mod]#, self.ctm_mod, self.hmod]
@@ -275,7 +275,7 @@ def fit_lowres_spectrum(spec_idx, plot=True, max_iter=20):
     pre_grouped = False
     if not args.input_h5 is None:
         ldat = pd.read_hdf(args.input_h5, "fdat")
-        print "WARNING: input-h5 flag supersedes ll flag"
+        print("WARNING: input-h5 flag supersedes ll flag")
     else:
         ldat = tmb.io.read_linelist(args.ll, file_type=args.lltype)
     
@@ -287,7 +287,7 @@ def fit_lowres_spectrum(spec_idx, plot=True, max_iter=20):
     
     npts = int(np.log(max_wv/min_wv)*args.model_resolution)
     model_wv = np.exp(np.linspace(np.log(min_wv), np.log(max_wv), npts))
-    print "generating lsf model"
+    print("generating lsf model")
     lsf_models =  [tmb.resolution.LineSpreadFunctionModel(model_wv, spectrum_wvs, spectrum_lsf)]
     
     spec = tmb.Spectrum(spectrum_wvs, np.array(hf["flux"][spec_idx]), np.array(hf["invvar"][spec_idx]))
@@ -296,7 +296,7 @@ def fit_lowres_spectrum(spec_idx, plot=True, max_iter=20):
     first_stime = time.time()
     #damping_schedule = {0:(1e5, 1e5), 3:(1e4, 1e4), 5:(1e3, 1e3), 7:(3e2, 3e2), 12:(1e2, 1e2), 18:(5.0, 5.0)}
     
-    print "fit iterating"
+    print("fit iterating")
     #import pdb; pdb.set_trace()
     smod.converge()
 
@@ -305,7 +305,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     pool = multiprocessing.Pool(multiprocessing.cpu_count())
-    pool.map(fit_lowres_spectrum, range(1024))
+    pool.map(fit_lowres_spectrum, list(range(1024)))
     
     #import pdb; pdb.set_trace()
     fit_lowres_spectrum(15)

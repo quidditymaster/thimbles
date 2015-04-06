@@ -11,10 +11,10 @@ from thimbles.options import opts
 @task(result_name="hello")
 def hello_world(greeting="hello", subject="world!"):
     greet_str =  "{} {}".format(greeting, subject)
-    print greet_str
+    print(greet_str)
     return greet_str
 
-from PySide import QtCore,QtGui
+from thimblesgui import QtCore, QtGui, Qt
 from thimblesgui import main_window
 from thimbles import resource_dir
 gui_resource_dir = os.path.join(os.path.dirname(tmbg.__file__),"resources")
@@ -56,7 +56,7 @@ class ThimblesMainApplication(QtGui.QApplication):
 
 if __name__ == "__main__":
     opts.parse_options()
-    QtGui.QApplication.setLibraryPaths([])
+    #QtGui.QApplication.setLibraryPaths([])
     
     if not opts["no_window"]:
         try:

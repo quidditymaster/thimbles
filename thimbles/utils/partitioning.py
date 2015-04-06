@@ -1,8 +1,8 @@
 import numpy as np
 import thimbles as tmb
 import scipy.sparse
-from piecewise_polynomial import powers_from_max_order
-from piecewise_polynomial import MultiVariatePolynomial
+from .piecewise_polynomial import powers_from_max_order
+from .piecewise_polynomial import MultiVariatePolynomial
 
 
 def optimal_partition(data, cost_fn, minimize=True):
@@ -262,7 +262,7 @@ def matrix_partition(
         sigma_vec = 1.0/np.sqrt(np.where(y_weight == 0, 1e-20, y_weight))
         gamma_vec = gamma*sigma_vec
         for i in range(1, n_blocks+1):
-            print "optimizing block {} of {}".format(i, n_blocks)
+            print("optimizing block {} of {}".format(i, n_blocks))
             cmin = float("inf")
             cidx = None
             last_opt_params = None
@@ -354,7 +354,7 @@ def block_constant_partition(
         sigma_vec = 1.0/np.sqrt(np.where(y_weight == 0, 1e-20, y_weight))
         gamma_vec = gamma*sigma_vec
         for i in range(1, n_blocks+1):
-            print "optimizing block {} of {}".format(i, n_blocks)
+            print("optimizing block {} of {}".format(i, n_blocks))
             cmin = float("inf")
             cidx = None
             last_opt_params = None
@@ -469,7 +469,7 @@ if __name__ == "__main__":
                                     grouping_column = 0, min_delta = 5, max_delta=50,
                                     alpha=2.0, beta=2.0, beta_epsilon=0.01)
     etime = time.time()
-    print "partitioned in {} seconds".format(etime-stime)
+    print("partitioned in {} seconds".format(etime-stime))
     
     #part = optimal_partition(rpoints, cost_fn)
     #avgs = partition_average(rpoints, part)
@@ -479,7 +479,7 @@ if __name__ == "__main__":
         plt.plot(x_in[ord_idx::n_ord, 0], true_points[ord_idx::n_ord], "k")#, label="true")
         plt.scatter(x_in_masked[ord_mask, 0], rpoints_masked[ord_mask], c="g")#, label="observed")
         for i in range(len(part_polys)):
-            print "part poly idx", i
+            print("part poly idx", i)
             lb = part[i]
             ub = part[i+1]
             x_idxs = np.arange(len(rpoints_masked))

@@ -23,7 +23,7 @@ from thimbles.tasks import task
 from thimbles.utils.misc import var_2_inv_var
 from thimbles.spectrum import Spectrum, WavelengthSolution
 #from ..metadata import MetaData
-import wavelength_extractors
+from . import wavelength_extractors
 
 # ########################################################################### #
 
@@ -35,7 +35,7 @@ __all__ = ["read_spec","read_ascii","read_fits",
 def read_hdf5(filepath, source=None):
     hf = h5py.File(filepath, "r")
     spectra = []
-    spec_keys = hf.keys()
+    spec_keys = list(hf.keys())
     for spec_idx in range(len(spec_keys)):
         spec_grp_name = "spec_{}".format(spec_idx)
         wv_soln_path = spec_grp_name + "/wv_soln" 
@@ -174,7 +174,7 @@ read_fits.__doc__ = """
     IOError : If it encounters unknown KEYWORD options when looking
         for a wavelength solution
     
-    """.format(", ".join(wavelength_extractors.from_functions.keys()))
+    """.format(", ".join(list(wavelength_extractors.from_functions.keys())))
 
 def read_fits_hdu (hdulist,which_hdu=0,band=0,preference=None):
     """
@@ -218,7 +218,7 @@ def read_fits_hdu (hdulist,which_hdu=0,band=0,preference=None):
     #metadata['header'] = deepcopy(hdu.header)
         
     spectra = []
-    for i in xrange(len(wvs)):
+    for i in range(len(wvs)):
     #    metadata['order'] = i
         spectra.append(Spectrum(wvs[i],data[i]))#,metadata=metadata))
          
@@ -249,7 +249,7 @@ def read_bintablehdu (hdulist,which_hdu=1,wvcolname=None,fluxcolname=None,varcol
                    sigma_guess = ['sigma','error','noise'],
                    )   
     # include all uppercase and capitalized guesses too
-    items = guesses.items()     
+    items = list(guesses.items())     
     for key,values in items:
         guesses[key] += [v.upper() for v in values]
         guesses[key] += [v.capitalize() for v in values]
@@ -299,7 +299,7 @@ def read_bintablehdu (hdulist,which_hdu=1,wvcolname=None,fluxcolname=None,varcol
     # store the spectra 
     spectra = []
     if wvs.ndim == 2:
-        for i in xrange(len(wvs)):
+        for i in range(len(wvs)):
             if inv_var is not None:
                 ivar = inv_var[i]
             else:
@@ -335,7 +335,7 @@ def read_many_fits (filelist,relative_paths=False,are_orders=False):
     relative_paths = bool(relative_paths)
     nofile = "File does not exist '{}'"
 
-    if isinstance(filelist,(basestring)):
+    if isinstance(filelist,(str)):
         dirpath = os.path.dirname(filelist)
         
         if not os.path.isfile(filelist):
@@ -379,7 +379,7 @@ def read_many_fits (filelist,relative_paths=False,are_orders=False):
     return spectra
 
 def probably_file_list(filepath):
-    if isinstance(filepath,basestring):
+    if isinstance(filepath,str):
         # check if this is a file with a list of files
         if not os.path.isfile(filepath):
             return False
@@ -469,7 +469,7 @@ def read_spec(fname, file_type="detect", extra_kwargs=None):
     """
     if extra_kwargs is None:
         extra_kwargs = {}
-    if not isinstance(file_type, basestring):
+    if not isinstance(file_type, str):
         try:
             return file_type(fname, **extra_kwargs)
         except IOError as e:

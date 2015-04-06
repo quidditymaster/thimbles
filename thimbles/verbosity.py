@@ -1,7 +1,7 @@
 
 
 # ########################################################################### #
-from __future__ import print_function
+
 
 from datetime import datetime
 import os
@@ -42,7 +42,7 @@ class ThimblesLogger(object):
         if self.log_file is None:
             return
         try:
-            if isinstance(self.log_file, basestring):
+            if isinstance(self.log_file, str):
                 self.file = open(self.log_file, mode)
                 self._log_created = True
             else:

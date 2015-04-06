@@ -7,7 +7,7 @@
 # ########################################################################### #
 
 # Standard Library
-from __future__ import division, print_function, absolute_import
+
 from collections import OrderedDict
 # 3rd Party
 import numpy as np
@@ -126,7 +126,7 @@ def generate_random_linelist (teff,wv_bounds=(4500,5500),species_params=None,fil
     if species_params is None:
         species_params = _elements_params
     el_params = species_params.copy()
-    for el,pars in _elements_params.iteritems():
+    for el,pars in _elements_params.items():
         el_params.setdefault(el,pars)
     
 
@@ -137,7 +137,7 @@ def generate_random_linelist (teff,wv_bounds=(4500,5500),species_params=None,fil
     # calc the linelist
     linelist = {}
     element_abund = {}
-    for species,pars in species_params.items():
+    for species,pars in list(species_params.items()):
         wvs = np.random.uniform(wv_bounds[0],wv_bounds[1],pars['n'])
         solar_abund_offset = np.random.uniform(*abund_offset_range)
         
@@ -178,7 +178,7 @@ def generate_random_linelist (teff,wv_bounds=(4500,5500),species_params=None,fil
         
         fmt = "{0:>9.5f} {1:>9.1f} {2:>9.2f} {3:>9.2f}"+20*" "+" {4:>9.2f}"+10*" "
         fmt += " {5:>9.2f} {6:>9.2f} FAKE_LINE\n"
-        for species,ll in linelist.iteritems():
+        for species,ll in linelist.items():
             for row in ll:
                 f.write(fmt.format(*row))    
     return linelist

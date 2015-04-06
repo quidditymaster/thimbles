@@ -64,7 +64,7 @@ class Normalization(object):
                 spec_mod = np.asarray(spec_mod)
                 assert len(spec_mod) == len(spectrum.flux)
             except Exception as e:
-                print e
+                print(e)
         pass
     
     def __getitem__(self, index):

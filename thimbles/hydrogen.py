@@ -7,8 +7,8 @@ import warnings
 import thimbles as tmb
 from thimbles.modeling import Model
 from thimbles import resource_dir
-from profiles import convolved_stark
-from spectrum import Spectrum
+from .profiles import convolved_stark
+from .spectrum import Spectrum
 from thimbles.tasks import task
 from thimbles.sqlaimports import *
 
@@ -59,26 +59,30 @@ def get_H_mask(wvs, masking_radius=-3.0, nup_max=None):
     return mask
 
 
-def try_load_lemke():
-    try:
-        hf = h5py.File(os.path.join(resource_dir, "transition_data", "lemke.h5"), "r")
-        return hf
-    except Exception as e:
-        warnings.warn(str(e)+"\nexception loading lemke hydrogen profile data trying again")
-        return None
+_lemke_dat = None
 
-lemke_dat = try_load_lemke()
+def try_load_lemke():
+    global _lemke_dat
+    if _lemke_dat is None:
+        try:
+            hf = h5py.File(os.path.join(resource_dir, "transition_data", "lemke.h5"), "r")
+            _lemke_dat = hf
+            return hf
+        except Exception as e:
+            warnings.warn(e)
+
 
 class HydrogenLineOpacity(tmb.profiles.LineProfile):
     
     def __init__(self, wv, nlow, nup):
+        try_load_lemke()
         self.nlow = nlow
         self.nup = nup
         self.wv = wv
         low_str = "{}".format(int(nlow))
         up_str = "{}".format(int(nup))
-        if low_str in lemke_dat.keys():
-            if up_str in lemke_dat[low_str].keys():
+        if low_str in list(lemke_dat.keys()):
+            if up_str in list(lemke_dat[low_str].keys()):
                 pass
         base_group = "{}/{}/".format(low_str, up_str)
         

@@ -5,6 +5,7 @@ import thimbles as tmb
 from thimbles.modeling.models import Model, Parameter
 from thimbles.thimblesdb import NamedRow
 from thimbles.sqlaimports import *
+from functools import reduce
 
 
 class MultiplierModel(NamedRow, Model):
@@ -29,7 +30,7 @@ class MultiplierModel(NamedRow, Model):
     
     def __call__(self, pvrep=None):
         pvd = self.get_vdict(pvrep)
-        prod = reduce(lambda x, y: x*y, pvd.values())
+        prod = reduce(lambda x, y: x*y, list(pvd.values()))
         return prod
 
 
@@ -130,7 +131,7 @@ class FluxSumModel(NamedRow, Model):
         vdict = self.get_vdict(pvrep)
         if len(vdict) == 0:
             return None
-        fparams = vdict.keys()
+        fparams = list(vdict.keys())
         output_sample = self.output_p.wv_sample
         fsum = np.zeros(len(output_sample))
         out_start = output_sample.start
@@ -194,7 +195,7 @@ class PixelPolynomialModel(NamedRow, Model):
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
         pix = self.output_p.wv_sample.pixels
-        coeffs ,= vdict.values()
+        coeffs ,= list(vdict.values())
         return np.polyval(coeffs, (pix-self.center)/self.scale)
 
 

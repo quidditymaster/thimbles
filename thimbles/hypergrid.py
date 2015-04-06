@@ -2,7 +2,7 @@ from copy import copy
 
 import numpy as np
 
-import coordinatization as co
+from . import coordinatization as co
 
 
 class HyperGridInterpolator:

@@ -12,7 +12,7 @@ def _load_lodders():
         if len(spl) > 0:
             #0  1   2         3    4          5               6
             #z, CI, CI_error, sun, sun_error, recommendation, recommendation_error
-            vals = map(float, spl)
+            vals = list(map(float, spl))
             lod_abs[(vals[0], 0)] = vals[5]
     return lod_abs
 
@@ -58,7 +58,7 @@ def _load_ptable():
     data_dict["abundance"] = _load_lodders()
     #translate isotope fractions into isotopic abundances
     iso_fracs = data_dict["fraction"]
-    for z, isotope in iso_fracs.keys():
+    for z, isotope in list(iso_fracs.keys()):
         if isotope == 0:
             continue
         else:

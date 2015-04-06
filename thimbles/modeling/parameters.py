@@ -7,6 +7,7 @@ from copy import copy
 
 from thimbles.sqlaimports import *
 from thimbles.thimblesdb import ThimblesTable, Base
+from functools import reduce
 
 mult_func = lambda x, y: x*y
 def flat_size(shape_tup):
@@ -72,7 +73,7 @@ class ParameterGroup(object):
                 else:
                     to_set = flat_val.reshape(pshape)
                 param.set(to_set)
-        elif isinstance(attr, basestring):
+        elif isinstance(attr, str):
             for p_idx in range(len(parameters)):
                 param = parameters[p_idx]
                 pshape = pshapes[p_idx]
@@ -98,7 +99,7 @@ class ParameterGroup(object):
             values = [p.get() for p in parameters]
         else:
             values = [getattr(p, attr) for p in parameters]
-        pdict = dict(zip(keys, values)) 
+        pdict = dict(list(zip(keys, values))) 
         return pdict
     
     def set_pdict(self, val_dict, attr=None):
@@ -132,7 +133,7 @@ class Parameter(ThimblesTable, Base):
             m_models = self.mapped_models
             if len(m_models) >= 1:
                 if len(m_models) > 1:
-                    print "warning parameter value regeneration is non-unique consider changing the model hierarchy to use cached paramters"
+                    print("warning parameter value regeneration is non-unique consider changing the model hierarchy to use cached paramters")
                 mod = m_models[0]
                 mod.fire() #should populate our self._value attribute
         return self._value

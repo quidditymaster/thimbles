@@ -200,7 +200,7 @@ def get_resampling_matrix(input_centers, output_centers, pixel_density = None,
     min_output_idx, max_output_idx = map_indicies([min_input_center, max_input_center], output_centers)
     min_output_idx = int(max(min_output_idx, 0))
     max_output_idx = int(min(max_output_idx, n_out-1))
-    for out_idx in xrange(min_output_idx, max_output_idx+1):
+    for out_idx in range(min_output_idx, max_output_idx+1):
         central_in_idx = central_index_vals[out_idx]
         c_output_lb, c_output_ub = output_bins[out_idx], output_bins[out_idx+1]
         c_input_lb, temp = pixel_density.get_coordinate_density_range(available_idxs[max(0, out_idx-1)])
@@ -270,7 +270,7 @@ def get_resampling_matrix(input_centers, output_centers, pixel_density = None,
                 except:
                     nz_delta -= 1
                     break
-            for nzd in xrange(nz_delta+1):
+            for nzd in range(nz_delta+1):
                 row_rescale[first_nz+nzd] = row_sum[first_nz+nz_delta]/row_sum[first_nz+nzd]
                 row_rescale[last_nz-nzd] = row_sum[last_nz-nz_delta]/row_sum[last_nz-nzd]
     if preserve_normalization:
@@ -442,10 +442,10 @@ def coadd_data_broken(input_wvs, input_fluxes, input_variances, output_wvs, bloc
     meaning that the best fit coefficient of a in a*X = Y for two data vectors X and Y should be a~1. 
     """
     if block_overlap >= block_size:
-        print "coadd_error: overlap must be less than block size!"
+        print("coadd_error: overlap must be less than block size!")
         return None
     elif block_overlap <= 2:
-        print "WARNING: block_overlap should be 3 or greater, smaller values give anomalous results"
+        print("WARNING: block_overlap should be 3 or greater, smaller values give anomalous results")
     step_size = block_size - block_overlap
     n_out = len(output_wvs)
     n_data = len(input_wvs)
@@ -510,7 +510,7 @@ def coadd_data_broken(input_wvs, input_fluxes, input_variances, output_wvs, bloc
             output_data[cl_idx:cu_idx] += output_alpha * block_solution
             output_weight_sum[cl_idx:cu_idx] += output_alpha
         if (block_idx + 1) % 100 == 0:
-            print "processed", block_idx + 1, "of ", n_blocks, "in %d" % (time.time()-stime), "seconds %3.1f" % (float(block_idx+1)/n_blocks)
+            print("processed", block_idx + 1, "of ", n_blocks, "in %d" % (time.time()-stime), "seconds %3.1f" % (float(block_idx+1)/n_blocks))
     output_data /= output_weight_sum + (output_weight_sum <= 0)
     return output_data
         

@@ -1,21 +1,24 @@
 
+import thimblesgui as tmbg
+from thimblesgui import QtGui, QtCore, Qt
+QModelIndex = QtCore.QModelIndex
+
 import numpy as np
 import matplotlib.pyplot as plt
 
-import thimblesgui as tmbg
-from PySide.QtGui import *
-from PySide.QtCore import *
 
 class Column(object):
     
-    def __init__(self, 
-                 name, 
-                 getter_dict,
-                 setter_dict=None,
-                 editable=False, 
-                 selectable=True,
-                 enabled=True,
-                 checkable=False):
+    def __init__(
+            self, 
+            name, 
+            getter_dict,
+            setter_dict=None,
+            editable=False, 
+            selectable=True,
+            enabled=True,
+            checkable=False
+    ):
         self.name = name
         self.getter_dict = getter_dict
         if setter_dict == None:
@@ -52,7 +55,7 @@ class Column(object):
         else:
             return False
 
-class ConfigurableTableModel(QAbstractTableModel):
+class ConfigurableTableModel(QtCore.QAbstractTableModel):
     
     def __init__(self, data_list, column_list):
         super(ConfigurableTableModel, self).__init__()
@@ -79,7 +82,7 @@ class ConfigurableTableModel(QAbstractTableModel):
         data_obj = self._data[row]
         col_obj = self.columns[col]
         return col_obj.get(data_obj, role)
-
+    
     def setData(self, index, value, role=Qt.EditRole):
         row, col = index.row(), index.column()
         data_obj = self._data[row]
@@ -88,7 +91,7 @@ class ConfigurableTableModel(QAbstractTableModel):
             col_obj.set(data_obj, value, role)
             return True
         except Exception as e:
-            print e
+            print(e)
             return False
 
 class MainTableRow(object):
@@ -117,7 +120,7 @@ class SpectraRow(MainTableRow):
         plt.show()
 
 class LineListRow(MainTableRow):
-
+    
     def __init__(self, data, name="some line list"):
         super(LineListRow, self).__init__(data, name)
         self.type_id = "line list"
@@ -136,7 +139,7 @@ class FeaturesRow(MainTableRow):
         self.fit_widget = fw
         self.fit_widget.show()
 
-class MainTableModel(QAbstractTableModel):
+class MainTableModel(QtCore.QAbstractTableModel):
     
     def __init__(self, rows=None):
         super(MainTableModel, self).__init__()
@@ -193,7 +196,7 @@ class MainTableModel(QAbstractTableModel):
                 return True
         return False
 
-class NameTypeTableModel(QAbstractTableModel):
+class NameTypeTableModel(QtCore.QAbstractTableModel):
     
     def __init__(self):
         super(NameTypeTableModel, self).__init__()
@@ -243,9 +246,11 @@ class NameTypeTableModel(QAbstractTableModel):
             if row == 0:
                 self.names[row] = value
 
-class TreeNode(object):
+
+class TreeNode(QtCore.QObject):
     
     def __init__(self, name, obj, parent_item, max_depth=100, depth=0):
+        super(TreeNode, self).__init__()
         self.name = name
         self._obj = obj
         self.parent_item = parent_item
@@ -259,7 +264,6 @@ class TreeNode(object):
     def options(self):
         if not self._children_explored:
             self.refresh_children()
-            self._children_explored = True
         return self._children
     
     def refresh_children(self):
@@ -267,7 +271,7 @@ class TreeNode(object):
         if self.depth >= self.max_depth:
             return
         if hasattr(self._obj, "__dict__"):
-            sub_names = self._obj.__dict__.keys()
+            sub_names = list(self._obj.__dict__.keys())
             for key in sub_names:
                 if key[0] == "_":
                     continue
@@ -281,6 +285,7 @@ class TreeNode(object):
             list_max_n = min(100, len(self._obj))
             for key in range(list_max_n):
                 self._children.append(TreeNode(str(key), self._obj[key], self, self.max_depth, self.depth+1))
+        self._children_explored = True
     
     def __repr__(self):
         return "node:"+repr(self._obj)
@@ -289,7 +294,7 @@ class TreeNode(object):
         return len(self.options)
 
 
-class ObjectTree(QAbstractItemModel):
+class ObjectTree(QtCore.QAbstractItemModel):
     
     def __init__(self, obj, max_depth=15):
         super(ObjectTree, self).__init__()
@@ -368,21 +373,28 @@ class ObjectTree(QAbstractItemModel):
         return nrows
 
 if __name__ == "__main__":
-    line_obj ,= plt.plot(range(10))
+    line_obj ,= plt.plot(list(range(10)))
     #import numpy as np
     #import thimbles as tmb
     #spec = tmb.Spectrum(np.arange(100), np.arange(100))
     
     #build a QApplication
-    qap = QApplication([])
+        
+    qap = QtGui.QApplication([])
     
+    #qw = QtGui.QWidget()
     #build the model tree
+    #layout = QtGui.QHBoxLayout()
+    qw = QtGui.QMainWindow()
+    #qw.setLayout(layout)
     top_node = ObjectTree(line_obj)
     
     #make a view and set its model
-    qtv = QTreeView()
+    qtv = QtGui.QTreeView()
+    #layout.addWidget(qtv)
     qtv.setModel(top_node)
+    qw.setCentralWidget(qtv)
     
     #run
-    qtv.show()
+    qw.show()
     qap.exec_()

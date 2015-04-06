@@ -21,7 +21,7 @@ def read_moog_linelist(fname):
     for line in lines:
         line = line.split("#")[0]
         moog_cols = [line[i*10:(i+1)*10].strip() for i in range(7)]
-        moog_cols = map(float_or_nan, moog_cols)
+        moog_cols = list(map(float_or_nan, moog_cols))
         lspl = line.split()
         if len(lspl) < 4:
             continue
@@ -131,7 +131,7 @@ def read_moog_abfind_summary(fname):
                     abund=[],
                     )
     #batom = Batom()
-    for cspecies in linedata.keys():
+    for cspecies in list(linedata.keys()):
         species_parts = cspecies.split()
         species_pnum = atomic_number[species_parts[0]]
         species_id = int(species_pnum) + 0.1*(len(species_parts[1])-1)
@@ -157,7 +157,7 @@ def read_moog_synth_summary(fname, effective_snr=500.0):
             spl = lines[lidx].split()
             if len(spl) != 4:
                 continue
-            flvals = map(float, spl)
+            flvals = list(map(float, spl))
             min_wv = flvals[0]
             max_wv = flvals[1]
             wv_delta = flvals[2]
@@ -165,7 +165,7 @@ def read_moog_synth_summary(fname, effective_snr=500.0):
         except Exception:
             pass
     for lidx in range(lidx+1, len(lines)):
-        data.extend(map(float, lines[lidx].split()))
+        data.extend(list(map(float, lines[lidx].split())))
     flux = 1.0-np.array(data)
     wvs = np.linspace(min_wv, min_wv+(len(flux)-1)*wv_delta, len(flux))
     sflags = tmb.spectrum.SpectrumFlags()

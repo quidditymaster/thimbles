@@ -106,7 +106,7 @@ class FitPolicy(object):
             self.transition_map[cur_state] = transition_list
         self.current_fit_state = fit_states[0] 
         self.fit_states = [self.current_fit_state]
-        for available_trans in self.transition_map.values():
+        for available_trans in list(self.transition_map.values()):
             self.fit_states.extend(available_trans)
         self.set_model_network(model_network)
     
@@ -145,18 +145,18 @@ class FitPolicy(object):
                 self.current_fit_state.iter_cleanup()
                 total_iter_num += 1
                 if fs_converged:
-                    print "fit state converged"
+                    print("fit state converged")
                     break
             if not fs_converged:
-                print "warning max_iter exceded"
+                print("warning max_iter exceded")
             self.current_fit_state.cleanup()
             if not self.transition_callback is None:
                 self.transition_callback(self.current_fit_state)
-            print "attempting transition to next fit state"
+            print("attempting transition to next fit state")
             #import pdb;pdb.set_trace()
             transition_options = available_transitions.get(self.current_fit_state, [])
             if transition_options == []:
-                print "no next fit state found assuming completion"
+                print("no next fit state found assuming completion")
                 if not self.finish_callback is None:
                     self.finish_callback(self.current_fit_state) 
                 break
@@ -229,7 +229,7 @@ class FitState(ParameterGroup):
                     mod_list.append(tree_idx)
                     self.model_to_tree_idxs[model] = mod_list
         if self.models is None:
-            self.models = self.model_to_tree_idxs.keys()
+            self.models = list(self.model_to_tree_idxs.keys())
         self.update_grouped_parameters()
     
     def update_grouped_parameters(self):
@@ -317,8 +317,8 @@ class FitState(ParameterGroup):
                     self.clamping_factor = self.max_clamping
                     break
         
-        print "clamping factor", self.clamping_factor
-        print "new chi sq {: 10.3f}".format(new_chi_sq)
+        print("clamping factor", self.clamping_factor)
+        print("new chi sq {: 10.3f}".format(new_chi_sq))
         
         self.log_likelihood = -new_chi_sq
         #set the best fit delta

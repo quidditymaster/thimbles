@@ -89,7 +89,7 @@ def from_pixels (header):
         raise IncompatibleWavelengthSolution(e.message)    
     wv_solns = []
     progressive = 1
-    for _ in xrange(naxis2):
+    for _ in range(naxis2):
         # each order
         pixels = np.arange(naxis1)+progressive 
         wv_solns.append(NoSolution(pixels))        
@@ -239,7 +239,7 @@ def from_crvl (header):
     # collect up wavelength solutions for each order
     # should be NAXIS2 long
     wv_solns = []
-    for order in xrange(1,100):
+    for order in range(1,100):
         # extract solution for a specific order
         wv_soln = _order_from_crvl_(header, order, pixels, linintrp)
         # if no solution break
@@ -271,9 +271,9 @@ def _order_from_makee_wv (header,order,base,pixels):
         return 
     
     func = lambda c: float(c or 0)       
-    coeff = map(func,reversed(b_4.split()))
-    coeff += map(func,reversed(b_0.split()))
-    print "Warning wavelengths from _order_from_makee_wv double check logic wavelength_extractors.py line 273"""
+    coeff = list(map(func,reversed(b_4.split())))
+    coeff += list(map(func,reversed(b_0.split())))
+    print("Warning wavelengths from _order_from_makee_wv double check logic wavelength_extractors.py line 273""")
     return np.polyval(coeff, pixels)
 
 def from_makee_wv (header):
@@ -312,7 +312,7 @@ def from_makee_wv (header):
     # collect up wavelength solutions for each order
     # should be NAXIS2 long
     wv_solns = []
-    for order in xrange(1,100):
+    for order in range(1,100):
         # extract solution for a specific order
         wv_soln = _order_from_makee_wv(header, order, base, pixels)
         # if no solution break
@@ -394,7 +394,7 @@ def _wcs_string_dispersion_format (pixels,spec_args_str):
     # [12+] = [parameters...]    
     # [12++] = [coefficients...]
     if n > 12:
-        args += map(float,spec_args[12:])
+        args += list(map(float,spec_args[12:]))
     
     return _wcs_dispersion_format(pixels,*args) 
 
@@ -516,7 +516,7 @@ def _wcs_dispersion_format (pixels,*args):
         xxmin = args[13]
         xxmax = args[14]
         coefficients = args[15:15+order]
-        print "WARNING! check thimbles logic in wavelength_extractors.py line 517 may need coefficient order reversing, and/or may need to be evaluated as fn of pixel instead of linspace(-1, 1, n)"
+        print("WARNING! check thimbles logic in wavelength_extractors.py line 517 may need coefficient order reversing, and/or may need to be evaluated as fn of pixel instead of linspace(-1, 1, n)")
         cheby_poly = np.polynomial.Chebyshev(coefficients)
         return cheby_poly(np.linspace(-1, 1, len(pixels)))
         #return ChebyshevPolynomial(pixels,coefficients)
@@ -559,7 +559,7 @@ def _multi_line_to_single (header,base="WAT2_"):
     
     # if the header is a dictionary not a `astropy.io.fits.header.Header`    
     if isinstance(header,dict):
-        for i in xrange(1,max_number): 
+        for i in range(1,max_number): 
             keyword = base+format(i,"03")
             if keyword in header:
                 wat_string += header[keyword]
@@ -572,7 +572,7 @@ def _multi_line_to_single (header,base="WAT2_"):
     # white space from the end of the strings which squished together some 
     # important information
     hdrstr = header.tostring()    
-    for i in xrange(1,max_number):
+    for i in range(1,max_number):
         keyword = base+format(i,"03")
         # check number of times this appears
         num = hdrstr.count(keyword)
@@ -598,13 +598,13 @@ def _wcs_arguments_to_dict (value,lower=False):
         
     """    
     equals = [-1]
-    equals += [i for i in xrange(len(value)) if value[i] == "="]
+    equals += [i for i in range(len(value)) if value[i] == "="]
     if len(equals) == 1:
         raise ValueError("problem parsing wcs")        
     if lower:
         value = value.lower()
     parsed = {}    
-    for i in xrange(1,len(equals)-1):        
+    for i in range(1,len(equals)-1):        
         # (=) key1 = a b c key2 = b
         #  0       7            20 
         j_prev = equals[i-1]
@@ -662,7 +662,7 @@ def from_wcs (header):
     
     # check the format of the wavelength solution    
     wat0 = _parse_wcs_keywords(header,'WAT0_',lower=True) # WAT0_001 
-    if not wat0.has_key('system'):
+    if 'system' not in wat0:
         raise IncompatibleWavelengthSolution("Expected WAT0_001 to have keyword `system`")    
     
     if wat0['system'] not in ("physical","multispec"):
@@ -683,7 +683,7 @@ def from_wcs (header):
     
     pixels = np.arange(naxis1)+1
     wv_solns = []
-    for order in xrange(1,naxis2+1):
+    for order in range(1,naxis2+1):
         key = "spec{}".format(order)
         spec_args_str = wat2.get(key)
         if spec_args_str is None:
@@ -758,7 +758,7 @@ def _parse_spectre_history (histories):
     get_spectre_d = lambda x: x[11:17]
     # object to store all of the history tags
     spectre_history = {}
-    for i in xrange(len(histories)-2):
+    for i in range(len(histories)-2):
         hist_line = histories[i]    
         # the first tag you hit is "D1,2,3"
         ds1 = get_spectre_d(hist_line)
@@ -850,7 +850,7 @@ def from_spectre (header):
         raise IncompatibleWavelengthSolution("Couldn't parse any of the HISTORY lines as SPECTRE tags")
     pixels = np.arange(naxis1)+1
     # get the history tag with greatest time
-    tt = np.max(spectre_history.keys())
+    tt = np.max(list(spectre_history.keys()))
     disp_type,coeffs = spectre_history[tt]
     #coeffs = list(reversed(coeffs))  
     coeffs = list(coeffs)  
@@ -862,7 +862,7 @@ def from_spectre (header):
     elif disp_type == 'chebyshev poly':
         return [from_spectre_chebyshev(pixels,coeffs)]
     elif disp_type == 'legendre poly':   
-        print "warning check logic in wavelength_extractors.py line 862"
+        print("warning check logic in wavelength_extractors.py line 862")
         np.polynomial.Legen
         return [np.polynomial.Legendre(coeffs)(np.linspace(-1, 1, len(pixels)))]
     elif disp_type == 'spline3':
@@ -875,7 +875,7 @@ def from_spectre (header):
         c0 = coeffs[-1]
         return [pixels*c1+c0]
     else:
-        print "warning check ogic in wavelength_extractors.py line 875"
+        print("warning check ogic in wavelength_extractors.py line 875")
         return [np.polyval(coeffs, pixels)]    
 
 from_functions['spectre'] = from_spectre
@@ -919,7 +919,7 @@ def from_header (header,preference=None):
     # get all the wavelength solutions
     wv_solutions = []
     compatible_solutions = []
-    for func_name,func in from_functions.iteritems():
+    for func_name,func in from_functions.items():
         # try to get the solution
         try: 
             wv_solutions.append(func(header))

@@ -453,17 +453,17 @@ class TransitionConstraints(QtGui.QWidget):
         self.setLayout(layout)
         self.wv_span = wv_span
         self.wv_span_cb = QtGui.QCheckBox()
-        self.wv_span_cb.setCheckState(Qt.CheckState.Checked)
+        self.wv_span_cb.setCheckState(Qt.CheckState(2))
         layout.addWidget(self.wv_span_cb, 0, 0, 1, 1)
         self.wv_span_widget = FlatWavelengthSpanWidget(wv_span, with_steppers=False, parent=self)
         layout.addWidget(self.wv_span_widget, 0, 1, 1, 1)
         self.species_filter_cb = QtGui.QCheckBox()
-        self.species_filter_cb.setCheckState(Qt.CheckState.Checked)
+        self.species_filter_cb.setCheckState(Qt.CheckState(2))
         self.species_selector = SpeciesSelectorWidget(parent=self)
         layout.addWidget(self.species_filter_cb, 1, 0, 1, 1)
         layout.addWidget(self.species_selector, 1, 1, 1, 1)
         self.expr_filter_cb = QtGui.QCheckBox()
-        self.expr_filter_cb.setCheckState(Qt.CheckState.Checked)
+        self.expr_filter_cb.setCheckState(Qt.CheckState(2))
         self.expr_wid = BaseExpressionWidget(parent=self, label="filter")
         layout.addWidget(self.expr_filter_cb, 2, 0, 1, 1)
         layout.addWidget(self.expr_wid, 2, 1, 1, 1)
@@ -916,7 +916,7 @@ class BackgroundTransitionListWidget(QtGui.QWidget):
         self.table_view = QtGui.QTableView(parent=self)
         self.table_view.setModel(self.table_model)
         #import pdb; pdb.set_trace()
-        self.table_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table_view.setSelectionBehavior(1)#1==select rows
         #self.table_view.setSelectionMode(QtGui.QAbstractItemView.SelectionMode.SingleSelection)
         layout.addWidget(self.table_view, 1, 0, 1, 1)
     
@@ -947,7 +947,8 @@ class ForegroundTransitionListWidget(QtGui.QWidget):
         layout.addWidget(self.constraints, 0, 0, 1, 3)
         self.table_view = QtGui.QTableView(parent=self)
         self.table_view.setModel(self.table_model)
-        self.table_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectionBehavior.SelectRows)
+        #self.table_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table_view.setSelectionBehavior(1)
         self.selection.transitions.foreground.set_selection_model(self.table_view.selectionModel())
         table_selection = self.table_view.selectionModel()
         layout.addWidget(self.table_view, 1, 0, 1, 3)
@@ -1052,8 +1053,9 @@ class ActiveGroupWidget(QtGui.QWidget):
         #self.selection.groups.focusChanged.connect(self.on_focused_group_changed)
         self.grouped_trans_view = QtGui.QTableView(parent=self)
         self.grouped_trans_view.setModel(self.grouped_trans_model)
-        self.grouped_trans_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectionBehavior.SelectRows)
-
+        #self.grouped_trans_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.grouped_trans_view.setSelectionBehavior(1)
+    
     
     def on_focused_group_changed(self):
         fgroups = self.selection.groups.focused
@@ -1086,7 +1088,8 @@ class GroupSelectionWidget(QtGui.QWidget):
         
         self.groups_view = QtGui.QTableView(parent=self)
         self.groups_view.setModel(self.groups_model)
-        self.groups_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectionBehavior.SelectRows)
+        self.groups_view.setSelectionBehavior(1)
+        #self.groups_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectionBehavior.SelectRows)
         #self.groups_view.setSelectionMode(QtGui.QAbstractItemView.SelectionMode.SingleSelection)
         self.selection.groups.set_selection_model(self.groups_view.selectionModel())
         layout.addWidget(self.groups_view, 0, 0, 1, 3)
@@ -1474,7 +1477,8 @@ if __name__ == "__main__":
     #tscat.set_group(transitions[3:8])
     #tscat.show()
     
-    spectra = tmb.io.read_spec("/home/tim/data/HD221170/hd.3720rd")
+    #spectra = tmb.io.read_spec("/home/tim/data/HD221170/hd.3720rd")
+    spectra=[]
     gse = GroupingStandardEditor("default", tdb, spectra=spectra)
     gse.show()
     

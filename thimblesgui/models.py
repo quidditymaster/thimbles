@@ -247,9 +247,10 @@ class NameTypeTableModel(QtCore.QAbstractTableModel):
                 self.names[row] = value
 
 
-class TreeNode(object):
+class TreeNode(QtCore.QObject):
     
     def __init__(self, name, obj, parent_item, max_depth=100, depth=0):
+        super(TreeNode, self).__init__()
         self.name = name
         self._obj = obj
         self.parent_item = parent_item
@@ -292,9 +293,6 @@ class TreeNode(object):
     def __len__(self):
         return len(self.options)
 
-
-def attribute_node_generator(obj):
-    pass
 
 class ObjectTree(QtCore.QAbstractItemModel):
     
@@ -381,15 +379,22 @@ if __name__ == "__main__":
     #spec = tmb.Spectrum(np.arange(100), np.arange(100))
     
     #build a QApplication
+        
     qap = QtGui.QApplication([])
     
+    #qw = QtGui.QWidget()
     #build the model tree
+    #layout = QtGui.QHBoxLayout()
+    qw = QtGui.QMainWindow()
+    #qw.setLayout(layout)
     top_node = ObjectTree(line_obj)
     
     #make a view and set its model
     qtv = QtGui.QTreeView()
+    #layout.addWidget(qtv)
     qtv.setModel(top_node)
+    qw.setCentralWidget(qtv)
     
     #run
-    qtv.show()
+    qw.show()
     qap.exec_()

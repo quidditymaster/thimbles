@@ -56,7 +56,7 @@ class ThimblesMainApplication(QtGui.QApplication):
 
 if __name__ == "__main__":
     opts.parse_options()
-    QtGui.QApplication.setLibraryPaths([])
+    #QtGui.QApplication.setLibraryPaths([])
     
     if not opts["no_window"]:
         try:

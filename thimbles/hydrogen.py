@@ -59,19 +59,23 @@ def get_H_mask(wvs, masking_radius=-3.0, nup_max=None):
     return mask
 
 
-def try_load_lemke():
-    try:
-        hf = h5py.File(os.path.join(resource_dir, "transition_data", "lemke.h5"), "r")
-        return hf
-    except Exception as e:
-        warnings.warn(str(e)+"\nexception loading lemke hydrogen profile data trying again")
-        return None
+_lemke_dat = None
 
-lemke_dat = try_load_lemke()
+def try_load_lemke():
+    global _lemke_dat
+    if _lemke_dat is None:
+        try:
+            hf = h5py.File(os.path.join(resource_dir, "transition_data", "lemke.h5"), "r")
+            _lemke_dat = hf
+            return hf
+        except Exception as e:
+            warnings.warn(e)
+
 
 class HydrogenLineOpacity(tmb.profiles.LineProfile):
     
     def __init__(self, wv, nlow, nup):
+        try_load_lemke()
         self.nlow = nlow
         self.nup = nup
         self.wv = wv

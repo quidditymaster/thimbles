@@ -1,11 +1,9 @@
-from PySide import QtCore
-from PySide import QtGui
-from PySide.QtCore import Signal, Slot
-Qt = QtCore.Qt
+
+from thimblesgui import QtCore, QtGui, Qt
 
 class PrevNext(QtGui.QWidget):
-    prev = Signal()
-    next = Signal()
+    prev = QtCore.Signal()
+    next = QtCore.Signal()
     
     def __init__(self, duration=1, with_play=False, parent=None):
         super(PrevNext, self).__init__(parent)

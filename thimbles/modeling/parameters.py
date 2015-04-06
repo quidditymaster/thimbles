@@ -25,18 +25,6 @@ class ParameterGroup(object):
     def free_parameters(self):
         return [param for param in self.parameters if not param.fixed]
     
-    def sliced_posterior(self, center=None, radius=None, n_max=100):
-        """estimate 
-        """
-        distribs = [p.distributions for p in self.parameters if len(p.distributions) > 0]
-        #TODO: check distributions for a modification time and cache value of sum
-        sum_dist = distribs.pop(0).as_sog(center=center, radius=radius, embedding_space=self)
-        while len(distribs) > 0:
-            cur_dist = distribs.pop(0)
-            cur_dist = cur_dist.as_sog(center=center, radius=radius, embedding_space=self)
-            sum_dist = combine_sog_distributions(sum_dist, cur_dist, n_max=n_max)
-        return sum_dist
-    
     def parameter_index(self, parameter):
         return self.parameters.index(parameter)
     
@@ -96,7 +84,8 @@ class ParameterGroup(object):
         else:
             raise ValueError("attr must be a string if set")
     
-    def get_pdict(self, attr=None, free_only=True, name_as_key=False):
+    def get_pdict(self, value_replacements=None, attr=None, free_only=True, name_as_key=False):
+        
         if free_only:
             parameters = self.free_parameters
         else:
@@ -132,7 +121,7 @@ class Parameter(ThimblesTable, Base):
     _value = None
     
     #class attributes
-    name = "base parameter class"
+    name = "base"
     
     def __init__(self, value=None,):
         pass

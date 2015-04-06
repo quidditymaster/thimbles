@@ -209,6 +209,12 @@ class Option(object):
             self.evaluate()
         return self._value
     
+    @value.setter
+    def value(self, value):
+        if self.option_style == "parent_dict" or (not self.use_cached):
+            raise NotImplementedError("attribute setting for these option styles not implemented")
+        self._value = value
+    
     def register_option(self, name, parent):
         if not isinstance(name, basestring):
             raise ValueError("option name must be a string! not {}".format(type(name)))

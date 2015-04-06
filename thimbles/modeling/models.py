@@ -16,47 +16,25 @@ input_assoc = sa.Table(
     Column("parameter_id", Integer, ForeignKey("Parameter._id")),
 )
 
-class Model(ParameterGroup, ThimblesTable, Base):
-    model_class = Column(String)
-    _substrate_id = Column(Integer, ForeignKey("ModelSubstrate._id"))
-    substrate = relationship("ModelSubstrate", backref="models")
-    __mapper_args__={
-        "polymorphic_identity": "Model",
-        "polymorphic_on": model_class
-    }
-    parameters = relationship(
-        "Parameter", 
-        secondary=input_assoc, 
-        backref="models",
-    )
-    _output_parameter_id = Column(Integer, ForeignKey("Parameter._id"))
-    output_p = relationship(
-        "Parameter",
-        foreign_keys=_output_parameter_id,
-        backref="mapped_models", 
-    )
+class ModelLogic(ParameterGroup):
+    """A convenience class which partially implements the Model API.
     
-    #class attributes
-    _derivative_helpers = {} 
+    In order to play nice with the SQLAlchemy backend objects which it is 
+    convenient to make act like models. 
     
-    def __init__(self, parameters=None, output_p=None, substrate=None):
-        if parameters is None:
-            parameters = []
-        self.parameters = parameters
-        self.output_p = output_p
-        self.substrate=substrate
+    """
     
     def __call__(self, vdict=None):
-        raise NotImplementedError("Model is intended strictly as a parent class and table place holder, it cannot be executed.")
+        raise NotImplementedError("ModelLogic is intended strictly as a parent class it cannot be executed. you must subclass it and implement a __call__ method for your subclass.")
     
     def fire(self):
         self.output_p.value = self()
     
-    def get_vdict(self, pvrep=None):
-        if pvrep is None:
-            pvrep = {}
+    def get_vdict(self, replacements=None):
+        if replacements is None:
+            replacements = {}
         values_dict = {p:p.value for p in self.parameters}
-        values_dict.update(pvrep)
+        values_dict.update(replacements)
         return values_dict
     
     def parameter_expansion(self, input_vec, **kwargs):
@@ -97,3 +75,35 @@ class Model(ParameterGroup, ThimblesTable, Base):
                 p.set(flat_pval.reshape(pshape))
         pexp_mat = scipy.sparse.hstack(deriv_vecs)
         return pexp_mat
+
+
+class Model(ModelLogic, ThimblesTable, Base):
+    model_class = Column(String)
+    _substrate_id = Column(Integer, ForeignKey("ModelSubstrate._id"))
+    #substrate = relationship("ModelSubstrate", backref="models")
+    __mapper_args__={
+        "polymorphic_identity": "Model",
+        "polymorphic_on": model_class
+    }
+    parameters = relationship(
+        "Parameter", 
+        secondary=input_assoc, 
+        backref="models",
+    )
+    _output_parameter_id = Column(Integer, ForeignKey("Parameter._id"))
+    output_p = relationship(
+        "Parameter",
+        foreign_keys=_output_parameter_id,
+        backref="mapped_models", 
+    )
+    
+    #class attributes
+    _derivative_helpers = {} 
+    
+    def __init__(self, parameters=None, output_p=None, substrate=None):
+        if parameters is None:
+            parameters = []
+        self.parameters = parameters
+        self.output_p = output_p
+        self.substrate=substrate
+

@@ -1008,7 +1008,7 @@ class ForegroundTransitionListWidget(QtGui.QWidget):
                     if len(group.transitions) == 0:
                         groups_to_purge.append(group)
             self.purge_groups(groups_to_purge)
-            self.selection.groups.changed.emit(self.selection.groups.values)
+            self.selection.groups.set_values(self.selection.groups.values)
             sbar.showMessage(
                 "removed {} transitions; purged {} empty groups".format(n_removed, len(groups_to_purge)))
     
@@ -1095,16 +1095,22 @@ class GroupSelectionWidget(QtGui.QWidget):
 
 mplframerate = Option("mplframerate", default=10, parent="GUI")
 
-def pick_line_points(artist, mouseevent):
-    xp, yp = mouseevent.xdata, mouseevent.ydata
-    xdata = artist.get_xdata()
-    ydata = artist.get_ydata()
-    dsquared = (xdata-xp)**2 + (ydata-yp)**2
-    nearest_idx = np.argmin(dsquared)
-    if np.sqrt(dsquared[nearest_idx]) < 0.25:
-        return True, dict(ind=[nearest_idx])
-    else:
-        return False, None
+class NearestDataSpacePicker(object):
+    
+    def __init__(self, xtol, ytol):
+        self.xtol = xtol
+        self.ytol = ytol
+    
+    def __call__(self, artist, mouseevent):
+        xp, yp = mouseevent.xdata, mouseevent.ydata
+        xdata = artist.get_xdata()
+        ydata = artist.get_ydata()
+        dsquared = ((xdata-xp)/self.xtol)**2 + ((ydata-yp)/self.ytol)**2
+        nearest_idx = np.argmin(dsquared)
+        if dsquared[nearest_idx] < 1.0:
+            return True, dict(ind=[nearest_idx])
+        else:
+            return False, None
 
 
 class GroupingStandardEditor(QtGui.QMainWindow):
@@ -1125,10 +1131,10 @@ class GroupingStandardEditor(QtGui.QMainWindow):
         self.spectra = spectra
         self.tdb = tdb
         if burst_pick is None:
-            burst_pick = pick_line_points
+            burst_pick = NearestDataSpacePicker(0.2, 0.2)
         self.burst_pick = burst_pick
         if scatter_pick is None:
-            scatter_pick = pick_line_points
+            scatter_pick = NearestDataSpacePicker(0.2, 0.2)
         self.scatter_pick = scatter_pick
         gstand = tdb.query(tmb.transitions.TransitionGroupingStandard)\
                     .filter(TransitionGroupingStandard.name==standard_name).one()
@@ -1329,6 +1335,9 @@ class GroupingStandardEditor(QtGui.QMainWindow):
         self.selection.groups.focusChanged.connect(
             self.focused_group_bursts.set_groups)
         
+        #zoom on select
+        self.selection.transitions.foreground.focusChanged.connect(self.transition_zoom)
+        
         self.draw_timer = QtCore.QTimer(self)
         self.draw_timer.start(1000.0/mplframerate.value)
         self.draw_timer.timeout.connect(self.on_draw_timeout)
@@ -1381,11 +1390,14 @@ class GroupingStandardEditor(QtGui.QMainWindow):
         self.statusBar().showMessage("Ready")
     
     @Slot(list)
-    def on_transition_selection(self, translist):
+    def transition_zoom(self, translist):
         if self.selection_zoom_cb.checkState():
-            twvs = [t.wv for t in translist]
-            min_wv = np.min(twvs)
-            max_wv = np.max(twvs)
+            if len(translist) > 0:
+                twvs = [t.wv for t in translist]
+                min_wv = np.min(twvs)
+                max_wv = np.max(twvs)
+                delta_wv = 0.0001*max_wv
+                self.flux_display.ax.set_xlim(min_wv-delta_wv, max_wv+delta_wv)
     
     @Slot(list)
     def on_pick_event(self, event_l):
@@ -1448,7 +1460,8 @@ if __name__ == "__main__":
     #arbfilt.show()
     
     #import pdb; pdb.set_trace()
-    tdb = tmb.ThimblesDB("/home/tim/sandbox/cyclefind/junk.tdb")
+    #tdb = tmb.ThimblesDB("/home/tim/sandbox/cyclefind/junk.tdb")
+    tdb = tmb.ThimblesDB("/home/tim/globulars_hres_abundances/globulars.tdb")
     #transobj = tdb.query(Transition).first()
     #import pdb; pdb.set_trace()
     #transitions = tdb.query(Transition).all()

@@ -16,7 +16,9 @@ def float_or_nan(val):
         return np.nan
 
 def read_moog_linelist(fname):
-    lines = open(fname).readlines()
+    file = open(fname)
+    lines = file.readlines()
+    file.close()
     ldat = {"wv":[], "species":[], "ep":[], "loggf":[], "moog_damp":[], "D0":[], "ew":[]}
     for line in lines:
         line = line.split("#")[0]

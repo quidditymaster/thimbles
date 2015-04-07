@@ -17,19 +17,23 @@ def float_or_nan(val):
         return np.nan
 
 def read_vald_linelist(fname):
-    lines = open(fname).readlines()
-    input_re = re.compile("'[A-Z][a-z] [12]', ")
-    col_names = "wv species ep loggf D0 stark_damp rad_damp waals_damp moog_damp".split()
-    #ldat = {cname:[] for cname in col_names}
+    file = open(fname)
+    lines = file.readlines()
+    file.close()
+    input_re = re.compile(r"'([A-Z][a-z]{0,1})([A-Z][a-z]{0,1}){0,1} {1,4}([12])'")
     ldat = []
     for line in lines:
         m = input_re.match(line)
         if m is None:
             continue
-        spl = line.rstrip().split(",")
-        species_name, ion_number = spl[0].replace("'", "").split()
+        species1, species2, ion_number = m.groups()
         charge = int(ion_number) - 1
-        proton_number = atomic_number[species_name]
+        if species2 is None:
+            proton_number = atomic_number[species1]
+        else:
+            proton1, proton2 = sorted([atomic_number[species1], atomic_number[species2]])
+            proton_number = 100*proton1+proton2
+        spl = line.split(",")
         wv, loggf, elow, jlo, eup, jup = list(map(float, spl[1:7]))
         l_lande, u_lande, m_lande = list(map(float_or_nan, spl[8:11]))
         rad_damp, stark_damp, waals_damp = list(map(float_or_nan, spl[12:15]))
@@ -49,7 +53,7 @@ def read_vald_linelist(fname):
     sub_kwargs=dict(
         fname=dict(option_style="raw_string", editor_style="file"),
         file_type=dict(option_style="raw_string"),
-        )
+    )
 )
 def read_linelist(fname, file_type="detect"):
     """

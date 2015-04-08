@@ -114,10 +114,6 @@ class TransitionGroup(ThimblesTable, Base):
     def __setitem__(self, index, value):
         self.transitions[index] = value
     
-    @property
-    def exemplar(self):
-        return self.transitions[-1]
-    
     def pop(self, index):
         self.transitions.pop(index)
     
@@ -132,6 +128,7 @@ class TransitionGroup(ThimblesTable, Base):
             return empty_val
         attrvals = [getattr(t, attr) for t in self.transitions]
         return reduce_func(attrvals)
+
 
 class TransitionGroupingStandard(ThimblesTable, Base):
     name = Column(String)

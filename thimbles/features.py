@@ -673,48 +673,20 @@ class SaturatedVoigtFeatureModel(Model):
     #        if np.isnan(offset):
     #            offset = fallback_offset
     #        self.fdat.ix[groups[species_key], "x_offset"] = offset
-    
-    @property
-    def doppler_lrw(self):
-        return np.log10(self.fdat.doppler_width/self.fdat.wv)
-    
-    @property
-    def lrw(self):
-        return np.log10(self.fdat["ew"]/self.fdat["wv"])
-    
-    #@property
-    #def x_adj(self):
-    #    return self.fdat.x - self.fdat.x_offset
-    #
-    #@property
-    #def sigma(self):
-    #    sig = np.sqrt(self.fdat["vmicro_width"]**2 
-    #            + self.fdat["thermal_width"]**2 
-    #            + (self.fdat["wv"]*self.vmacro/299792.458)**2) 
-    #    return sig + self.fdat["sigma_off"]
-    
-    @property
-    def lrw_adj(self):
-        return self.lrw - self.doppler_lrw
-    
-    def cog_plot(self, ax=None, **kwargs):
-        foreground = self.fdat[(self.fdat.fit_group > 1)*(self.fdat.group_exemplar > 0)]
-        if ax is None:
-            fig, ax = plt.subplots()
-        ax.scatter(foreground.x-foreground.x_offset, np.log10(foreground.ew/foreground.doppler_width), **kwargs)
-        ax.set_xlabel("adjusted relative strength")
-        ax.set_ylabel("log(EW/doppler_width)")
 
 
-class EWSumParameter(Parameter):
+class EWParameter(Parameter):
     _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
     __mapper_args__={
-        "polymorphic_identity":"EWSumParameter",
+        "polymorphic_identity":"EWParameter",
     }
     _value = Column(Float)
+    _transition_id = Column(Integer, ForeignKey("Transition._id"))
+    trasition = relationship("Transition")
     
-    def __init__(self, value):
-        self._value = value
+    def __init__(self, ew, transition):
+        self._value = ew
+        self.transition=transition
 
 
 class FeatureGroupModel(Model):
@@ -722,23 +694,34 @@ class FeatureGroupModel(Model):
     __mapper_args__={
         "polymorphic_identity":"FeatureGroupModel",
     }
-    _ew_sum_id = Column(Integer, ForeignKey("EWSumParameter._id"))
-    ew_sum_p = relationship("EWSumParameter")
+    _ew_id = Column(Integer, ForeignKey("EWParameter._id"))
+    ew_p = relationship("EWParameter")
     _stellar_parameters_id = Column(Integer, ForeignKey("StellarParameters._id"))
     stellar_parameters = relationship("StellarParameters")
+    _transition_group_id = Column(Integer, ForeignKey("TransitionGroup._id"))
+    transition_group = relationship("TransitionGroup")
     
     def __init__(
-            self, 
-            wv_soln, 
-            group, 
-            stellar_parameters, 
+            self,
+            wv_soln,
+            transition_group,
+            stellar_parameters,
+            ew=None,
+            exemplar=None,
             share_gamma=True,
             substrate=None,
     ):
-        transitions = group.transitions
-        self.ew_sum_p = EWSumParameter(0.01)
+        self.transition_group = transition_group
+        transitions = transition_group.transitions
+        if ew is None:
+            ew = 0.01
+        if len(transitions) > 0:
+            if exemplar is None:
+                exemplar_idx = np.random.randint(len(transitions))
+                exemplar = transitions[exemplar_idx]
+        self.ew_p = EWParameter(ew, transition=exemplar)
         self.stellar_parameters = stellar_parameters
-        parameters = [self.ew_sum_p]
+        parameters = [self.ew_p]
         profile_models = []
         for trans in transitions:
             gamma_p = None
@@ -762,30 +745,29 @@ class FeatureGroupModel(Model):
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
-        if len(vdict) == 0:
-            return None
-        ew_sum_val = vdict.pop(self.ew_sum_p)
+        ew_val = vdict.pop(self.ew_p)
         fparams = list(vdict.keys())
         prof_strengths = np.zeros(len(fparams))
+        stell_ps = self.stellar_parameters
+        exemplar = self.ew_p.transition
+        exemplar_pst = exemplar.pseudo_strength(stellar_parameters=stell_ps)
         for prof_idx in range(len(fparams)):
             profile_param = fparams[prof_idx]
             transition = profile_param.mapped_models[0].transition
-            if not self.substrate is None:
-                stell_ps = self.substrate.source.stellar_parameters
-            else:
-                stell_ps = None
             pstrength = transition.pseudo_strength(stellar_parameters=stell_ps)
-            prof_strengths[prof_idx] = np.power(10.0, pstrength)
-        prof_strengths /= np.sum(prof_strengths)
+            pstrength -= exemplar_pst #normalize to exemplar
+            prof_strengths[prof_idx] = pstrength
+        prof_strengths= np.power(10.0, prof_strengths)
         output_sample = self.output_p.wv_sample
         fsum = np.zeros(len(output_sample))
         out_start = output_sample.start
         for prof_idx in range(len(fparams)):
-            fp = fparams[prof_idx]
-            start, end = fp.wv_sample.start, fp.wv_sample.end
-            start = start-out_start
-            end = end-out_start
-            fsum[start:end] += -prof_strengths[prof_idx]*fp.value#*ew_sum_value
+            profile_p = fparams[prof_idx]
+            start= profile_p.wv_sample.start - out_start 
+            end = profile_p.wv_sample.end - out_start
+            profile = prof_strengths[prof_idx]*profile_p.value
+            fsum[start:end] -= profile
+        fsum *= ew_val
         return fsum
 
 
@@ -890,42 +872,27 @@ class VoigtProfileModel(Model):
         return self._gamma_p
 
 
-class GroupedFeatureSubstrate(tmb.modeling.ModelSubstrate):
-    _id = Column(Integer, ForeignKey("ModelSubstrate._id"), primary_key=True)
+class GroupedFeaturesModel(tmb.modeling.factor_models.FluxSumLogic, Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__={
-        "polymorphic_identity":"GroupedFeatureSubstrate",
+        "polymorphic_identity":"GroupedFeatureModel",
     }
-    _feature_flux_id = Column(Integer, ForeignKey("FluxParameter._id"))
-    feature_flux = relationship("FluxParameter")
     _source_id = Column(Integer, ForeignKey("Source._id"))
     source = relationship("Source")
     
-    def __init__(self, star, database, grouping_standard, wv_soln, flux_socket=None):
+    def __init__(self, star, grouping_standard, wv_soln):
         self.source = star
         wv_soln = tmb.as_wavelength_solution(wv_soln)
-        self.feature_flux = FluxParameter(wv_soln)
-        if not isinstance(grouping_standard, TransitionGroupingStandard):
-            grouping_standard = database.query(TransitionGroupingStandard)\
-                    .filter(TransitionGroupingStandard.name == grouping_standard)\
-                    .first()
-            if grouping_standard is None:
-                raise TypeError("TransitionGroupingStandard not found")
-        feature_group_models = []
+        self.output_p = FluxParameter(wv_soln)
+        sub_models = []
         for group in grouping_standard.groups:
             fgm = FeatureGroupModel(
                 wv_soln=wv_soln,
-                group=group,
+                transition_group=group,
                 stellar_parameters=star.stellar_parameters,
-                substrate=self,
             )
-            feature_group_models.append(fgm)
-        feature_adder = factor_models.FluxSumModel(
-            output_p = self.feature_flux,
-            parameters = [fgm.output_p for fgm in feature_group_models],
-            substrate=self,
-        )
-        if not flux_socket is None:
-            flux_socket.append(self.feature_flux)
+            sub_models.append(fgm)
+        self.parameters = [fgm.output_p for fgm in sub_models]
 
 
 class VoigtFitSingleLineSynthesis(ThimblesTable, Base):

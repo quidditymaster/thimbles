@@ -582,13 +582,13 @@ def divide_spectra(
     return tmb.Spectrum(target_wvs, out_flux, out_ivar)
 
 
-class CoreSpectrumSubstrate(tmb.modeling.ModelSubstrate):
-    _id = Column(Integer, ForeignKey("ModelSubstrate._id"), primary_key=True)
+class SpectrumModelSkeleton(tmb.modeling.Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__={
-        "polymorphic_identity":"CoreSpectrumModelSubstrate",
+        "polymorphic_identity":"SpectrumModelSkeleton",
     }
     _spectrum_id = Column(Integer, ForeignKey("Spectrum._id"))
-    spectrum = relationship("Spectrum", backref="core_substrate")
+    spectrum = relationship("Spectrum", backref="model_skeleton")
     
     _spectrograph_multiplier = None    
     _spectrograph_adder = None
@@ -675,7 +675,7 @@ class CoreSpectrumSubstrate(tmb.modeling.ModelSubstrate):
         if self._spectrograph_multiplier is None:
            self.update_model_property("spectrograph_multiplier")
         return self._spectrograph_multiplier
-
+    
     @property
     def spectrograph_adder(self):
         if self._spectrograph_adder is None:
@@ -687,13 +687,13 @@ class CoreSpectrumSubstrate(tmb.modeling.ModelSubstrate):
         if self._sampling_matrix_multiplier is None:
             self.update_model_property("sampling_matrix_multiplier")
         return self._sampling_matrix_multiplier
-
+    
     @property
     def inner_multiplier(self):
         if self._inner_multiplier is None:
             self.update_model_property("inner_multiplier")
         return self._inner_multiplier
-
+    
     @property
     def inner_adder(self):
         if self._inner_adder is None:

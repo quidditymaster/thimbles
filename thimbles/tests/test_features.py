@@ -62,7 +62,7 @@ class TestFeatureGroupModel(unittest.TestCase):
         spars = tmb.stellar_parameters.StellarParameters(5000.0, 3.0, 0.0, 1.0)
         self.fgmod = FeatureGroupModel(
             wv_soln = wv_soln, 
-            group=transition_group,
+            transition_group=transition_group,
             stellar_parameters=spars
         )
     
@@ -74,9 +74,9 @@ class TestFeatureGroupModel(unittest.TestCase):
     def test_sum_normalized(self):
         flux = self.fgmod()
         dx = scipy.gradient(self.fgmod.output_p.wv_sample.wvs)
-        flux_sum = np.sum(flux*dx)
-        #print "flux sum", flux_sum
-        assert np.abs(1.0+flux_sum) < 0.001
+        flux_sum = -np.sum(flux*dx)
+        ntrans = len(self.fgmod.parameters)-1
+        assert np.abs(self.fgmod.ew_p.value*ntrans - flux_sum) < 0.01
     
     def test_teff_listen(self):
         #import pdb; pdb.set_trace()
@@ -92,7 +92,7 @@ class TestFeatureGroupModel(unittest.TestCase):
             plt.show()
 
 
-class TestFeatureGroupSubstrate(unittest.TestCase):
+class TestGroupedFeaturesModel(unittest.TestCase):
     
     def setUp(self):
         min_wv = 5000.0
@@ -101,6 +101,7 @@ class TestFeatureGroupSubstrate(unittest.TestCase):
         wv_soln = tmb.as_wavelength_solution(np.linspace(min_wv, max_wv, npts_tot))
         star = tmb.stellar_parameters.Star(name="test star1")
         spars = tmb.stellar_parameters.StellarParameters(5000.0, 3.0, 0.0, 1.0)
+        star.stellar_parameters = spars
         dummy_tgroups = []
         for j in range(10):
             dummy_trans = []
@@ -112,18 +113,18 @@ class TestFeatureGroupSubstrate(unittest.TestCase):
             transition_group = tmb.transitions.TransitionGroup(dummy_trans)
             dummy_tgroups.append(transition_group)    
         grouping_standard = tmb.transitions.TransitionGroupingStandard(dummy_tgroups)
-        gfs = GroupedFeatureSubstrate(
+        gfm = GroupedFeaturesModel(
             star=star,
             grouping_standard=grouping_standard,
-            database=None,
             wv_soln=wv_soln,
         )
-        self.gfs = gfs
+        self.gfm = gfm
     
     def test_call(self):
-        value_res = self.gfs.feature_flux.value
+        value_res = self.gfm.output_p.value
+        wvs = self.gfm.output_p.wv_sample.wvs
         if show_diagnostic_plots:
-            plt.plot(self.gfs.feature_flux.wv_sample.wvs, value_res)
+            plt.plot(wvs, value_res)
             plt.show()
 
 if __name__ == "__main__":

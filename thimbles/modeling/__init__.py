@@ -3,6 +3,5 @@
 #from predictors import *
 
 from thimbles.modeling.parameters import Parameter, ParameterGroup
-from thimbles.modeling.generators import ModelSubstrate
 from thimbles.modeling.models import Model
 from thimbles.modeling.distributions import Distribution

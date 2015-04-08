@@ -106,7 +106,24 @@ class MatrixMultiplierModel(NamedRow, Model):
         return matrix*vector
 
 
-class FluxSumModel(NamedRow, Model):
+class FluxSumLogic(object):
+    
+    def __call__(self, pvrep=None):
+        vdict = self.get_vdict(pvrep)
+        if len(vdict) == 0:
+            return None
+        fparams = list(vdict.keys())
+        output_sample = self.output_p.wv_sample
+        fsum = np.zeros(len(output_sample))
+        out_start = output_sample.start
+        for fp in fparams:
+            start, end = fp.wv_sample.start, fp.wv_sample.end
+            start = start-out_start
+            end = end-out_start
+            fsum[start:end] += fp.value
+        return fsum
+
+class FluxSumModel(FluxSumLogic, NamedRow, Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__={
         "polymorphic_identity":"FluxSumModel",
@@ -127,21 +144,6 @@ class FluxSumModel(NamedRow, Model):
         self.name=name
         self.substrate=substrate
     
-    def __call__(self, pvrep=None):
-        vdict = self.get_vdict(pvrep)
-        if len(vdict) == 0:
-            return None
-        fparams = list(vdict.keys())
-        output_sample = self.output_p.wv_sample
-        fsum = np.zeros(len(output_sample))
-        out_start = output_sample.start
-        for fp in fparams:
-            start, end = fp.wv_sample.start, fp.wv_sample.end
-            start = start-out_start
-            end = end-out_start
-            fsum[start:end] += fp.value
-        return fsum
-
 
 class NegativeExponentialModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)

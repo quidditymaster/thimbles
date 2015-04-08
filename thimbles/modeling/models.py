@@ -79,8 +79,6 @@ class ModelLogic(ParameterGroup):
 
 class Model(ModelLogic, ThimblesTable, Base):
     model_class = Column(String)
-    _substrate_id = Column(Integer, ForeignKey("ModelSubstrate._id"))
-    #substrate = relationship("ModelSubstrate", backref="models")
     __mapper_args__={
         "polymorphic_identity": "Model",
         "polymorphic_on": model_class
@@ -100,10 +98,11 @@ class Model(ModelLogic, ThimblesTable, Base):
     #class attributes
     _derivative_helpers = {} 
     
-    def __init__(self, parameters=None, output_p=None, substrate=None):
+    def __init__(self, parameters=None, output_p=None):
         if parameters is None:
             parameters = []
         self.parameters = parameters
         self.output_p = output_p
-        self.substrate=substrate
+
+
 

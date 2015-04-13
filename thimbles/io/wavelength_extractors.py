@@ -2,7 +2,6 @@ import time
 import warnings
 import numpy as np
 from thimbles.io.pixel_wavelength_functions import *
-from thimbles import logger
 import thimbles as tmb
 
 # ########################################################################### #
@@ -924,7 +923,7 @@ def from_header (header,preference=None):
         try: 
             wv_solutions.append(func(header))
             compatible_solutions.append(func_name)
-            logger('compatible wavelength solution from {}'.format(func_name))
+            print('compatible wavelength solution from {}'.format(func_name))
         except IncompatibleWavelengthSolution:
             pass
     # check how many solutions were found

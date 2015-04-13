@@ -16,9 +16,9 @@ class FlagSpace(object):
     
     def __init__(self):
         #keep an internal dictionary of our flag names and corresponding integers
-        self.flag_bits = {}
-        self.flag_masks = {}
-        self.default_dict = {}
+        self.flag_bits = {} #flag name --> bit number
+        self.flag_masks = {}#flag name --> 2**(bit number)
+        self.default_dict = {}#flag name --> default truth value
     
     def add_dimension(self, name, bit_index=None, default=False):
         """add a flag corresponding to the integer 2**bit_index
@@ -60,6 +60,13 @@ class FlagSpace(object):
     def __getitem__(self, flag_name):
         return self.flag_masks[flag_name]
     
+    def __len__(self):
+        return len(self.flag_masks)
+    
+    @property
+    def flag_names(self):
+        return self.flag_bits.keys()
+    
     @property
     def default_int(self):
         return self.dict_to_int(self.default_dict)
@@ -80,17 +87,14 @@ class Flags(object):
         return bool(self.flag_space[flag_name] & self.flag_int)
     
     def __setitem__(self, flag_name, new_flag_val):
-        cur_flag_val = self[flag_name]
-        #the current flag value and the set value match, do nothing
-        if cur_flag_val and new_flag_val:
-            return
-        if (not cur_flag_val) and (not new_flag_val):
-            return
-        #the current flag value and new value don't match, toggle
-        if cur_flag_val and (not new_flag_val):
-            self.flag_int -= self.flag_space.flag_masks[flag_name]
-        if (not cur_flag_val) and new_flag_val:
-            self.flag_int += self.flag_space.flag_masks[flag_name]
+        if new_flag_val:
+            self.flag_int |= self.flag_space[flag_name]
+        else:
+            self.flag_int -= self.flag_space[flag_name] & self.flag_int
+    
+    def update(self, **kwargs):
+        for flag_name in kwargs:
+            self[flag_name] = kwargs[flag_name]
     
     def asdict(self):
         return self.flag_space.int_to_dict(self.flag_int)
@@ -98,12 +102,9 @@ class Flags(object):
     def __repr__(self):
         return repr(self.asdict())
 
-#NOTE: The order of these calls it is implicitly setting the bit_indexes
 feature_flag_space = FlagSpace()
-feature_flag_space.add_dimension("use", default=True)
-feature_flag_space.add_dimension("bad_data")
-feature_flag_space.add_dimension("bad_fit")
-feature_flag_space.add_dimension("viewed")
+feature_flag_space.add_dimension("fiducial", bit_index=0, default=True)
+
 
 class FeatureFlags(Flags, Base, ThimblesTable):
     flag_int= Column(Integer)
@@ -113,11 +114,11 @@ class FeatureFlags(Flags, Base, ThimblesTable):
 
 
 spectrum_flag_space = FlagSpace()
-spectrum_flag_space.add_dimension("normalized")
-spectrum_flag_space.add_dimension("fluxed")
-spectrum_flag_space.add_dimension("observed", default=True)
-spectrum_flag_space.add_dimension("telluric")
-spectrum_flag_space.add_dimension("sky")
+spectrum_flag_space.add_dimension("normalized", bit_index=0)
+spectrum_flag_space.add_dimension("fluxed", bit_index=1)
+spectrum_flag_space.add_dimension("observed", bit_index=2, default=True)
+spectrum_flag_space.add_dimension("telluric", bit_index=3)
+spectrum_flag_space.add_dimension("sky", bit_index=4)
 
 
 class SpectrumFlags(Flags, ThimblesTable, Base):

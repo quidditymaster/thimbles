@@ -6,7 +6,7 @@ import os
 class LineListReadingTester(unittest.TestCase):
     
     def setUp(self):
-        self.ll_path = os.path.join(os.path.dirname(__file__), "dummy_line_lists")
+        self.ll_path = os.path.join(os.path.dirname(__file__), "data")
     
     def test_ir_w_comment(self):
         fpath = os.path.join(self.ll_path, "ir_w_comment.ln") 

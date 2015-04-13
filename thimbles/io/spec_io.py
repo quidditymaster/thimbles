@@ -5,24 +5,24 @@
 
 # ########################################################################### #
 # Standard Library
-import re
-import os
-from copy import deepcopy
+import re, os
+from copy import copy, deepcopy
 from collections import Iterable
 import warnings
+import json
 
 # 3rd Party
 import astropy.io
 from astropy.io import fits
 import numpy as np
 import h5py
+import sqlalchemy as sa
 
 # Internal
+import thimbles as tmb
 from thimbles.tasks import task
-
 from thimbles.utils.misc import var_2_inv_var
 from thimbles.spectrum import Spectrum, WavelengthSolution
-#from ..metadata import MetaData
 from . import wavelength_extractors
 
 # ########################################################################### #
@@ -30,7 +30,10 @@ from . import wavelength_extractors
 
 __all__ = ["read_spec","read_ascii","read_fits",
            "read_fits","read_fits_hdu","read_bintablehdu",
-           "read_many_fits", "read_hdf5"]
+           "read_many_fits", "read_hdf5",
+           "read_json",
+           "write_ascii", "write_ascii", "write_hdf5",
+]
 
 def read_hdf5(filepath, source=None):
     hf = h5py.File(filepath, "r")
@@ -70,70 +73,122 @@ def write_hdf5(filepath, spectra):
     hf.close()
 
 # ########################################################################### #
-# read functions
 
-def read_ascii (filepath,**np_kwargs):
+def read_ascii(fname, wv_col=0, flux_col=1, ivar_col=2, lsf_col=3, ivar_as_var=False, **np_kwargs):
     """
-    Readin text files with wavelength and data columns (optionally inverse variance)
+    Readin ascii tables as a spectrum
     
     Parameters
     ----------
-    filepath : string
-        Gives the path to the text file
-    np_kwargs : dictionary
-        Contains keywords and values to pass to np.loadtxt
-        This includes things such as skiprows, usecols, etc.
-        unpack and dtype are set to True and float respectively 
-    
+    fname : string
+      path to the text file
+    wv_col: int
+      index of wavelength column
+    flux_col: int
+      index of flux colum
+    ivar_col: int
+      index of inverse variance column
+    lsf_col: int
+      index to interpret as line spread function
+    ivar_as_var: bool
+      if True interpret the ivar_col as variance instead of inverse variance.
+    np_kwargs:
+       pass the extra arguments through to np.readtxt e.g. to change delimeters or comment style.
+
     Returns
     -------
-    spectrum : list of `thimbles.spectrum.Spectrum` objects 
-        If get_data is False returns a Spectrum object
-    
-    Notes
-    -----
-    __1)__ Keywords txt_data, unpack, and dtype are forced for the
-        np_kwargs.
-        
+    spectrum : list of `thimbles.spectrum.Spectrum` objects     
     """ 
     #### check if file exists   ####### #############
-    if not os.path.isfile(filepath): 
-        raise IOError("File does not exist:'{}'".format(filepath))
+    if not os.path.isfile(fname): 
+        raise IOError("File does not exist:'{}'".format(fname))
     
-    #metadata = MetaData()
-    #metadata['filepath'] = os.path.abspath(filepath)
+    data = np.loadtxt(fname, **np_kwargs)
+    wvs = data[:, wv_col]
+    flux = data[:, flux_col]
+    ivar =None
+    lsf = None
+    if data.shape[1] >= 3:
+        ivar = data[:, ivar_col]
+        if ivar_as_var:
+            ivar = var_2_inv_var(ivar)
+    if data.shape[1] >= 4:
+        lsf = data[:, lsf_col]
     
-    # Allows for not repeating a loadtxt
-    np_kwargs['unpack'] = True
-    np_kwargs['dtype'] = float
-    txt_data = np.loadtxt(filepath,**np_kwargs)
-    
-    # check the input txt_data
-    if txt_data.ndim == 1:
-        warnings.warn("NO WAVELENGTH DATA FOUND, USING FIRST COLUMN AS DATA")
-        data = txt_data 
-        wvs = np.arange(len(data))+1
-        var = None
-    elif txt_data.ndim == 2:
-        wvs = txt_data[0]
-        data = txt_data[1]
-        var = None
-    elif txt_data.ndim == 3: 
-        wvs,data,var = txt_data
-    elif txt_data.shape[0] > 2: 
-        warnings.warn(("Found more than 3 columns in text file '{}' "
-                       "taking the first three to be wavelength, data,"
-                       " variance respectively".format(filepath)))
-        wvs,data,var = txt_data[:3]
-        
-    if var is not None:        
-        inv_var = var_2_inv_var(var)
-    else:
-        inv_var = None
-    
-    return [Spectrum(wvs,data,inv_var)]#,metadata=metadata)]
-    
-############################################################################
+    return [Spectrum(wvs, data, ivar, lsf=lsf)]
+
+
+def write_ascii(spectra, fpath, fmt="%.8e", ivar_as_var=False):
+    if isinstance(spectra, tmb.Spectrum):
+        spectra = [spectra]
+    for spec in spectra:
+        wvs, flux, ivar, lsf = spec.wvs, spec.flux, spec.ivar, spec.lsf
+        if ivar_as_var:
+            ivar = inv_var_2_var(ivar)
+        data = np.array([wvs, flux, ivar, lsf]).transpose()
+        np.savetxt(fpath, data, fmt=fmt)
+    return True
+
+def source_from_name(name, database, source_class=None, auto_add=True):
+    try:
+        source = database.query(source_class)\
+           .filter(tmb.Star.name == name)\
+           .limit(1).one()
+    except sa.orm.exc.NoResultFound:
+        source = source_class(name=name)
+        if auto_add:
+            database.add(source)
+    return source
+
+def read_json(fname, database, auto_add=True):
+    file = open(fname)
+    jsonstr = file.read()
+    file.close()
+    in_dict = json.loads(jsonstr)
+    defaults = in_dict.get("defaults")
+    if defaults is None:
+        defaults = {}
+    defaults.setdefault("read_func", "read_spec")
+    spectra_dicts = in_dict["spectra"]
+    spectra = []
+    for spec_dict in spectra_dicts:
+        sdict = copy(defaults)
+        sdict.update(spec_dict)
+        fname = sdict.pop("fname")
+        parent_dir = sdict.get("parent_dir", "")
+        fpath = os.path.join(parent_dir, fname)
+        read_func_str = sdict.pop("read_func")
+        read_func = eval(read_func_str, tmb.io.spec_io.__dict__)
+        sub_spectra = read_func(fpath)
+        if "source.name" in sdict:
+            source_name = sdict.pop("source.name")
+        else:
+            source_name = ""
+        if "source_type" in sdict:
+            source_type = sdict.pop("source_type")
+        else:
+            source_type = "Source"
+        source_class = eval(source_type, tmb.wds.__dict__)
+        source = source_from_name(source_name, database, source_class=source_class, auto_add=auto_add)
+        if "source.ra" in sdict:
+            source.ra = sdict.pop("source.ra")
+        if "source.dec" in sdict:
+            source.dec = sdict.pop("source.dec")
+        spec_flag_space = tmb.flags.spectrum_flag_space
+        flag_dict = {}
+        for flag_name in spec_flag_space.flag_names:
+            flag_str = "flags.{}".format(flag_name)
+            if flag_str in sdict:
+                flag_val = bool(sdict.pop(flag_str))
+                flag_dict[flag_name] = flag_val
+        for spec in sub_spectra:
+            spec.source = source
+            spec.flags.update(**flag_dict)
+            spec.info.update(sdict)
+            spectra.append(spec)
+    return spectra
+
+############################################################################    
 
 def read_fits (filepath, which_hdu=0, band=0, preference=None):
     if not os.path.isfile(filepath): 
@@ -210,18 +265,11 @@ def read_fits_hdu (hdulist,which_hdu=0,band=0,preference=None):
         raise IOError(("number of wavelength solutions n={} "
                        "from header incompatable with number of data orders, n={}").format(len(wvs),len(data)))
     
-    #=================================================================#
-    #metadata = MetaData()
-    #metadata['filepath'] = hdulist.filename
-    #metadata['hdu_used']=which_hdu
-    #metadata['band_used']=band
-    #metadata['header'] = deepcopy(hdu.header)
-        
+    #=================================================================#    
     spectra = []
     for i in range(len(wvs)):
-    #    metadata['order'] = i
-        spectra.append(Spectrum(wvs[i],data[i]))#,metadata=metadata))
-         
+        spectra.append(Spectrum(wvs[i],data[i]))
+    
     return spectra
 
 def read_bintablehdu (hdulist,which_hdu=1,wvcolname=None,fluxcolname=None,varcolname=None):
@@ -447,7 +495,7 @@ def detect_spectrum_file_type(fname):
 pass
 # ############################################################################# #
 @task(
-    result_name="spec_list",
+    result_name="spectra",
     sub_kwargs=dict(
         fname=dict(option_style="raw_string", editor_style="file"),
         file_type={"option_style":"raw_string"},
@@ -489,3 +537,15 @@ def read_spec(fname, file_type="detect", extra_kwargs=None):
     elif file_type == "ascii":
         res = read_ascii(fname, **extra_kwargs)
     return res
+
+
+@task(
+    result_name="write_success",
+)
+def write_spec(spectra, fname, file_type="ascii"):
+    if file_type == "ascii":
+        write_ascii(spectra, fname)
+    elif file_type == "hdf5":
+        write_hdf5(spectra, fname)
+    else:
+        raise NotImplementedError("spectrum output of file_type: {} has not been implemented".format(file_type))

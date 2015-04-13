@@ -23,7 +23,7 @@ resource_dir = os.path.join(os.path.dirname(__file__), "resources")
 
 speed_of_light = 299792.458 #speed of light in km/s
 
-from thimbles.verbosity import logger
+from thimbles import thimblesdb
 from thimbles import modeling
 from thimbles.periodictable import ptable, atomic_number, atomic_symbol
 from thimbles import io
@@ -51,3 +51,11 @@ from thimbles.radtran import mooger
 from thimbles.thimblesdb import ThimblesDB
 from thimbles.stellar_parameters import Star
 
+from thimbles import workingdataspace as wds
+wds.Spectrum = tmb.spectrum.Spectrum
+wds.Abundance = tmb.abundances.Abundance
+wds.Ion = tmb.abundances.Ion
+wds.Transition = tmb.transitions.Transition
+wds.Star = Star
+wds.Source = tmb.sources.Source
+wds.StellarParameters = tmb.stellar_parameters.StellarParameters

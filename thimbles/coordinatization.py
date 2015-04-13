@@ -1,7 +1,6 @@
 import numpy as np
 import scipy
 
-from thimbles import logger
 from thimbles.thimblesdb import ThimblesTable, Base
 from thimbles.sqlaimports import *
 from functools import reduce

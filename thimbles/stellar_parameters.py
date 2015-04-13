@@ -71,7 +71,7 @@ class Star(Source):
         self.stellar_parameters = stellar_parameters
     
     def __repr__(self):
-        return "Star name={name}".format(self.name)
+        return "Star: {} ".format(self.name)
 
 class StellarParameters(ThimblesTable, Base):
     _teff_id = Column(Integer, ForeignKey("TeffParameter._id"))

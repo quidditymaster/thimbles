@@ -87,7 +87,7 @@ class Task(Option):
                 opt_kwargs["default"] = arg_dict[arg_key]
             Option(name=arg_key, parent=self, **opt_kwargs)
         if len(self.sub_kwargs) > 0:
-            logger("Warning, not all sub_kwargs consumed! in Task.generate_child_options for task {} \n, {} left unconsumed".format(self.name, self.sub_kwargs))
+            print("Warning, not all sub_kwargs consumed! in Task.generate_child_options for task {} \n, {} left unconsumed".format(self.name, self.sub_kwargs))
     
     def run(self, **kwargs):
         task_kwargs = {kw:getattr(self, kw).value for kw in self.task_kwargs}

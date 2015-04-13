@@ -16,8 +16,6 @@ from thimbles import resampling
 #from thimbles.utils.misc import inv_var_2_var, var_2_inv_var, clean_variances, clean_inverse_variances
 #from .metadata import MetaData
 from thimbles.flags import SpectrumFlags
-from thimbles import logger
-#from thimbles.reference_frames import InertialFrame
 #from thimbles.resolution import LineSpreadFunction, GaussianLSF, BoxLSF
 #from thimbles.binning import CoordinateBinning
 from scipy.interpolate import interp1d

@@ -17,7 +17,6 @@ from thimbles.modeling import factor_models
 from thimbles.spectrum import FluxParameter, WavelengthSample
 from thimbles.utils.misc import smooth_ppol_fit
 import thimbles.utils.piecewise_polynomial as ppol
-from thimbles import logger
 from thimbles import hydrogen
 from latbin import matching
 from thimbles import as_wavelength_sample
@@ -337,7 +336,6 @@ class SaturatedVoigtFeatureModel(Model):
         snr2_available = np.zeros(npts_model)
         dof_available = np.zeros(npts_model)
         
-        logger("building spectra to model space transforms")
         for spec in spectra:
             trans = tmb.utils.resampling.get_resampling_matrix(spec.wv, self.model_wv, preserve_normalization=False)
             transforms_to_model.append(trans)
@@ -360,7 +358,6 @@ class SaturatedVoigtFeatureModel(Model):
         #zero is the background group
         self.fdat["fit_group"] = np.zeros(len(self.fdat), dtype=int) 
         window_delta = 0.0001
-        logger("collecting max feature strengths per model pixel")
         for line_idx in range(len(self.fdat)):
             ldata = self.fdat.iloc[line_idx]
             cent_wv = ldata["wv"]
@@ -379,7 +376,6 @@ class SaturatedVoigtFeatureModel(Model):
             mst_snippet = max_strengths[min_idx:max_idx+1]
             max_strengths[min_idx:max_idx+1] = np.where(mst_snippet > prof, mst_snippet, prof)
         
-        logger("relegating dominated features to a background model")
         #mask features close to the centers of Hydrogen lines
         hmask = hydrogen.get_H_mask(self.model_wv, self.H_mask_radius)
         for line_idx in range(len(self.fdat)):
@@ -397,7 +393,6 @@ class SaturatedVoigtFeatureModel(Model):
                 self.fdat["fit_group"].iloc[line_idx] = 1
         
         #print "beginning grouping"
-        logger("matching potential groups")
         foreground_features = self.fdat[self.fdat.fit_group >= 1]
         
         species_gb = foreground_features.groupby(["Z", "ion"])
@@ -875,13 +870,13 @@ class VoigtProfileModel(Model):
 class GroupedFeaturesModel(tmb.modeling.factor_models.FluxSumLogic, Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__={
-        "polymorphic_identity":"GroupedFeatureModel",
+        "polymorphic_identity":"GroupedFeaturesModel",
     }
-    _source_id = Column(Integer, ForeignKey("Source._id"))
-    source = relationship("Source")
+    _star_id = Column(Integer, ForeignKey("Source._id"))
+    star = relationship("Star")
     
     def __init__(self, star, grouping_standard, wv_soln):
-        self.source = star
+        self.star = star
         wv_soln = tmb.as_wavelength_solution(wv_soln)
         self.output_p = FluxParameter(wv_soln)
         sub_models = []

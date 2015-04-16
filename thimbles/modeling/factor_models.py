@@ -54,6 +54,15 @@ class VectorParameter(Parameter):
     def __init__(self, vector=None):
         self._value = vector
 
+class FloatParameter(Parameter):
+    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"FloatParameter",
+    }
+    _value = Column(Float)
+
+    def __init__(self, value=None):
+        self._value = value
 
 class MatrixMultiplierModel(NamedRow, Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)

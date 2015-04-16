@@ -2,6 +2,22 @@
 import numpy as np
 import scipy
 from scipy.special import erf, erfinv
+from scipy import ndimage
+
+def running_acorr(arr, avg_sigma=101, window_sigma=3, ncorr=21, mode="reflect"):
+    gauss_filter = ndimage.filters.gaussian_filter
+    assert ncorr >= 1
+    npts = len(arr)
+    running_mean = gauss_filter(arr, sigma=avg_sigma, mode=mode)
+    diff = arr - running_mean
+    acorr_out = np.zeros((npts, ncorr))
+    acorr_out[:, 0] = gauss_filter(diff**2, sigma=window_sigma, mode=mode)
+    for i in range(1, ncorr):
+        diff_i_shift = np.empty(npts)
+        diff_i_shift[i:]= diff[:-i]
+        diff_i_shift[:i] = diff[i-1::-1]
+        acorr_out[:, i] = gauss_filter(diff*diff_i_shift, sigma=window_sigma, mode=mode)
+    return acorr_out
 
 def max_norm(spectrum):
     return np.repeat(np.max(spectrum.flux), len(spectrum))

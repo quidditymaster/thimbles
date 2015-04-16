@@ -245,7 +245,7 @@ class FluxParameter(Parameter):
     
     @property
     def pixels(self):
-        return np.arange(self.start_index, self.end_index)
+        return self.wv_sample.pixels
 
 
 class Spectrum(ThimblesTable, Base):

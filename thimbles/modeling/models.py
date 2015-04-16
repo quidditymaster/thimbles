@@ -9,19 +9,15 @@ from thimbles.sqlaimports import *
 from thimbles.thimblesdb import ThimblesTable, Base
 from thimbles.modeling import ParameterGroup, Parameter
 
-input_assoc = sa.Table(
-    "input_assoc", 
-    Base.metadata,
-    Column("model_id", Integer, ForeignKey("Model._id")),
-    Column("parameter_id", Integer, ForeignKey("Parameter._id")),
-)
+#input_assoc = sa.Table(
+#    "input_assoc", 
+#    Base.metadata,
+#    Column("model_id", Integer, ForeignKey("Model._id")),
+#    Column("parameter_id", Integer, ForeignKey("Parameter._id")),
+#)
 
 class ModelLogic(ParameterGroup):
     """A convenience class which partially implements the Model API.
-    
-    In order to play nice with the SQLAlchemy backend objects which it is 
-    convenient to make act like models. 
-    
     """
     
     def __call__(self, vdict=None):
@@ -71,7 +67,6 @@ class ModelLogic(ParameterGroup):
                     plus_d = self(input_vec, **kwargs)
                     deriv = (plus_d - minus_d)/(2.0*delta_vecs[vec_idx, vec_idx])
                     deriv_vecs.append(scipy.sparse.csc_matrix(deriv.reshape((-1, 1))))
-                    #import pdb; pdb.set_trace()
                 p.set(flat_pval.reshape(pshape))
         pexp_mat = scipy.sparse.hstack(deriv_vecs)
         return pexp_mat
@@ -83,11 +78,11 @@ class Model(ModelLogic, ThimblesTable, Base):
         "polymorphic_identity": "Model",
         "polymorphic_on": model_class
     }
-    parameters = relationship(
-        "Parameter", 
-        secondary=input_assoc, 
-        backref="models",
-    )
+    #parameters = relationship(
+    #    "Parameter", 
+    #    secondary=input_assoc, 
+    #    backref="models",
+    #)
     _output_parameter_id = Column(Integer, ForeignKey("Parameter._id"))
     output_p = relationship(
         "Parameter",

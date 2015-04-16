@@ -683,6 +683,12 @@ class EWParameter(Parameter):
         self._value = ew
         self.transition=transition
 
+_fgroup_prof = sa.Table(
+    "fgroup_prof",
+    Base.metadata,
+    Column("fgroup_id", Integer, ForeignKey("FeatureGroupModel._id")),
+    Column("profile_id", Integer, ForeignKey("Parameter._id")),
+)
 
 class FeatureGroupModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
@@ -691,6 +697,7 @@ class FeatureGroupModel(Model):
     }
     _ew_id = Column(Integer, ForeignKey("EWParameter._id"))
     ew_p = relationship("EWParameter")
+    profiles_p = relationship("Parameter", secondary=_fgroup_prof)
     _stellar_parameters_id = Column(Integer, ForeignKey("StellarParameters._id"))
     stellar_parameters = relationship("StellarParameters")
     _transition_group_id = Column(Integer, ForeignKey("TransitionGroup._id"))
@@ -730,13 +737,18 @@ class FeatureGroupModel(Model):
                 gamma=gamma_p
             )
             profile_models.append(pmod)
-            parameters.append(pmod.output_p)
+        self.profiles_p = [pmod.output_p for pmod in profile_models]
         min_start = np.min([pmod.output_p.wv_sample.start for pmod in profile_models])
         max_end = np.max([pmod.output_p.wv_sample.end for pmod in profile_models])
         wvsamp = WavelengthSample(wv_soln, start=min_start, end=max_end)
         self.output_p = FluxParameter(wvsamp)
-        self.parameters = parameters
         self.substrate = substrate
+    
+    @property
+    def parameters(self):
+        plist = [self.ew_p]
+        plist.extend(self.profiles_p)
+        return plist
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
@@ -797,10 +809,12 @@ class VoigtProfileModel(Model):
     transition = relationship("Transition")
     max_width = Column(Float)
     
-    #non-sql attributes
-    _gamma_p = None
-    _teff_p = None
-    _vmicro_p = None
+    _gamma_id = Column(Integer, ForeignKey("GammaParameter._id"))
+    gamma_p = relationship("GammaParameter", foreign_keys=_gamma_id, backref="models")
+    _teff_id = Column(Integer, ForeignKey("TeffParameter._id"))
+    teff_p = relationship("TeffParameter", backref="models")
+    _vmicro_id = Column(Integer, ForeignKey("VmicroParameter._id"))
+    vmicro_p = relationship("VmicroParameter", backref="models")
     
     def __init__(
             self, 
@@ -816,10 +830,9 @@ class VoigtProfileModel(Model):
         if max_width is None:
             max_width = cent_wv*5e-4
         self.max_width = max_width
-        gamma_p = as_gamma_parameter(gamma)
-        teff_p = stellar_parameters.teff_p
-        vmicro_p = stellar_parameters.vmicro_p
-        self.parameters = [gamma_p, teff_p, vmicro_p]
+        self.gamma_p = as_gamma_parameter(gamma)
+        self.teff_p = stellar_parameters.teff_p
+        self.vmicro_p = stellar_parameters.vmicro_p
         start, end = wv_soln.get_index([cent_wv-self.max_width, cent_wv+self.max_width], clip=True, snap=True)
         wvsamp = WavelengthSample(wv_soln, start=start, end=end)
         self.output_p = FluxParameter(wvsamp)
@@ -840,32 +853,16 @@ class VoigtProfileModel(Model):
         return pflux
     
     @property
-    def teff_p(self):
-        if self._teff_p is None:
-            for p in self.parameters:
-                if isinstance(p, tmb.stellar_parameters.TeffParameter):
-                    self._teff_p = p
-                    break
-        return self._teff_p
-    
-    @property
-    def vmicro_p(self):
-        if self._vmicro_p is None:
-            for p in self.parameters:
-                if isinstance(p, tmb.stellar_parameters.VmicroParameter):
-                    self._vmicro_p = p
-                    break
-        return self._vmicro_p
-    
-    @property
-    def gamma_p(self):
-        if self._gamma_p is None:
-            for p in self.parameters:
-                if isinstance(p, GammaParameter):
-                    self._gamma_p = p
-                    break
-        return self._gamma_p
+    def parameters(self):
+        return [self.gamma_p, self.teff_p, self.vmicro_p]
 
+
+_fgroup_collect = sa.Table(
+    "fgroup_collect",
+    Base.metadata,
+    Column("grouped_features_id", Integer, ForeignKey("GroupedFeaturesModel._id")),
+    Column("feature_id", Integer, ForeignKey("Parameter._id")),
+)
 
 class GroupedFeaturesModel(tmb.modeling.factor_models.FluxSumLogic, Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
@@ -874,6 +871,7 @@ class GroupedFeaturesModel(tmb.modeling.factor_models.FluxSumLogic, Model):
     }
     _star_id = Column(Integer, ForeignKey("Source._id"))
     star = relationship("Star")
+    
     
     def __init__(self, star, grouping_standard, wv_soln):
         self.star = star
@@ -888,6 +886,10 @@ class GroupedFeaturesModel(tmb.modeling.factor_models.FluxSumLogic, Model):
             )
             sub_models.append(fgm)
         self.parameters = [fgm.output_p for fgm in sub_models]
+    
+    @property
+    def parameters(self):
+        return
 
 
 class VoigtFitSingleLineSynthesis(ThimblesTable, Base):

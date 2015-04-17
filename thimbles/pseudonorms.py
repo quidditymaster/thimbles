@@ -4,19 +4,46 @@ import scipy
 from scipy.special import erf, erfinv
 from scipy import ndimage
 
-def running_acorr(arr, avg_sigma=101, window_sigma=3, ncorr=21, mode="reflect"):
+def running_acorr(arr, avg=None, window_sigma=3, ncorr=21, mode="reflect"):
+    """
+    generate a running auto-correlation estimate.
+    That is try to estimate 
+    
+    
+    parameters
+    arr: numpy ndarray
+      the data array to be autocorrelated  
+    avg: function, numpy array, float or None
+      The running mean of the data in arr.
+      if avg is a callable it will be called on arr and the result treated as 
+      the running mean. If avg is None the median value of arr will be used.
+    window_sigma: float
+    
+    """
     gauss_filter = ndimage.filters.gaussian_filter
     assert ncorr >= 1
     npts = len(arr)
-    running_mean = gauss_filter(arr, sigma=avg_sigma, mode=mode)
-    diff = arr - running_mean
-    acorr_out = np.zeros((npts, ncorr))
-    acorr_out[:, 0] = gauss_filter(diff**2, sigma=window_sigma, mode=mode)
-    for i in range(1, ncorr):
-        diff_i_shift = np.empty(npts)
-        diff_i_shift[i:]= diff[:-i]
-        diff_i_shift[:i] = diff[i-1::-1]
-        acorr_out[:, i] = gauss_filter(diff*diff_i_shift, sigma=window_sigma, mode=mode)
+    if avg is None:
+        avg = np.median(arr)
+    if hasattr(avg, "__call__"):
+        avg = avg(arr)
+    diff = arr - avg
+    acorr_out = np.zeros((npts, 2*ncorr+1))
+    acorr_out[:, ncorr] = gauss_filter(diff**2, sigma=window_sigma, mode=mode)
+    for i in range(1, ncorr+1):
+        diff_prod = gauss_filter(diff[i:]*diff[:-i], sigma=window_sigma, mode=mode)
+        lb_out = i//2
+        ub_out = npts-i//2
+        if i % 2 == 1:
+            if (i-1) % 4 == 1:
+                acorr_out[lb_out:ub_out-1, ncorr-i] = diff_prod 
+                acorr_out[lb_out+1:ub_out, ncorr+i] = diff_prod
+            else:
+                acorr_out[lb_out+1:ub_out, ncorr-i] = diff_prod 
+                acorr_out[lb_out:ub_out-1, ncorr+i] = diff_prod
+        else:
+            acorr_out[lb_out:ub_out, ncorr-i] = diff_prod
+            acorr_out[lb_out:ub_out, ncorr+i] = diff_prod
     return acorr_out
 
 def max_norm(spectrum):

@@ -5,7 +5,7 @@ from thimbles.features import *
 import matplotlib.pyplot as plt
 import scipy
 
-show_diagnostic_plots = False
+show_diagnostic_plots = True
 
 class TestVoigtProfileModel(unittest.TestCase):
     
@@ -30,10 +30,10 @@ class TestVoigtProfileModel(unittest.TestCase):
     
     def test_teff_listen(self):
         prof_orig = self.vpm()
-        teff_p = self.vpm.teff_p
+        teff_p = self.vpm.inputs["teff"]
         orig_teff = teff_p.value
         call_dbl_teff = self.vpm({teff_p:orig_teff*2.0})
-        self.vpm.teff_p.value = orig_teff*2.0
+        teff_p.value = orig_teff*2.0
         set_dbl_teff = self.vpm.output_p.value
         np.testing.assert_almost_equal(set_dbl_teff, call_dbl_teff)
         assert np.sum(np.abs(prof_orig-call_dbl_teff)) > 0.01
@@ -76,14 +76,15 @@ class TestFeatureGroupModel(unittest.TestCase):
         dx = scipy.gradient(self.fgmod.output_p.wv_sample.wvs)
         flux_sum = -np.sum(flux*dx)
         ntrans = len(self.fgmod.parameters)-1
-        assert np.abs(self.fgmod.ew_p.value*ntrans - flux_sum) < 0.01
+        ew_p = self.fgmod.inputs["ew"]
+        assert np.abs(ew_p.value*ntrans - flux_sum) < 0.01
     
     def test_teff_listen(self):
         #import pdb; pdb.set_trace()
         orig_fl = self.fgmod()
         teff_p = self.fgmod.stellar_parameters.teff_p
         orig_teff = teff_p.value
-        self.fgmod.stellar_parameters.teff_p.value = orig_teff*2.0
+        teff_p.value = orig_teff*2.0
         set_dbl_teff = self.fgmod.output_p.value
         assert np.sum(np.abs(orig_fl-set_dbl_teff)) > 0.001
         if show_diagnostic_plots:

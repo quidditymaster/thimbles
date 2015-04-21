@@ -4,11 +4,9 @@ import scipy
 from scipy.special import erf, erfinv
 from scipy import ndimage
 
-def running_acorr(arr, avg=None, window_sigma=3, ncorr=21, mode="reflect"):
+def running_acorr(arr, avg=None, window_sigma=5, ncorr=21, mode="reflect"):
     """
     generate a running auto-correlation estimate.
-    That is try to estimate 
-    
     
     parameters
     arr: numpy ndarray
@@ -18,7 +16,8 @@ def running_acorr(arr, avg=None, window_sigma=3, ncorr=21, mode="reflect"):
       if avg is a callable it will be called on arr and the result treated as 
       the running mean. If avg is None the median value of arr will be used.
     window_sigma: float
-    
+      the width of the gaussian filter to use to obtain a local estimate
+      of the correlation E[(arr-avg)_i*(arr-avg)_i+lag]
     """
     gauss_filter = ndimage.filters.gaussian_filter
     assert ncorr >= 1

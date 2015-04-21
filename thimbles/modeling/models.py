@@ -9,19 +9,90 @@ from thimbles.sqlaimports import *
 from thimbles.thimblesdb import ThimblesTable, Base
 from thimbles.modeling import ParameterGroup, Parameter
 
-#input_assoc = sa.Table(
-#    "input_assoc", 
-#    Base.metadata,
-#    Column("model_id", Integer, ForeignKey("Model._id")),
-#    Column("parameter_id", Integer, ForeignKey("Parameter._id")),
-#)
 
-class ModelLogic(ParameterGroup):
-    """A convenience class which partially implements the Model API.
-    """
+class InputAssociation(ThimblesTable, Base):
+    _model_id = Column(Integer, ForeignKey("Model._id"))
+    _parameter_id = Column(Integer, ForeignKey("Parameter._id"))
+    model = relationship("Model")
+    parameter = relationship("Parameter", backref="_models")
+    name = Column(String)
+    ordering_index = Column(Integer, default=-1)
+    as_list = Column(Boolean, default=False)
+    
+    def __init__(self, model, parameter, name, ordering_index=None, as_list=None):
+        self.model = model
+        self.parameter = parameter
+        self.name=name
+        if not ordering_index is None:
+            self.ordering_index = ordering_index
+        if not as_list is None:
+            self.as_list=as_list
+
+class Model(ParameterGroup, ThimblesTable, Base):
+    model_class = Column(String)
+    __mapper_args__={
+        "polymorphic_identity": "Model",
+        "polymorphic_on": model_class
+    }
+    _inputs = relationship("InputAssociation", order_by=InputAssociation.ordering_index)
+    _output_parameter_id = Column(
+        Integer, 
+        ForeignKey("Parameter._id")
+    )
+    output_p = relationship(
+        "Parameter",
+        foreign_keys=_output_parameter_id,
+        backref="mapped_models", 
+    )
+    
+    
+    @property
+    def parameters(self):
+        parameters = []
+        for param_assoc in self._inputs:
+            parameters.append(param_assoc.parameter)
+        return parameters
+    
+    @property
+    def inputs(self):
+        inp_assocs = self._inputs
+        inp_dict = {}
+        for assoc in inp_assocs:
+            name = assoc.name
+            if assoc.as_list:
+                parameter = inp_dict.get(name)
+                if parameter is None:
+                    parameter = []
+                parameter.append(assoc.parameter)
+            else:
+                parameter = assoc.parameter
+            inp_dict[name] = parameter
+        return inp_dict
+    
+    def add_input(
+            self, 
+            name,
+            parameter, 
+            as_list=None, 
+            ordering_index=None, 
+    ):
+        if ordering_index is None:
+            if len(self._inputs) > 0:
+                last_assoc = self._inputs[-1]
+                ordering_index = last_assoc.ordering_index + 1
+            else:
+                ordering_index = 0
+        inp_assoc = InputAssociation(
+            model=self, 
+            parameter=parameter,
+            name=name,
+            ordering_index=ordering_index, 
+            as_list=as_list
+        )
+        self._inputs.append(inp_assoc)
     
     def __call__(self, vdict=None):
-        raise NotImplementedError("ModelLogic is intended strictly as a parent class it cannot be executed. you must subclass it and implement a __call__ method for your subclass.")
+        raise NotImplementedError("Model is intended strictly as a parent class. you must subclass it and implement a __call__ method.")
     
     def fire(self):
         self.output_p.value = self()
@@ -70,34 +141,3 @@ class ModelLogic(ParameterGroup):
                 p.set(flat_pval.reshape(pshape))
         pexp_mat = scipy.sparse.hstack(deriv_vecs)
         return pexp_mat
-
-
-class Model(ModelLogic, ThimblesTable, Base):
-    model_class = Column(String)
-    __mapper_args__={
-        "polymorphic_identity": "Model",
-        "polymorphic_on": model_class
-    }
-    #parameters = relationship(
-    #    "Parameter", 
-    #    secondary=input_assoc, 
-    #    backref="models",
-    #)
-    _output_parameter_id = Column(Integer, ForeignKey("Parameter._id"))
-    output_p = relationship(
-        "Parameter",
-        foreign_keys=_output_parameter_id,
-        backref="mapped_models", 
-    )
-    
-    #class attributes
-    _derivative_helpers = {} 
-    
-    def __init__(self, parameters=None, output_p=None):
-        if parameters is None:
-            parameters = []
-        self.parameters = parameters
-        self.output_p = output_p
-
-
-

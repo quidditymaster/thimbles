@@ -52,11 +52,13 @@ class ThimblesDB(object):
     
     def commit(self):
         self.session.commit()
-        self.session.close()
     
     def close(self):
         self.session.close()
 
+    def cleanup(self):
+        self.commit()
+        self.close()
 
 class NamedRow(object):
     """a mixin class for the name column"""

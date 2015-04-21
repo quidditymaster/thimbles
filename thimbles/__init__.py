@@ -52,10 +52,4 @@ from thimbles.thimblesdb import ThimblesDB
 from thimbles.stellar_parameters import Star
 
 from thimbles import workingdataspace as wds
-wds.Spectrum = tmb.spectrum.Spectrum
-wds.Abundance = tmb.abundances.Abundance
-wds.Ion = tmb.abundances.Ion
-wds.Transition = tmb.transitions.Transition
-wds.Star = Star
-wds.Source = tmb.sources.Source
-wds.StellarParameters = tmb.stellar_parameters.StellarParameters
+wds.__dict__.update(dict(thimblesdb.Base._decl_class_registry))

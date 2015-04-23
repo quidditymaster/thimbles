@@ -128,12 +128,19 @@ class Parameter(ThimblesTable, Base):
         pass
     
     @property
+    def models(self):
+        models = []
+        for mod_assoc in self._models:
+            models.append(mod_assoc.model)
+        return models
+    
+    @property
     def value(self):
         if self._value is None:
             m_models = self.mapped_models
             if len(m_models) >= 1:
                 if len(m_models) > 1:
-                    print("warning parameter value regeneration is non-unique consider changing the model hierarchy to use cached paramters")
+                    print("warning parameter value regeneration is non-unique consider changing the model hierarchy to use cached parameter values.")
                 mod = m_models[0]
                 mod.fire() #should populate our self._value attribute
         return self._value

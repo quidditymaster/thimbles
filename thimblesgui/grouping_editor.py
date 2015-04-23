@@ -371,7 +371,7 @@ class SpeciesSelectorWidget(QtGui.QWidget):
         super(SpeciesSelectorWidget, self).keyPressEvent(event)
     
     def parse_text(self):
-        sp_strs = self.species_le.text().split()
+        sp_strs = str(self.species_le.text()).split()
         z_vals = []
         for sp in sp_strs:
             spl = [_to_z(s) for s in sp.split("-")]
@@ -1461,8 +1461,9 @@ if __name__ == "__main__":
     #arbfilt.show()
     
     #import pdb; pdb.set_trace()
-    tdb = tmb.ThimblesDB("/home/tim/sandbox/cyclefind/junk.tdb")
+    #tdb = tmb.ThimblesDB("/home/tim/sandbox/cyclefind/junk.tdb")
     #tdb = tmb.ThimblesDB("/home/tim/globulars_hres_abundances/globulars.tdb")
+    tdb = tmb.ThimblesDB("strong_F_dwarf.tdb")
     #transobj = tdb.query(Transition).first()
     #import pdb; pdb.set_trace()
     #transitions = tdb.query(Transition).all()
@@ -1474,6 +1475,11 @@ if __name__ == "__main__":
     #tscat.show()
     
     #spectra = tmb.io.read_spec("/home/tim/data/HD221170/hd.3720rd")
+
+    #random_boss_standards = True
+    #if random_boss_standards:
+    #    n_spec = 5
+
     spectra=[]
     gse = GroupingStandardEditor("default", tdb, spectra=spectra)
     gse.show()

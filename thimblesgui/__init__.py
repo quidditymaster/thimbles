@@ -1,12 +1,13 @@
 
 try:
-    from PyQt4 import QtGui
-    from PyQt4 import QtCore
-    which_qt = "PyQt4"
-except ImportError:
     from PySide import QtGui
     from PySide import QtCore
     which_qt = "PySide"
+except ImportError:
+    from PyQt4 import QtGui
+    from PyQt4 import QtCore
+    which_qt = "PyQt4"
+
 Qt = QtCore.Qt
 
 import matplotlib as mpl

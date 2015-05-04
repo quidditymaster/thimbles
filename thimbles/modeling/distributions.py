@@ -9,18 +9,21 @@ from thimbles.sqlaimports import *
 from thimbles.thimblesdb import ThimblesTable, Base
 from thimbles.modeling import ParameterGroup
 
-dist_assoc = sa.Table("distribution_assoc", Base.metadata,
-    Column("distribution_id", Integer, ForeignKey("Distribution._id")),
-    Column("parameter_id", Integer, ForeignKey("Parameter._id")),
-)
+#dist_assoc = sa.Table("distribution_assoc", Base.metadata,
+#    Column("distribution_id", Integer, ForeignKey("Distribution._id")),
+#    Column("parameter_id", Integer, ForeignKey("Parameter._id")),
+#)
 
-class Distribution(ParameterGroup, ThimblesTable, Base):
-    parameters = relationship("Parameter", secondary=dist_assoc)
+class Distribution(ThimblesTable, Base):
+    #parameters = relationship("Parameter", secondary=dist_assoc)
+    _parameter_group_id = Column(Integer, ForeignKey("ParameterGroup._id"))
+    parameters = relationship("ParameterGroup", foreign_keys=_parameter_group_id)
     distribution_class = Column(String)
     __mapper_args__={
         "polymorphic_identity":"Distribution",
         "polymorphic_on":distribution_class
     }
+    #rooted = Column(Boolean)
     
     def log_likelihood(self, value):
         raise NotImplementedError("Abstract Class")
@@ -49,6 +52,7 @@ class NormalDistribution(Distribution):
         self.parameters=parameters
         self.mean = np.asarray(mean)
         self.ivar = np.asarray(ivar)
+
 
 class VectorNormalDistribution(Distribution):
     _id = Column(Integer, ForeignKey("Distribution._id"), primary_key=True)

@@ -1119,7 +1119,7 @@ class GroupingStandardEditor(QtGui.QMainWindow):
     
     def __init__(
             self, 
-            standard_name, 
+            grouping_standard,
             tdb,
             spectra=None,
             parent=None,
@@ -1137,10 +1137,7 @@ class GroupingStandardEditor(QtGui.QMainWindow):
         if scatter_pick is None:
             scatter_pick = NearestDataSpacePicker(0.2, 0.2)
         self.scatter_pick = scatter_pick
-        gstand = tdb.query(tmb.transitions.TransitionGroupingStandard)\
-                    .filter(TransitionGroupingStandard.name==standard_name).one()
-        
-        self.grouping_standard = gstand
+        self.grouping_standard = grouping_standard
         self.grouping_dict = {}
         for group in self.grouping_standard.groups:
             for trans in group.transitions:
@@ -1463,7 +1460,8 @@ if __name__ == "__main__":
     #import pdb; pdb.set_trace()
     #tdb = tmb.ThimblesDB("/home/tim/sandbox/cyclefind/junk.tdb")
     #tdb = tmb.ThimblesDB("/home/tim/globulars_hres_abundances/globulars.tdb")
-    tdb = tmb.ThimblesDB("strong_F_dwarf.tdb")
+    #tdb = tmb.ThimblesDB("/home/tim/sandbox/cyclefind/fdwarf_strong.db")
+    tdb = tmb.ThimblesDB("/home/tim/data/SEGUE_globulars/glob.db")
     #transobj = tdb.query(Transition).first()
     #import pdb; pdb.set_trace()
     #transitions = tdb.query(Transition).all()
@@ -1475,13 +1473,46 @@ if __name__ == "__main__":
     #tscat.show()
     
     #spectra = tmb.io.read_spec("/home/tim/data/HD221170/hd.3720rd")
-
-    #random_boss_standards = True
-    #if random_boss_standards:
-    #    n_spec = 5
-
+    
     spectra=[]
-    gse = GroupingStandardEditor("default", tdb, spectra=spectra)
+    
+    load_elodie = True
+    load_boss = True
+    load_segue=True
+    
+    elodie_loads = [3]#, 3, 11, 21]
+    boss_loads = []#[10, 20, 30, 40, 50]
+    segue_loads = [3, 5, 7]
+    
+    if load_elodie:
+        import h5py
+        hf = h5py.File("/home/tim/data/elodie/elodie.h5")
+        #wvs = tmb.utils.misc.vac_to_air_sdss(np.array(hf["h_wvs"]))
+        wvs = np.array(hf["h_wvs"])
+        for e_idx in elodie_loads:
+            flux = np.array(hf["h_flux"][e_idx])
+            spectra.append(tmb.Spectrum(wvs, flux))
+        hf.close()
+    
+    if load_boss:
+        import h5py
+        hf = h5py.File("/home/tim/data/boss_standards/regularized_standards.h5")
+        wvs = np.array(hf["wvs"])
+        for b_idx in boss_loads:
+            flux = np.array(hf["flux"][b_idx])
+            spectra.append(tmb.Spectrum(wvs, flux))
+    
+    if load_segue:
+        import h5py
+        hf = h5py.File("/home/tim/data/SEGUE_globulars/globulars_all.h5")
+        wvs = np.power(10, np.array(hf["log_wvs"]))
+        for s_idx in segue_loads:
+            flux = np.array(hf["flux"][s_idx])
+            spectra.append(tmb.Spectrum(wvs, flux))
+    
+    TGS = tmb.wds.TransitionGroupingStandard
+    gstand = tdb.query(TGS).filter(TGS.name == "default").one()
+    gse = GroupingStandardEditor(gstand, tdb, spectra=spectra)
     gse.show()
     
     qap.exec_()

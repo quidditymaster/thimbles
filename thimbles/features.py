@@ -18,7 +18,6 @@ from thimbles.spectrum import FluxParameter, WavelengthSample
 from thimbles.utils.misc import smooth_ppol_fit
 import thimbles.utils.piecewise_polynomial as ppol
 from thimbles import hydrogen
-from latbin import matching
 from thimbles import as_wavelength_sample
 from thimbles.thimblesdb import ThimblesTable, Base
 from thimbles.sqlaimports import *
@@ -277,6 +276,7 @@ class SaturatedVoigtFeatureModel(Model):
         return species_nums
     
     def generate_fit_groups(self):
+        from latbin import matching
         #import pdb; pdb.set_trace()
         self.group_species(overwrite=True)
         species_gb = self.fdat.groupby("species_group")
@@ -683,12 +683,6 @@ class EWParameter(Parameter):
         self._value = ew
         self.transition=transition
 
-_fgroup_prof = sa.Table(
-    "fgroup_prof",
-    Base.metadata,
-    Column("fgroup_id", Integer, ForeignKey("FeatureGroupModel._id")),
-    Column("profile_id", Integer, ForeignKey("Parameter._id")),
-)
 
 class FeatureGroupModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
@@ -708,8 +702,8 @@ class FeatureGroupModel(Model):
             ew=None,
             exemplar=None,
             share_gamma=True,
-            substrate=None,
     ):
+        Model.__init__(self)
         self.transition_group = transition_group
         transitions = transition_group.transitions
         if ew is None:
@@ -727,7 +721,7 @@ class FeatureGroupModel(Model):
             gamma_p = None
             if len(profile_models) > 0:
                 if share_gamma:
-                    gamma_p = profile_models[-1].inputs["gamma"]
+                    gamma_p ,= profile_models[-1].inputs["gamma"]
             pmod = VoigtProfileModel(
                 wv_soln=wv_soln, 
                 transition=trans,
@@ -735,22 +729,19 @@ class FeatureGroupModel(Model):
                 gamma=gamma_p
             )
             profile_models.append(pmod)
-            self.add_input("profiles", pmod.output_p, as_list=True)
+            self.add_input("profiles", pmod.output_p)
         
         min_start = np.min([pmod.output_p.wv_sample.start for pmod in profile_models])
         max_end = np.max([pmod.output_p.wv_sample.end for pmod in profile_models])
         wvsamp = WavelengthSample(wv_soln, start=min_start, end=max_end)
         self.output_p = FluxParameter(wvsamp)
-        self.substrate = substrate
-    
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
-        inputs = self.inputs
-        ew_p = inputs["ew"]
-        profile_ps = inputs["profiles"]
+        profile_ps = self.inputs["profiles"]
         prof_strengths = np.zeros(len(profile_ps))
         stell_ps = self.stellar_parameters
+        ew_p ,= self.inputs["ew"]
         exemplar = ew_p.transition
         exemplar_pst = exemplar.pseudo_strength(stellar_parameters=stell_ps)
         for prof_idx in range(len(profile_ps)):
@@ -765,7 +756,7 @@ class FeatureGroupModel(Model):
         out_start = output_sample.start
         for prof_idx in range(len(profile_ps)):
             profile_p = profile_ps[prof_idx]
-            start= profile_p.wv_sample.start - out_start 
+            start= profile_p.wv_sample.start - out_start
             end = profile_p.wv_sample.end - out_start
             profile = prof_strengths[prof_idx]*profile_p.value
             fsum[start:end] -= profile
@@ -789,8 +780,14 @@ class GammaParameter(Parameter):
 def as_gamma_parameter(gamma):
     if isinstance(gamma, GammaParameter):
         return gamma
+    elif gamma is None:
+        return GammaParameter(0.0)
     else:
-        return GammaParameter(gamma)
+        try:
+            gamma = GammaParameter(float(gamma))
+        except ValueError as e:
+            raise ValueError("gamma parameter type not understood")
+    return gamma
 
 class VoigtProfileModel(Model):
     """a model for a voigt profile with the gaussian width determined 
@@ -812,7 +809,6 @@ class VoigtProfileModel(Model):
             stellar_parameters,
             max_width=None,
             gamma=0.0,
-            substrate=None,
     ):
         self.transition=transition
         cent_wv = transition.wv
@@ -828,21 +824,25 @@ class VoigtProfileModel(Model):
         start, end = wv_soln.get_index([cent_wv-self.max_width, cent_wv+self.max_width], clip=True, snap=True)
         wvsamp = WavelengthSample(wv_soln, start=start, end=end)
         self.output_p = FluxParameter(wvsamp)
-        self.substrate=substrate
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
-        inputs = self.inputs
-        teff_val = vdict[inputs["teff"]]
-        vmicro_val = vdict[inputs["vmicro"]]
+        teff_p ,= self.inputs["teff"]
+        teff_val = vdict[teff_p]
+        vmicro_p ,= self.inputs["vmicro"]
+        vmicro_val = vdict[vmicro_p]
         twv = self.transition.wv
         weight = self.transition.ion.weight
         therm_sig = tmb.utils.misc.thermal_width(teff_val, twv, weight)
         vmicro_sig = (vmicro_val/speed_of_light)*twv
         sigma_val = np.sqrt(therm_sig**2 + vmicro_sig**2)
-        gamma_val = vdict[inputs["gamma"]]
+        gamma_p ,= self.inputs["gamma"]
+        gamma_val = vdict[gamma_p]
         wvs = self.output_p.wv_sample.wvs
-        pflux = voigt(wvs, twv, sigma_val, gamma_val)
+        try:
+            pflux = voigt(wvs, twv, sigma_val, gamma_val)
+        except:
+            import pdb; pdb.set_trace()
         return pflux
 
 
@@ -856,6 +856,7 @@ class GroupedFeaturesModel(tmb.modeling.factor_models.FluxSumLogic, Model):
     
     
     def __init__(self, star, grouping_standard, wv_soln):
+        Model.__init__(self)
         self.star = star
         wv_soln = tmb.as_wavelength_solution(wv_soln)
         self.output_p = FluxParameter(wv_soln)
@@ -865,7 +866,7 @@ class GroupedFeaturesModel(tmb.modeling.factor_models.FluxSumLogic, Model):
                 transition_group=group,
                 stellar_parameters=star.stellar_parameters,
             )
-            self.add_input("group_fluxes", fgm.output_p, as_list=True)
+            self.add_input("group_fluxes", fgm.output_p)
 
 
 class VoigtFitSingleLineSynthesis(ThimblesTable, Base):

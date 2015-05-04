@@ -23,7 +23,9 @@ from thimbles.thimblesdb import ThimblesTable, Base
 from thimbles.modeling import Model, Parameter
 from thimbles.modeling.factor_models import \
     FluxSumModel, MultiplierModel, MatrixMultiplierModel
+from thimbles.modeling.factor_models import PickleParameter, FloatParameter
 from thimbles.modeling.distributions import VectorNormalDistribution
+from thimbles.resolution import PolynomialLSFModel
 from thimbles.coordinatization import Coordinatization, as_coordinatization
 from thimbles.sqlaimports import *
 from sqlalchemy.orm.collections import attribute_mapped_collection
@@ -44,11 +46,9 @@ class DeltaHelioParameter(Parameter):
     }
     _value = Column(Float)  #helio centric velocity in km/s
     
-    #class attributes
-    name = "rv"
-    
     def __init__(self, value):
         self._value = value
+
 
 class RadialVelocityParameter(Parameter):
     """ Radial Velocity Parameter"""
@@ -58,11 +58,9 @@ class RadialVelocityParameter(Parameter):
     }
     _value = Column(Float)  #helio centric velocity in km/s
     
-    #class attribtues
-    name="delta_helio"
-    
     def __init__(self, value):
         self._value = value
+
 
 class WavelengthSolution(ThimblesTable, Base):
     _indexer_id = Column(Integer, ForeignKey("Coordinatization._id"))
@@ -74,10 +72,10 @@ class WavelengthSolution(ThimblesTable, Base):
     _delta_helio_id = Column(Integer, ForeignKey("Parameter._id"))
     delta_helio_p = relationship("DeltaHelioParameter", foreign_keys=_delta_helio_id)
     
-    #TODO: a polymorphic LSF table/class
-    lsf = Column(PickleType)
+    _lsf_id = Column(Integer, ForeignKey("Parameter._id"))
+    lsf_p = relationship("Parameter", foreign_keys=_lsf_id)
     
-    def __init__(self, wavelengths, rv=None, delta_helio=None, shifted=True, lsf=None):
+    def __init__(self, wavelengths, rv=None, delta_helio=None, helio_shifted=True, rv_shifted=True, lsf=None, lsf_type="quadratic"):
         """a class that encapsulates the manner in which a spectrum is sampled
         
         wavelengths: np.ndarray
@@ -85,18 +83,28 @@ class WavelengthSolution(ThimblesTable, Base):
           and heliocentric velocity shifts are assumed to have already
           been applied unless shifted==False.
         rv: float
-          the projected velocity along the line of sight not including
-          the contribution from the earths motion around the earth sun
-          barycenter. [km/s]
+          the projected velocity of the object along the line of 
+          sight relative to the sun. [km/s]
         delta_helio: float
-          the velocity around the earth sun barycenter projected onto the
+          the velocity of the earth around the sun projected onto the
           line of sight. [km/s]
-        shifted: bool
-          if False then the passed in rv and vhelio will be applied to 
-          the wavelengths via
-          wavelengths = wavelengths*(1-(rv+vhelio)/c)
+        helio_shifted: bool
+          whether or not delta_helio has already been applied.
+          if False then delta_helio will be applied via
+          wavelengths = wavelengths*(1-vhelio/c)
+        rv_shifted: bool
+          whether or not the radial velocity has already been applied.
+          if False then the rv will be applied 
+          wavelengths = wavlengths*(1-rv/c)
         lsf: ndarray
           the line spread function in units of pixel width.
+        lsf_type: string
+          how to treat the passed lsf parameter.
+          'cached' store the passed array as a PickleParameter
+          'quadratic' fit a quadratic to the lsf and generate a
+             quadratic polynomial lsf model with this lsf as its output.
+          'cubic'   same as quadratic but degree==3
+          'quartic' same as quadratic but degree==4
         """       
         
         #set up rv
@@ -116,16 +124,34 @@ class WavelengthSolution(ThimblesTable, Base):
         del delta_helio
         
         wavelengths = np.asarray(wavelengths)
-        if shifted:
-            #remove external wavelength corrections
-            correction = 1.0/(1.0 + self.fractional_shift)
-            wavelengths = wavelengths * correction
+        shift_to_apply = 0.0
+        if not helio_shifted:
+            shift_to_apply += self.delta_helio_p.value
+        if not rv_shifted:
+            shift_to_apply += self.rv_p.value
+        fractional_shift = shift_to_apply/speed_of_light
+        correction = 1.0/(1.0 + fractional_shift)
+        wavelengths = wavelengths * correction
         self.indexer = as_coordinatization(wavelengths) 
         
         if lsf is None:
             lsf = np.ones(len(self))
-        lsf = np.asarray(lsf)
-        self.lsf = lsf
+        
+        if lsf_type == "cached":
+            lsf_p = PickleParameter(lsf)
+        else:
+            lsf_p = Parameter(lsf)
+        
+        if lsf_type == "quadratic":
+            lsf_mod = PolynomialLSFModel(lsf_p, degree=2)
+        elif lsf_type == "cubic":
+            lsf_mod = PolynomialLSFModel(lsf_p, degree=3)
+        elif lsf_type == "quartic":
+            lsf_mod = PolynomialLSFModel(lsf_p, degree=4)
+        else:
+            raise ValueError("lsf_type {} is not recognized")
+        
+        self.lsf_p = lsf_p
     
     def __len__(self):
         return len(self.indexer)
@@ -151,12 +177,6 @@ class WavelengthSolution(ThimblesTable, Base):
     @delta_helio.setter
     def delta_helio(self, value):
         self.delta_helio_p = value
-    
-    @property
-    def fractional_shift(self):
-        rv_val = self.rv_p.value
-        dh_val = self.delta_helio_p.value
-        return (rv_val + dh_val)/speed_of_light
     
     def get_wvs(self, pixels=None, clip=False, snap=False):
         """get object restframe wavelengths from pixel number"""
@@ -198,8 +218,8 @@ class WavelengthSample(ThimblesTable, Base):
             start = 0
         if end is None:
             end = len(wv_soln)
-        self.start = start
-        self.end = end
+        self.start = int(start)
+        self.end = int(end)
     
     def __len__(self):
         return self.end-self.start
@@ -251,10 +271,11 @@ class FluxParameter(Parameter):
 class Spectrum(ThimblesTable, Base):
     """A representation of a collection of relative flux measurements
     """
-    _flux_p_id = Column(Integer, ForeignKey("FluxParameter._id"))
-    flux_p = relationship("FluxParameter")
-    _obs_prior_id = Column(Integer, ForeignKey("Distribution._id"))
-    obs_prior = relationship("Distribution")
+    #_flux_p_id = Column(Integer, ForeignKey("FluxParameter._id"))
+    #flux_p = relationship("FluxParameter")
+    #_obs_prior_id = Column(Integer, ForeignKey("Distribution._id"))
+    #obs_prior = relationship("Distribution")
+    
     info = Column(PickleType)
     _flag_id = Column(Integer, ForeignKey("SpectrumFlags._id"))
     flags = relationship("SpectrumFlags")
@@ -580,138 +601,21 @@ def divide_spectra(
     return tmb.Spectrum(target_wvs, out_flux, out_ivar)
 
 
-class SpectrumModelSkeleton(tmb.modeling.Model):
+class RootSpectrumModel(tmb.modeling.Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__={
-        "polymorphic_identity":"SpectrumModelSkeleton",
+        "polymorphic_identity":"RootSpectrumModel",
     }
-    _spectrum_id = Column(Integer, ForeignKey("Spectrum._id"))
-    spectrum = relationship("Spectrum", backref="model_skeleton")
     
-    _spectrograph_multiplier = None    
-    _spectrograph_adder = None
-    _sampling_matrix_multiplier = None
-    _inner_multiplier = None
-    _inner_adder = None
-    _broadening_matrix_multiplier = None
-    _feature_multiplier = None
-    _feature_adder = None
-    
-    def __init__(self, spectrum, model_wv_soln):
-        self.spectrum = spectrum
-        out_wv_soln =spectrum.wv_sample.wv_soln
-        model_wv_soln = as_wavelength_solution(model_wv_soln)
-        spectrograph_multiplier = MultiplierModel(
-            output_p=spectrum.flux_p,
-            name="spectrograph_multiplier",
-            substrate=self,
-        )
-        add1_out = FluxParameter(out_wv_soln)
-        spectrograph_multiplier.parameters.append(add1_out)
-        spectrograph_adder = FluxSumModel(
-            output_p=add1_out,
-            name="spectrograph_adder",
-            substrate=self,
-        )
-        resampled_flux_param = FluxParameter(out_wv_soln)
-        spectrograph_adder.parameters.append(resampled_flux_param)
-        lsfmat_mult = MatrixMultiplierModel(
-            output_p=resampled_flux_param,
-            name="sampling_matrix_multiplier",
-            substrate=self,
-        )
-        inner_mult_out = FluxParameter(model_wv_soln)
-        lsfmat_mult.parameters.append(inner_mult_out)
-        inner_multiplier = MultiplierModel(
-            output_p=inner_mult_out,
-            name="inner_multiplier",
-            substrate=self,
-        )
-        inner_add_out = FluxParameter(model_wv_soln)
-        inner_multiplier.parameters.append(inner_add_out)
-        inner_adder = FluxSumModel(
-            output_p=inner_add_out,
-            name = "inner_adder",
-            substrate=self,
-        )
-        broadened_flux_p = FluxParameter(model_wv_soln)
-        inner_adder.parameters.append(broadened_flux_p)
-        broadening_multiplier = MatrixMultiplierModel(
-            output_p=broadened_flux_p,
-            name="broadening_matrix_multiplier",
-            substrate=self,
-        )
-        feat_mul_out = FluxParameter(model_wv_soln)
-        broadening_multiplier.parameters.append(feat_mul_out)
-        feature_multiplier = MultiplierModel(
-            output_p = feat_mul_out,
-            name="feature_multiplier",
-            substrate=self,
-        )
-        feature_sum_p = FluxParameter(model_wv_soln)
-        feature_adder = FluxSumModel(
-            output_p=feature_sum_p,
-            name="feature_adder",
-            substrate=self,
-        )
-    
-    def find_named_model(self, name):
-        for model in self.models:
-            try:
-                if model.name == name:
-                    return model
-            except AttributeError:
-                pass
-        return None
-    
-    def update_model_property(self, mod_name):
-        attr_name = "_"+mod_name
-        setattr(self, attr_name, self.find_named_model(mod_name))
-    
-    @property
-    def spectrograph_multiplier(self):
-        if self._spectrograph_multiplier is None:
-           self.update_model_property("spectrograph_multiplier")
-        return self._spectrograph_multiplier
-    
-    @property
-    def spectrograph_adder(self):
-        if self._spectrograph_adder is None:
-            self.update_model_property("spectrograph_adder")
-        return self._spectrograph_adder
+    def __init__(self, spectrum, model_wv_soln=None):
+        Model.__init__(self)
         
-    @property
-    def sampling_matrix_multiplier(self):
-        if self._sampling_matrix_multiplier is None:
-            self.update_model_property("sampling_matrix_multiplier")
-        return self._sampling_matrix_multiplier
+        self.add_input()
+        if model_wv_soln is None:
+            model_wv_soln = bl3h
+        self.output_p = spectrum.flux_p
     
-    @property
-    def inner_multiplier(self):
-        if self._inner_multiplier is None:
-            self.update_model_property("inner_multiplier")
-        return self._inner_multiplier
-    
-    @property
-    def inner_adder(self):
-        if self._inner_adder is None:
-            self.update_model_property("inner_adder")
-        return self._inner_adder
-    
-    @property
-    def broadening_matrix_multiplier(self):
-        if self._broadening_matrix_multiplier is None:
-            self.update_model_property("broadening_matrix_multiplier")
-        return self._broadening_matrix_multiplier
-    
-    @property
-    def feature_multiplier(self):
-        if self._feature_multiplier is None:
-            self.update_model_property("feature_multiplier")
-        return self._feature_multiplier
-    
-    @property
-    def feature_adder(self):
-        if self._feature_adder is None:
-            self.update_model_property("feature_adder")
-        return self._feature_adder
+    def __call__(self, vprep):
+        vdict = self.vdict(vprep)
+        
+        

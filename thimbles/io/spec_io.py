@@ -20,6 +20,7 @@ import sqlalchemy as sa
 
 # Internal
 import thimbles as tmb
+from thimbles.thimblesdb import find_or_create
 from thimbles.tasks import task
 from thimbles.utils.misc import var_2_inv_var
 from thimbles.spectrum import Spectrum, WavelengthSolution
@@ -129,21 +130,13 @@ def write_ascii(spectra, fpath, fmt="%.8e", ivar_as_var=False):
         np.savetxt(fpath, data, fmt=fmt)
     return True
 
-def source_from_name(name, database, source_class=None, auto_add=True):
-    try:
-        source = database.query(source_class)\
-           .filter(tmb.Star.name == name)\
-           .limit(1).one()
-    except sa.orm.exc.NoResultFound:
-        source = source_class(name=name)
-        if auto_add:
-            database.add(source)
-    return source
 
-def read_json(fname, database, auto_add=True):
+def read_json(fname, database=None, auto_add=True):
     file = open(fname)
     jsonstr = file.read()
     file.close()
+    if database is None:
+        database = opts["project_db"]
     in_dict = json.loads(jsonstr)
     defaults = in_dict.get("defaults")
     if defaults is None:
@@ -163,13 +156,17 @@ def read_json(fname, database, auto_add=True):
         if "source.name" in sdict:
             source_name = sdict.pop("source.name")
         else:
-            source_name = ""
+            source_name = None
         if "source_type" in sdict:
             source_type = sdict.pop("source_type")
         else:
             source_type = "Source"
         source_class = eval(source_type, tmb.wds.__dict__)
-        source = source_from_name(source_name, database, source_class=source_class, auto_add=auto_add)
+        source = find_or_create(
+            instance_class=source_class,
+            name=source_name,
+            auto_add=auto_add
+        )
         if "source.ra" in sdict:
             source.ra = sdict.pop("source.ra")
         if "source.dec" in sdict:

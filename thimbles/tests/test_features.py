@@ -5,7 +5,7 @@ from thimbles.features import *
 import matplotlib.pyplot as plt
 import scipy
 
-show_diagnostic_plots = True
+show_diagnostic_plots = False
 
 class TestVoigtProfileModel(unittest.TestCase):
     
@@ -21,7 +21,6 @@ class TestVoigtProfileModel(unittest.TestCase):
         )
     
     def test_call(self):
-        #import pdb; pdb.set_trace()
         prof_res = self.vpm()
         val_res = self.vpm.output_p.value
         #plt.plot(self.vpm.output_p.wv_sample.wvs, prof_res)
@@ -30,7 +29,7 @@ class TestVoigtProfileModel(unittest.TestCase):
     
     def test_teff_listen(self):
         prof_orig = self.vpm()
-        teff_p = self.vpm.inputs["teff"]
+        teff_p ,= self.vpm.inputs["teff"]
         orig_teff = teff_p.value
         call_dbl_teff = self.vpm({teff_p:orig_teff*2.0})
         teff_p.value = orig_teff*2.0
@@ -52,7 +51,7 @@ class TestFeatureGroupModel(unittest.TestCase):
         min_wv = 5000.0
         max_wv = 5020.0
         npts_tot = 1000
-        for i in range(10):
+        for i in range(3):
             twv = np.random.uniform(min_wv+1.0, max_wv-1.0)
             tep = 1.5
             trans = tmb.Transition(twv, (26, 1), tep, -1.0)
@@ -75,8 +74,8 @@ class TestFeatureGroupModel(unittest.TestCase):
         flux = self.fgmod()
         dx = scipy.gradient(self.fgmod.output_p.wv_sample.wvs)
         flux_sum = -np.sum(flux*dx)
-        ntrans = len(self.fgmod.parameters)-1
-        ew_p = self.fgmod.inputs["ew"]
+        ntrans = len(self.fgmod.inputs["profiles"])
+        ew_p ,= self.fgmod.inputs["ew"]
         assert np.abs(ew_p.value*ntrans - flux_sum) < 0.01
     
     def test_teff_listen(self):
@@ -86,12 +85,12 @@ class TestFeatureGroupModel(unittest.TestCase):
         orig_teff = teff_p.value
         teff_p.value = orig_teff*2.0
         set_dbl_teff = self.fgmod.output_p.value
-        assert np.sum(np.abs(orig_fl-set_dbl_teff)) > 0.001
         if show_diagnostic_plots:
             plt.plot(orig_fl)
             plt.plot(set_dbl_teff)
+            plt.title("test teff listen")
             plt.show()
-
+        assert np.sum(np.abs(orig_fl-set_dbl_teff)) > 0.001
 
 class TestGroupedFeaturesModel(unittest.TestCase):
     

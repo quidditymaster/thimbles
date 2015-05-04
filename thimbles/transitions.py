@@ -58,6 +58,10 @@ class Transition(ThimblesTable, Base):
             damp = Damping()
         elif isinstance(damp, dict):
             damp = Damping(**damp)
+        elif isinstance(damp, Damping):
+            pass
+        else:
+            raise ValueError("damping of type {} is not understood".format(type(damp)))
         self.damp = damp
     
     @property

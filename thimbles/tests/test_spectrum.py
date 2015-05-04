@@ -163,13 +163,7 @@ class TestCoreSpectrumSubstrate(unittest.TestCase):
         spec_wvs = np.linspace(min_wv, max_wv, npts_spec)
         model_wvs = np.linspace(min_wv, max_wv, npts_model)
         self.spec = tmb.Spectrum(spec_wvs, np.ones(npts_spec), np.ones(npts_spec))
-        self.spec_core_sub = tmb.spectrum.CoreSpectrumSubstrate(self.spec, model_wvs)
-    
-    def test_model_properties(self):
-        scs = self.spec_core_sub
-        for prop_name in core_prop_names:
-            #print prop_name
-            assert not (getattr(scs, prop_name) is None)
+        self.spec_core_sub = tmb.spectrum.RootSpectrumModel(self.spec, model_wvs)
 
 
 if __name__ == "__main__":

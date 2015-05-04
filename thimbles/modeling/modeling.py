@@ -163,7 +163,7 @@ class FitPolicy(object):
             else:
                 self.current_fit_state = transition_options.pop(0)
 
-class FitState(ParameterGroup):
+class FitState(object):
     
     def __init__(self, 
                  model_network=None, 

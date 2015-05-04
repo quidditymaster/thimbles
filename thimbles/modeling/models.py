@@ -8,101 +8,107 @@ from copy import copy
 from thimbles.sqlaimports import *
 from thimbles.thimblesdb import ThimblesTable, Base
 from thimbles.modeling import ParameterGroup, Parameter
+from sqlalchemy.orm.collections import attribute_mapped_collection
+from sqlalchemy.orm.collections import collection
 
-
-class InputAssociation(ThimblesTable, Base):
-    _model_id = Column(Integer, ForeignKey("Model._id"))
+class InputAlias(ThimblesTable, Base):
     _parameter_id = Column(Integer, ForeignKey("Parameter._id"))
-    model = relationship("Model")
-    parameter = relationship("Parameter", backref="_models")
+    parameter = relationship("Parameter", back_populates="models")
+    _model_id = Column(Integer, ForeignKey("Model._id"))
+    model = relationship("Model", foreign_keys=_model_id, back_populates="inputs")
     name = Column(String)
-    ordering_index = Column(Integer, default=-1)
-    as_list = Column(Boolean, default=False)
     
-    def __init__(self, model, parameter, name, ordering_index=None, as_list=None):
+    _param_temp = None
+    
+    def __init__(self, name, model, parameter):
+        self.name = name
+        #an assignment that does not trigger the back populate
+        #so that when we assign to model we have access to the param
+        self._param_temp = parameter
         self.model = model
         self.parameter = parameter
-        self.name=name
-        if not ordering_index is None:
-            self.ordering_index = ordering_index
-        if not as_list is None:
-            self.as_list=as_list
 
-class Model(ParameterGroup, ThimblesTable, Base):
+class InputGroup(object):
+    
+    def __init__(self):
+        self.groups = {}
+    
+    def __getitem__(self, index):
+        return self.groups[index]
+    
+    @collection.appender
+    def append(self, param_alias):
+        #import pdb; pdb.set_trace()
+        pname = param_alias.name
+        pg = self.groups.get(pname)
+        if pg is None:
+            pg = []
+            self.groups[pname] = pg
+        if param_alias._param_temp is None:
+            param = param_alias.parameter
+        else:
+            param = param_alias._param_temp
+        pg.append(param)
+    
+    @collection.remover
+    def remover(self, param_alias):
+        pname = param_alias.name
+        pg = self.groups[pname]
+        pg.remove(param_alias.parameter)
+    
+    @collection.iterator
+    def __iter__(self):
+        for g in self.groups:
+            for p in self.groups[g]:
+                yield p
+
+
+class Model(ThimblesTable, Base):
     model_class = Column(String)
     __mapper_args__={
         "polymorphic_identity": "Model",
         "polymorphic_on": model_class
     }
-    _inputs = relationship("InputAssociation", order_by=InputAssociation.ordering_index)
-    _output_parameter_id = Column(
+    #_input_group_id = Column(Integer, ForeignKey("ParameterGroup._id"))
+    #inputs = relationship("ParameterGroup")
+    inputs = relationship(
+        "InputAlias",
+        collection_class=InputGroup,
+        #cascade="all, delete-orphan",
+    )
+    
+    _output_id = Column(
         Integer, 
         ForeignKey("Parameter._id")
     )
     output_p = relationship(
         "Parameter",
-        foreign_keys=_output_parameter_id,
+        foreign_keys=_output_id,
         backref="mapped_models", 
     )
     
+    def __init__(self):
+        pass
     
-    @property
-    def parameters(self):
-        parameters = []
-        for param_assoc in self._inputs:
-            parameters.append(param_assoc.parameter)
-        return parameters
-    
-    @property
-    def inputs(self):
-        inp_assocs = self._inputs
-        inp_dict = {}
-        for assoc in inp_assocs:
-            name = assoc.name
-            if assoc.as_list:
-                parameter = inp_dict.get(name)
-                if parameter is None:
-                    parameter = []
-                parameter.append(assoc.parameter)
-            else:
-                parameter = assoc.parameter
-            inp_dict[name] = parameter
-        return inp_dict
-    
-    def add_input(
-            self, 
-            name,
-            parameter, 
-            as_list=None, 
-            ordering_index=None, 
-    ):
-        if ordering_index is None:
-            if len(self._inputs) > 0:
-                last_assoc = self._inputs[-1]
-                ordering_index = last_assoc.ordering_index + 1
-            else:
-                ordering_index = 0
-        inp_assoc = InputAssociation(
-            model=self, 
-            parameter=parameter,
-            name=name,
-            ordering_index=ordering_index, 
-            as_list=as_list
-        )
-        self._inputs.append(inp_assoc)
+    def add_input(self, name, parameter, ):
+        inp_alias = InputAlias(name=name, model=self, parameter=parameter)
     
     def __call__(self, vdict=None):
         raise NotImplementedError("Model is intended strictly as a parent class. you must subclass it and implement a __call__ method.")
     
     def fire(self):
-        self.output_p.value = self()
+        val = self()
+        self.output_p.set(val)
     
     def get_vdict(self, replacements=None):
         if replacements is None:
             replacements = {}
-        values_dict = {p:p.value for p in self.parameters}
-        values_dict.update(replacements)
-        return values_dict
+        vdict = {}
+        for p in self.inputs:
+            pval = p.value
+            vdict[p] = pval
+        vdict.update(replacements)
+        return vdict
     
     def parameter_expansion(self, input_vec, **kwargs):
         parameters = self.free_parameters

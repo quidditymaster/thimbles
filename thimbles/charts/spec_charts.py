@@ -10,7 +10,8 @@ spectra_mpl_kwargs=Option("spectra_mpl_kwargs", option_style="parent_dict", pare
 spec_color = "#6EF057"
 Option("color", default=spec_color, parent=spectra_mpl_kwargs)
 Option("linewidth", default=2.0, parent=spectra_mpl_kwargs)
-Option("linestyle", default="steps-mid", parent=spectra_mpl_kwargs)
+#Option("linestyle", default="steps-mid", parent=spectra_mpl_kwargs)
+Option("linestyle", default="-", parent=spectra_mpl_kwargs)
 
 class SpectrumChart(object):
     _plots_initialized = False

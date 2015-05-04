@@ -3,9 +3,11 @@ import numpy as np
 import scipy
 from scipy.interpolate import interp1d
 import thimbles as tmb
-from thimbles.modeling.modeling import Model
+from thimbles.modeling import Model, Parameter
+from thimbles.modeling.factor_models import PickleParameter
 from .sqlaimports import *
-from thimbles.thimblesdb import ThimblesTable
+from thimbles.thimblesdb import ThimblesTable, Base
+
 
 n_delts = 1024
 min_z, max_z = -6, 6
@@ -13,7 +15,7 @@ z_scores = np.linspace(min_z, max_z, n_delts)
 cdf_vals = scipy.stats.norm.cdf(z_scores)
 z_delta = (z_scores[1]-z_scores[0])
 
-@jit(double[:](double[:]))
+#@jit(double[:](double[:]))
 def approximate_normal_cdf(zscore):
     cdf = np.zeros(zscore.shape)
     for idx in range(zscore.shape[0]):
@@ -29,7 +31,32 @@ def approximate_normal_cdf(zscore):
             cdf[idx] = cdf_vals[base_idx]*(1-alpha) + cdf_vals[base_idx+1]*alpha
     return cdf
 
-pass
-# =========================================================================== #
 
+class PolynomialLSFModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)  
+    __mapper_args__ = {
+        "polymorphic_identity":"PolynomialLSFModel"
+    }
+    npts = Column(Integer)
+    degree = Column(Integer)
+    
+    def __init__(self, lsf_p, degree):
+        Model.__init__(self)
+        lsf_val = lsf_p.value
+        npts = len(lsf_val)
+        self.oputput_p = lsf_p
+        self.npts = npts
+        self.degree = degree
+        
+        x = (np.arange(npts, dtype=float)-npts)/npts
+        coeffs = np.polyfit(x, lsf_val, deg=degree)
+        coeffs_p = PickleParameter(coeffs)
+        self.add_input("coeffs", coeffs_p)
+    
+    def __call__(self, vprep):
+        coeffs_p ,= self.inputs["coeffs"]
+        vdict = self.get_vdict(vprep)
+        coeffs = vdict[coeffs_p]
+        x = (np.arange(npts, dtype=float)-npts)/npts
+        return np.polyval(coeffs, x)
 

@@ -27,14 +27,29 @@ Option("echo_sql", option_style="flag", parent="database")
 
 class ThimblesDB(object):
     """a wrapper for a database containing our data and our fit-models and parameters
+
+    path: string
+      the location of the database
+      if the empty string is passed as the path and the dialect is
+      sqlite then an in memory sqlite database is generated.
+    dialect: string
+      the SQL backend database dialect
+    echo_sql: bool
+      if True then SQL queries will be echoed to the terminal.
     """
     
-    def __init__(self, path, dialect=None):
+    def __init__(self, path="", dialect=None, echo_sql=None):
         if dialect is None:
             dialect = opts["database.dialect"]
         self.path = os.path.abspath(path)
-        self.db_url = "{dialect}:///{path}".format(dialect=dialect, path=self.path)
-        self.engine = create_engine(self.db_url, echo=opts["database.echo_sql"])
+        if path == "":
+            if dialect =="sqlite":
+                self.db_url = "sqlite://"
+        else:
+            self.db_url = "{dialect}:///{path}".format(dialect=dialect, path=self.path)
+        if echo_sql is None:
+            echo_sql = opts["database.echo_sql"]
+        self.engine = create_engine(self.db_url, echo=echo_sql)
         Base.metadata.create_all(self.engine)
         self.session = Session(bind=self.engine)
     
@@ -60,8 +75,7 @@ class ThimblesDB(object):
         self.commit()
         self.close()
 
-class NamedRow(object):
-    """a mixin class for the name column"""
+class HasName(object):
     name = Column(String)
 
 @task(result_name="tdb",
@@ -73,8 +87,38 @@ def load_tdb(fname):
     print("running load_tdb")
     return ThimblesDB(fname)
 
-@task(result_name="injection_success")
+
+@task(result_name="operation_error")
 def add_all(data, tdb):
-    if not isinstance(data, list):
-        data = [data]
-    tdb.add_all(data)
+    try:
+        if not isinstance(data, list):
+            data = [data]
+        tdb.add_all(data)
+    except Exception as e:
+        return e
+    return None
+
+
+def find_or_create(
+        instance_class,
+        auto_add=True,
+        database=None,
+        **attrs
+):
+    """generates a simple query for the associated database session
+    and attempt to find an existing table entry that has attributes that
+    match the passed keyword arguments. If no such instance is found then the passed class is instantiated as instance_class(**attrs) and
+    then returned.
+    
+    """
+    try:
+        query = database.query(instance_class)
+        for attr in attrs:
+            col = getattr(instance_class, attr)
+            query = query.filter(col == attrs[attr])
+        instance = query.one()
+    except sa.orm.exc.NoResultFound:
+        instance = instance_class(**attrs)
+        if auto_add:
+            database.add(instance)
+    return instance

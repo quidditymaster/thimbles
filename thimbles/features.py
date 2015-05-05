@@ -337,7 +337,7 @@ class SaturatedVoigtFeatureModel(Model):
         dof_available = np.zeros(npts_model)
         
         for spec in spectra:
-            trans = tmb.utils.resampling.get_resampling_matrix(spec.wv, self.model_wv, preserve_normalization=False)
+            trans = tmb.utils.resampling.get_resampling_matrix(spec.wv, self.model_wv)
             transforms_to_model.append(trans)
             cur_snr2 = trans*(spec.flux**2*spec.ivar)
             cur_dof = trans*np.ones(spec.wv.shape)

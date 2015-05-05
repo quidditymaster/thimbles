@@ -141,7 +141,7 @@ class WavelengthSolution(ThimblesTable, Base):
             lsf_p = PickleParameter(lsf)
         else:
             lsf_p = Parameter(lsf)
-        
+        self.lsf_p = lsf_p
         if lsf_type == "quadratic":
             lsf_mod = PolynomialLSFModel(lsf_p, degree=2)
         elif lsf_type == "cubic":
@@ -150,11 +150,20 @@ class WavelengthSolution(ThimblesTable, Base):
             lsf_mod = PolynomialLSFModel(lsf_p, degree=4)
         else:
             raise ValueError("lsf_type {} is not recognized")
-        
-        self.lsf_p = lsf_p
     
     def __len__(self):
         return len(self.indexer)
+    
+    def __getitem__(self, index):
+        return self.indexer[index]
+    
+    @property
+    def lsf(self):
+        return self.lsf_p.value
+    
+    @lsf.setter
+    def lsf(self, value):
+        self.lsf_p.set(value)
     
     @property
     def rv(self):
@@ -374,7 +383,7 @@ class Spectrum(ThimblesTable, Base):
     
     def sample(self,
             wavelengths,
-            mode="interpolate", 
+            mode="rebin", 
             return_matrix=None,
     ):
         """generate a spectrum subsampled from this one.
@@ -417,18 +426,18 @@ class Spectrum(ThimblesTable, Base):
             sampled_spec = Spectrum(wavelengths, out_flux, out_ivar)
             sampling_matrix = tmat
         elif mode =="rebin":
-            #wv_widths = scipy.gradient(self.wvs)*self.wv_soln.lsf
-            #interp_mat = self.wv_sample.interpolant_matrix(wavlengths)
-            
-            #gdense = resampling.GaussianDensity(model_wvs, interper(model_wvs))
-            #transform = resampling.get_resampling_matrix(model_wvs, self.wv, preserve_normalization=True, pixel_density=gdense)  
             in_wvs = self.wvs
             wavelengths = as_wavelength_sample(wavelengths)
             out_wvs = wavelengths.wvs
-            transform = resampling.get_resampling_matrix(in_wvs, out_wvs, preserve_normalization=True)
+            transform = resampling.pixel_integrated_lsf(
+                in_wvs, 
+                out_wvs, 
+                lsf=1.0,
+                lsf_cdf=resampling.uniform_cdf,
+                normalize="rows"
+            )
             out_flux = transform*self.flux
             var = self.var
-            #TODO make this take into account the existing lsfs
             covar = resampling.\
                     get_transformed_covariances(transform, var)
             covar_shape = covar.shape

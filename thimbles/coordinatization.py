@@ -98,6 +98,14 @@ class Coordinatization(ThimblesTable, Base):
     def get_coord(self, index):
         raise NotImplementedError("abstract class")
     
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            return self.coordinates[index]
+        else:
+            if index < 0:
+                print("warning Coordinatization[-n] does not wrap around")
+            return self.get_coord(index)
+    
     def __len__(self):
         return self.npts
     

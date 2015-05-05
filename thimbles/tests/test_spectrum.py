@@ -138,8 +138,8 @@ class TestSpectrum (unittest.TestCase):
         rebin_wvs = self.spec.wvs[::5]
         rebin_spec = self.spec.sample(rebin_wvs, mode="rebin")
         #will still be a line since we preserve normalization
-        perfect_rebin = self.flux_slope*rebin_wvs[1:-1]+self.flux_offset
-        np.testing.assert_almost_equal(rebin_spec.flux[1:-1], perfect_rebin)
+        perfect_rebin = self.flux_slope*rebin_wvs[2:-2]+self.flux_offset
+        np.testing.assert_almost_equal(rebin_spec.flux[2:-2], perfect_rebin)
 
 core_prop_names = \
 """
@@ -153,7 +153,7 @@ feature_multiplier
 feature_adder
 """.split()
 
-class TestCoreSpectrumSubstrate(unittest.TestCase):
+class TestRootSpectrumModel(unittest.TestCase):
     
     def setUp(self):
         min_wv = 100

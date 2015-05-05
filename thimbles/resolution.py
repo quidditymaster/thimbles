@@ -41,7 +41,6 @@ class PolynomialLSFModel(Model):
     degree = Column(Integer)
     
     def __init__(self, lsf_p, degree):
-        Model.__init__(self)
         lsf_val = lsf_p.value
         npts = len(lsf_val)
         self.oputput_p = lsf_p

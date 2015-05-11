@@ -21,8 +21,6 @@ from thimbles.flags import SpectrumFlags
 from scipy.interpolate import interp1d
 from thimbles.thimblesdb import ThimblesTable, Base
 from thimbles.modeling import Model, Parameter
-from thimbles.modeling.factor_models import \
-    FluxSumModel, MultiplierModel, MatrixMultiplierModel
 from thimbles.modeling.factor_models import PickleParameter, FloatParameter
 from thimbles.modeling.factor_models import IdentityMap
 from thimbles.modeling.distributions import VectorNormalDistribution

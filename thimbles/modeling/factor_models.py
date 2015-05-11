@@ -30,16 +30,6 @@ class MultiplierModel(Model):
         return prod
 
 
-class MatrixParameter(Parameter):
-    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
-    __mapper_args__={
-        "polymorphic_identity":"MatrixParameter",
-    }
-    
-    def __init__(self, matrix=None):
-        self._value = matrix
-
-
 class PickleParameter(Parameter):
     _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
     __mapper_args__={
@@ -50,61 +40,16 @@ class PickleParameter(Parameter):
     def __init__(self, value=None):
         self._value = value
 
+
 class FloatParameter(Parameter):
     _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
     __mapper_args__={
         "polymorphic_identity":"FloatParameter",
     }
     _value = Column(Float)
-
+    
     def __init__(self, value=None):
         self._value = value
-
-class MatrixMultiplierModel(Model):
-    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
-    __mapper_args__={
-        "polymorphic_identity":"MatrixMultiplierModel",
-    }
-    
-    def __init__(
-            self, 
-            parameters=None, 
-            output_p=None,
-    ):
-        if parameters is None:
-            parameters = []
-        self.parameters = parameters
-        self.output_p = output_p
-    
-    @property
-    def matrix_p(self):
-        if self._matrix_p is None:
-            for p in self.parameters:
-                if isinstance(p, MatrixParameter):
-                    self._matrix_p = p
-        return self._matrix_p
-    
-    @property
-    def vector_p(self):
-        if self._vector_p is None:
-            for p in self.parameters:
-                if isinstance(p, VectorParameter):
-                    self._vector_p = p
-        return self._vector_p
-    
-    @property
-    def matrix(self):
-        return self.matrix_p.value
-    
-    @property
-    def vector(self):
-        return self.vector_p.value
-    
-    def __call__(self, pvrep=None):
-        pvd = self.get_vdict(pvrep)
-        matrix = pvd[self.matrix_p]
-        vector = pvd[self.vector_p]
-        return matrix*vector
 
 
 class FluxSumLogic(object):
@@ -142,7 +87,7 @@ class FluxSumModel(FluxSumLogic, Model):
             parameters = []
         self.parameters = parameters
         self.output_p = output_p
-    
+
 
 class NegativeExponentialModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
@@ -170,18 +115,19 @@ class PixelPolynomialModel(Model):
     
     def __init__(
             self, 
-            wv_sample, 
-            coeffs=None, 
+            output_p,
+            coeffs=None,
+            autofit=False,
             center=None, 
             scale=None, 
     ):
-        wv_sample = tmb.as_wavelength_sample(wv_sample)
-        fp = FluxParameter(wv_sample)
-        self.output_p = fp
+        self.output_p = output_p
+        wv_sample = output_p.wv_sample
         if coeffs is None:
             coeffs = np.zeros(3)
-        vp = VectorParameter(coeffs)
-        self.parameters = [vp]
+            coeffs[-1] = 1.0
+        coeffs_p = PickleParameter(coeffs)
+        self.add_input("coeffs", coeffs_p)
         if center is None:
             center = 0.5*(wv_sample.start + wv_sample.end)
         self.center = center
@@ -189,15 +135,14 @@ class PixelPolynomialModel(Model):
             scale = max(0.25*(wv_sample.end - wv_sample.start), 1.0)
         self.scale = scale
     
-    
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
         pix = self.output_p.wv_sample.pixels
-        coeffs ,= list(vdict.values())
+        coeffs ,= vdict[self.inputs["coeffs"]]
         return np.polyval(coeffs, (pix-self.center)/self.scale)
 
 
-class IdentityOperation(object):
+class IdentityMap(object):
     """an object which when used in a binary operation returns the other object
     """
     

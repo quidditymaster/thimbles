@@ -24,6 +24,7 @@ from thimbles.modeling import Model, Parameter
 from thimbles.modeling.factor_models import \
     FluxSumModel, MultiplierModel, MatrixMultiplierModel
 from thimbles.modeling.factor_models import PickleParameter, FloatParameter
+from thimbles.modeling.factor_models import IdentityMap
 from thimbles.modeling.distributions import VectorNormalDistribution
 from thimbles.resolution import PolynomialLSFModel
 from thimbles.coordinatization import Coordinatization, as_coordinatization
@@ -210,6 +211,8 @@ class WavelengthSolution(ThimblesTable, Base):
 def as_wavelength_solution(wavelengths):
     if isinstance(wavelengths, WavelengthSolution):
         return wavelengths
+    elif isinstance(wavelengths, WavelengthSample):
+        return wavelengths.wv_soln
     else:
         return WavelengthSolution(wavelengths)
 
@@ -261,9 +264,6 @@ class FluxParameter(Parameter):
     }
     _wv_sample_id = Column(Integer, ForeignKey("WavelengthSample._id"))
     wv_sample = relationship("WavelengthSample")
-    
-    #class attributes
-    name = "flux"
     
     def __init__(self, wvs, flux=None):
         self.wv_sample = as_wavelength_sample(wvs)
@@ -617,14 +617,25 @@ class RootSpectrumModel(tmb.modeling.Model):
     }
     
     def __init__(self, spectrum, model_wv_soln=None):
-        Model.__init__(self)
-        
-        self.add_input()
-        if model_wv_soln is None:
-            model_wv_soln = bl3h
         self.output_p = spectrum.flux_p
+        self.add_input("norm", FluxParameter(spec.wv_sample))
+        self.add_input("sampling_matrix", Parameter())
+        self.add_input("sky_add", FluxParameter(model_wv_soln))
+        self.add_input("sky_mul", FluxParameter(model_wv_soln))
+        self.add_input("broadening_matrix", Parameter())
+        self.add_input("continuum", Parameter())
+        self.add_input("features", FluxParameter(model_wv_soln))
     
     def __call__(self, vprep):
-        vdict = self.vdict(vprep)
+        vdict = self.get_vdict(vprep)
+        norm = vdict[self.inputs["norm"]]
+        samp_mat = vdict[self.inputs["sampling_matrix"]]
+        sky_add = vdict[self.inputs["sky_add"]]
+        sky_mul = vdict[self.inputs["sky_mul"]]
+        bmat = vdict[self.inputs["broadening_matrix"]]
+        continuum = vdict[self.inputs["continuum"]]
+        features = vdict[self.inputs["features"]]
         
+        pre_samp = sky_add*sky_mul*(bmat*(continuum*features))
+        return norm*(samp_mat*(pre_samp))
         

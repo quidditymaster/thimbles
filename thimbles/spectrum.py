@@ -280,14 +280,16 @@ class Spectrum(ThimblesTable, Base):
     """
     #_flux_p_id = Column(Integer, ForeignKey("FluxParameter._id"))
     #flux_p = relationship("FluxParameter")
-    #_obs_prior_id = Column(Integer, ForeignKey("Distribution._id"))
-    #obs_prior = relationship("Distribution")
+    _obs_prior_id = Column(Integer, ForeignKey("Distribution._id"))
+    obs_prior = relationship("Distribution")
     
     info = Column(PickleType)
     _flag_id = Column(Integer, ForeignKey("SpectrumFlags._id"))
     flags = relationship("SpectrumFlags")
     _source_id = Column(Integer, ForeignKey("Source._id"))
     source = relationship("Source", backref="spectroscopy")
+    _observation_id = Column(Integer, ForeignKey("Observation._id"))
+    observation = relationship("Observation", foreign_keys=_observation_id)
     
     def __init__(
             self,

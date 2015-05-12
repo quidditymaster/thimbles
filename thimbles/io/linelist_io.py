@@ -51,8 +51,8 @@ def read_vald_linelist(fname):
 @task(
     result_name="transitions",
     sub_kwargs=dict(
-        fname=dict(option_style="raw_string", editor_style="file"),
-        file_type=dict(option_style="raw_string"),
+        fname=dict(editor_style="file"),
+        file_type=dict(),
     )
 )
 def read_linelist(fname, file_type="detect"):

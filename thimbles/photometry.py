@@ -1,17 +1,20 @@
 from thimbles.thimblesdb import Base, ThimblesTable
+from thimbles.sqlaimports import *
+from thimbles.modeling import Parameter
 
-from sqlalchemy import create_engine, ForeignKey
-from sqlalchemy import Column, Date, Integer, String, Float
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.ext.declarative import declared_attr
-from sqlalchemy.orm import relationship, backref
-
-class Photometry(Base, ThimblesTable):
+class Photometry(Parameter):
+    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
     filter_id = Column(Integer, ForeignKey("Filter._id"))
     filter = relationship("Filter")
     source_id = Column(Integer, ForeignKey("Source._id"))
-    magnitude = Column(Float)
-    error = Column(Float)
+    source = relationship("Source")
+    
+    def __init__(self, filter, source, value):
+        self.filter = filter
+        self.source = source
+        self._value = value
+
 
 class Filter(Base, ThimblesTable):
-    name = Column(String)
+    name = Column(String, unique=True)
+

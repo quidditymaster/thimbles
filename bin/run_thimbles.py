@@ -9,7 +9,7 @@ from thimbles.tasks import task_registry, task
 from thimbles.options import opts
 
 @task(result_name="hello")
-def hello_world(greeting="hello", subject="world!"):
+def hello(greeting="hello", subject="world!"):
     greet_str =  "{} {}".format(greeting, subject)
     print(greet_str)
     return greet_str
@@ -55,12 +55,12 @@ class ThimblesMainApplication(QtGui.QApplication):
 
 
 if __name__ == "__main__":
-    opts.parse_options()
-    #QtGui.QApplication.setLibraryPaths([])
+    import sys
+    opts.parse_commands(sys.argv[1:])
+    QtGui.QApplication.setLibraryPaths([])
     
-    if not opts["no_window"]:
-        try:
-            app = ThimblesMainApplication()
-        except RuntimeError:
-            app = ThimblesMainApplication.instance()
-        sys.exit(app.exec_())
+    try:
+        app = ThimblesMainApplication()
+    except RuntimeError:
+        app = ThimblesMainApplication.instance()
+    sys.exit(app.exec_())

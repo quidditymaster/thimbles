@@ -166,9 +166,6 @@ def as_transition_group(tgroup):
 
 @task(
     result_name="grouping_standard",
-    sub_kwargs=dict(
-        standard_name=dict(option_style="raw_string")
-    )
 )
 def segmented_grouping_standard(
         standard_name, 

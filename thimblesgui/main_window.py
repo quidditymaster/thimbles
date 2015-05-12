@@ -29,34 +29,10 @@ gui_resource_dir = os.path.join(os.path.dirname(__file__),"resources")
 
 Option("GUI", option_style="parent_dict")
 
-def _exec_startup():
-    exec(opts["GUI.startup"], wds.__dict__)
-Option("startup", option_style="raw_string", default="", on_parse=_exec_startup, parent="GUI") 
-
-_help=\
-"""don't display a GUI window
-"""
-Option(name="no_window", option_style="flag", help=_help)
-
 _help=\
 """suppress the splash screen
 """
-Option(name="no-splash", option_style="flag", help=_help)
-
-def _load_default_db():
-    db_path = opts["GUI.default_db"]
-    if db_path is None:
-        pass
-    else:
-        ld_tdb = tmb.tasks.task_registry["load_tdb"]
-        ld_tdb.run(fname = db_path)
-
-Option("default_db", 
-    option_style="raw_string", 
-    envvar="THIMBLESPROJECTDB", 
-    default=None, 
-    parent="GUI",
-)
+Option(name="no-splash", default=True, help=_help)
 
 class ThimblesMainWindow(QtGui.QMainWindow):
     

@@ -22,8 +22,8 @@ class ThimblesTable(object):
         return self._sa_instance_state.session
 
 Option("database", option_style="parent_dict")
-Option("dialect", option_style="raw_string", default="sqlite", parent="database")
-Option("echo_sql", option_style="flag", parent="database")
+Option("dialect", default="sqlite", parent="database")
+Option("echo_sql", parent="database", default=False)
 
 class ThimblesDB(object):
     """a wrapper for a database containing our data and our fit-models and parameters
@@ -80,7 +80,6 @@ class HasName(object):
 
 @task(result_name="tdb",
     sub_kwargs={"fname":dict(
-        option_style="raw_string",
         editor_style="file")},
 )
 def load_tdb(fname):

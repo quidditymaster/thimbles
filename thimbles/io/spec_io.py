@@ -32,7 +32,7 @@ from . import wavelength_extractors
 __all__ = ["read_spec","read_ascii","read_fits",
            "read_fits","read_fits_hdu","read_bintablehdu",
            "read_many_fits", "read_hdf5",
-           "read_json",
+           "read_json", "read_spec_list",
            "write_ascii", "write_ascii", "write_hdf5",
 ]
 
@@ -136,7 +136,7 @@ def read_json(fname, database=None, auto_add=True):
     jsonstr = file.read()
     file.close()
     if database is None:
-        database = opts["project_db"]
+        database = tmb.ThimblesDB("")
     in_dict = json.loads(jsonstr)
     defaults = in_dict.get("defaults")
     if defaults is None:
@@ -426,11 +426,12 @@ def read_many_fits (filelist,relative_paths=False,are_orders=False):
 def probably_file_list(filepath):
     if isinstance(filepath,str):
         # check if this is a file with a list of files
-        if not os.path.isfile(filepath):
-            return False
         with open(filepath,'r') as f:
             for line in f:
-                if len(line.strip()) and line.strip()[0] != "#" and not os.path.isfile(line.rstrip().split()[0]):
+                line = line.split("#")[0].strip()
+                if len(line) == 0:
+                    continue
+                if not os.path.isfile(line):
                     return False
         return True    
     elif isinstance(filepath,Iterable):
@@ -442,7 +443,7 @@ def read_spec_list(fname, file_type="detect"):
     lines = open(fname).readlines()
     spectra = []
     for line in lines:
-        cur_fname = line.rstrip().split("#")[0]
+        cur_fname = line.split("#")[0].strip()
         if len(cur_fname) == 0:
             continue
         cur_specl = read_spec(line.rstrip(), file_type=file_type)
@@ -494,8 +495,8 @@ pass
 @task(
     result_name="spectra",
     sub_kwargs=dict(
-        fname=dict(option_style="raw_string", editor_style="file"),
-        file_type={"option_style":"raw_string"},
+        fname=dict(editor_style="file"),
+        file_type={},
 ))
 def read_spec(fname, file_type="detect", extra_kwargs=None):
     """

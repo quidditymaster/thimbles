@@ -28,7 +28,7 @@ grouping_assoc = sa.Table(
 class SourceGroup(Base, ThimblesTable):
     name = Column(String)
     sources = relationship("Source", secondary=grouping_assoc)
-
+    
     def __init__(self, name="", sources=None):
         self.name = name
         if sources is None:

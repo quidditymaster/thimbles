@@ -27,13 +27,12 @@ from thimbles.options import config_dir
 
 
 Option('moog',option_style="parent_dict")
-Option("executable",parent="moog", option_style="raw_string",envvar="MOOGSILENT")
+Option("executable",parent="moog",envvar="MOOGSILENT")
 Option("opac_rad", parent="moog", default=3.0)
 Option("delta_wv", parent="moog", default=0.01)
 default_moog_wdir = os.path.join(config_dir, "working_dirs", "moog")
 Option("working_dir", 
        parent="moog",
-       option_style="raw_string",
        envvar="MOOGWORKINGDIR", 
        default=default_moog_wdir,)
 #TODO: make a default strong lines file to crop to wavelengths and use always.
@@ -55,7 +54,7 @@ summary_out  {outfile}.sum
 model_in     {model_in}
 """
 
-Option("par_template", option_style="raw_string", parent="moog", default=default_par_template)
+Option("par_template", parent="moog", default=default_par_template)
 
 abfind_template="abfind\n"+opts["moog.par_template"] + common_par_components
 ewfind_template="ewfind\n"+opts["moog.par_template"] + common_par_components

@@ -52,4 +52,13 @@ from thimbles.thimblesdb import ThimblesDB
 from thimbles.stellar_parameters import Star
 
 from thimbles import workingdataspace as wds
+opts = options.opts
+options.Option("db_path", 
+    envvar="THIMBLESPROJECTDB", 
+    default="",
+)
+opts.run_config()
+if not "db" in wds.__dict__:
+    wds.db = ThimblesDB(opts["db_path"])
 wds.__dict__.update(dict(thimblesdb.Base._decl_class_registry))
+

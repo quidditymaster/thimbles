@@ -32,7 +32,7 @@ Option("GUI", option_style="parent_dict")
 _help=\
 """suppress the splash screen
 """
-Option(name="no-splash", default=True, help=_help)
+Option(name="show-splash", default=False, help=_help)
 
 class ThimblesMainWindow(QtGui.QMainWindow):
     

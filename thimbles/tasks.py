@@ -19,7 +19,7 @@ from collections import OrderedDict
 from types import LambdaType
 
 import pickle
-import numpy as np 
+import numpy as np
 
 from . import workingdataspace as wds
 from thimbles.options import Option, opts, EvalError

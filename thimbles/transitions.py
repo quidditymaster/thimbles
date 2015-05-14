@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 
 import thimbles as tmb
 from thimbles.tasks import task
@@ -7,6 +8,7 @@ from thimbles.thimblesdb import Base, ThimblesTable
 from thimbles.modeling import Parameter, Model
 from thimbles.abundances import Ion
 
+import latbin
 
 class Damping(ThimblesTable, Base):
     stark = Column(Float)
@@ -223,3 +225,116 @@ def segmented_grouping_standard(
         tdb.commit()
     return tstand
 
+
+def lines_by_species(linelist, match_isotopes=False):
+    """turn a list of Transitions into a species keyed dictionary 
+    of transitions.
+    """
+    if not match_isotopes:
+        extract_species = lambda l: (l.ion.z, l.ion.charge)
+    else:
+        extract_species = lambda l: (l.ion.z, l.ion.charge, l.ion.isotope)
+    
+    species_dict = {}
+    for line in linelist:
+        species = extract_species(line)
+        trans = species_dict.get(species, [])
+        trans.append(line)
+        species_dict[species] = trans
+    return species_dict
+
+
+def prefer_existing(trans, db, matches):
+    return matches[0]
+
+def accept_new(trans, db):
+    return trans
+
+@task()
+def update_linelist(
+        linelist,
+        database=None,
+        dwv=0.02,
+        dep=0.05,
+        dloggf=0.5,
+        match_isotopes=False,
+        on_match=prefer_existing,
+        on_matchless=accept_new,
+        read_func=None, 
+        read_kwargs=None,
+        auto_commit=True,
+):
+    assert dwv > 0
+    assert dep > 0
+    assert dloggf > 0
+    if read_func is None:
+        read_func = tmb.io.linelist_io.read_linelist
+    if read_kwargs is None:
+        read_kwargs = {}
+    if isinstance(linelist, str):
+        linelist = read_func(linelist, **read_kwargs)
+    
+    line_wvs = [l.wv for l in linelist]
+    min_wv = np.min(line_wvs)
+    max_wv = np.max(line_wvs)
+    
+    #species keyed dictionary of line lists
+    lbs = lines_by_species(linelist, match_isotopes=match_isotopes)
+    
+    for species in lbs:
+        if len(species) == 3:
+            z, charge, isotope = species
+        elif len(species) == 2:
+            z, charge = species
+        else:
+            raise ValueError("unexpected species specification {}".format(species))
+        ion_query = database.query(Ion)\
+                .filter(Ion.z == z)\
+                .filter(Ion.charge == charge)
+        if match_isotopes:
+            ion_query = ion_query.filter(Ion.isotope == isotope)
+        else:
+            isotope = 0
+        cur_ion = ion_query.first()
+        if cur_ion is None:
+            cur_ion = Ion(z, charge, isotope)
+        
+        l_query = database.query(Transition)\
+            .join(Ion)\
+            .filter(Ion.z == z)\
+            .filter(Ion.charge == charge)\
+            .filter(Transition.wv < max_wv + dwv)\
+            .filter(Transition.wv > min_wv - dwv)
+        if match_isotopes:
+            l_query = l_query.filter(Ion.isotope == isotope)
+        
+        db_lines = l_query.all()
+        new_lines = lbs[species]
+        
+        #convert lists into data frames
+        df_attrs = "wv ep loggf".split()
+        db_df = tmb.utils.misc.attribute_df(db_lines, attrs=df_attrs)
+        new_df = tmb.utils.misc.attribute_df(new_lines, attrs=df_attrs)
+        #rescale by tolerances
+        match_scale = pd.Series({"wv":dwv, "ep":dep, "loggf":dloggf})
+        db_df /= match_scale
+        new_df /= match_scale
+        #import pdb; pdb.set_trace()
+        matched_new, matched_db, dist = latbin.matching.match(new_df, db_df, tolerance=1.0)
+        
+        match_idx = 0
+        for new_idx in range(len(new_lines)):
+            cdb_match = []
+            while (match_idx < len(matched_new)) and matched_new[match_idx] == new_idx:
+                dbl_idx = matched_db[match_idx]
+                cdb_match.append(db_lines[dbl_idx])
+                match_idx += 1
+            if len(cdb_match) > 0:
+                ctrans = on_match(new_lines[new_idx], database, cdb_match)
+            else:
+                print("no match executing matchless")
+                ctrans = on_matchless(new_lines[new_idx], database)
+            ctrans.ion = cur_ion
+            database.add(ctrans)
+        if auto_commit:
+            database.commit()

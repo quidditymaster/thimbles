@@ -171,7 +171,7 @@ def as_transition_group(tgroup):
 )
 def segmented_grouping_standard(
         standard_name, 
-        tdb, 
+        database, 
         transition_filters=None, 
         min_wv=None, 
         max_wv=None,
@@ -182,7 +182,7 @@ def segmented_grouping_standard(
         split_charge=True,
         auto_commit=False,
     ):
-    existing_standards = tdb.query(TransitionGroupingStandard)\
+    existing_standards = database.query(TransitionGroupingStandard)\
      .filter(TransitionGroupingStandard.name == standard_name).all()
     if len(existing_standards) > 0:
         raise ValueError("TransitionGroupingStandard with name {} already exists".format(standard_name))
@@ -192,7 +192,7 @@ def segmented_grouping_standard(
         transition_filters.insert(0, Transition.wv > min_wv)
     if not max_wv is None:
         transition_filters.insert(0, Transition.wv < max_wv)
-    t_query = tdb.query(Transition)
+    t_query = database.query(Transition)
     for t_filter in transition_filters:
         t_query.filter(t_filter)
     transitions = t_query.all()
@@ -221,8 +221,8 @@ def segmented_grouping_standard(
         grouped_transitions[list_idx].append(t)
     tstand = TransitionGroupingStandard(grouped_transitions, name=standard_name)
     if auto_commit:
-        tdb.add(tstand)
-        tdb.commit()
+        database.add(tstand)
+        database.commit()
     return tstand
 
 

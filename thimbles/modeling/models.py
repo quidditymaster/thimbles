@@ -28,13 +28,18 @@ class InputAlias(ThimblesTable, Base):
         self.model = model
         self.parameter = parameter
 
-class InputGroup(object):
+class InputGroup(ParameterGroup):
     
     def __init__(self):
+        self._aliases = []
         self.groups = {}
+        self.parameters = []
     
     def __getitem__(self, index):
         return self.groups[index]
+    
+    def __len__(self):
+        return len(self.parameters)
     
     @collection.appender
     def append(self, param_alias):
@@ -49,18 +54,26 @@ class InputGroup(object):
         else:
             param = param_alias._param_temp
         pg.append(param)
+        self.parameters.append(param)
+        self._aliases.append(param_alias)
     
     @collection.remover
-    def remover(self, param_alias):
+    def remove(self, param_alias):
         pname = param_alias.name
         pg = self.groups[pname]
-        pg.remove(param_alias.parameter)
+        param = param_alias.parameter
+        pg.remove(param)
+        self.parameters.remove(param)
+        self._aliases.remove(param_alias)
     
     @collection.iterator
+    def _iter_aliases(self):
+        for alias in self._aliases:
+            yield alias
+    
     def __iter__(self):
-        for g in self.groups:
-            for p in self.groups[g]:
-                yield p
+        for p in self.parameters:
+            yield p
 
 
 class Model(ThimblesTable, Base):

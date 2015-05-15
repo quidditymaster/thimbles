@@ -73,7 +73,7 @@ class WavelengthSolution(ThimblesTable, Base):
             delta_helio=None, 
             helio_shifted=True, 
             lsf=None, 
-            lsf_degree="quadratic"
+            lsf_degree=2
     ):
         """a class that encapsulates the manner in which a spectrum is sampled
         
@@ -266,7 +266,6 @@ class FluxParameter(Parameter):
     def pixels(self):
         return self.wv_sample.pixels
 
-
 class Spectrum(ThimblesTable, Base):
     """A representation of a collection of relative flux measurements
     """
@@ -282,8 +281,7 @@ class Spectrum(ThimblesTable, Base):
     observation = relationship("Observation", foreign_keys=_observation_id)
     
     #class attributes
-    pseudonorm_func = tmb.pseudonorms.sorting_norm
-    pseudonorm_kwargs = {}
+    pseudonorm = tmb.pseudonorms.sorting_norm
     
     def __init__(
             self,
@@ -524,12 +522,7 @@ class Spectrum(ThimblesTable, Base):
             return global_indexes - self.wv_sample.start
         else:
             return global_indexes
-    
-    def pseudonorm(self, **kwargs):
-        kwdict = copy(self.pseudonorm_kwargs)
-        kwdict.update(kwargs)
-        return self.pseudonorm_func(self, **kwargs)
-    
+        
     def normalized(self, norm=None, **kwargs):
         if norm is None:
             if not self.flags["normalized"]:

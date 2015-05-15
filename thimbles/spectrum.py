@@ -1,6 +1,3 @@
-#
-#
-# ########################################################################### #
 import time
 from copy import copy
 
@@ -13,11 +10,7 @@ import matplotlib.pyplot as plt
 # internal
 import thimbles as tmb
 from thimbles import resampling
-#from thimbles.utils.misc import inv_var_2_var, var_2_inv_var, clean_variances, clean_inverse_variances
-#from .metadata import MetaData
 from thimbles.flags import SpectrumFlags
-#from thimbles.resolution import LineSpreadFunction, GaussianLSF, BoxLSF
-#from thimbles.binning import CoordinateBinning
 from scipy.interpolate import interp1d
 from thimbles.thimblesdb import ThimblesTable, Base
 from thimbles.modeling import Model, Parameter
@@ -31,11 +24,9 @@ from sqlalchemy.orm.collections import attribute_mapped_collection
 
 from thimbles import speed_of_light
 
-# ########################################################################### #
 
 __all__ = ["WavelengthSolution","Spectrum"]
 
-# ########################################################################### #
 
 class DeltaHelioParameter(Parameter):
     """velocity correction for motion around the sun"""
@@ -74,7 +65,16 @@ class WavelengthSolution(ThimblesTable, Base):
     _lsf_id = Column(Integer, ForeignKey("Parameter._id"))
     lsf_p = relationship("Parameter", foreign_keys=_lsf_id)
     
-    def __init__(self, wavelengths, rv=None, delta_helio=None, helio_shifted=True, rv_shifted=True, lsf=None, lsf_type="quadratic"):
+    def __init__(
+            self, 
+            wavelengths, 
+            rv=None, 
+            rv_shifted=True, 
+            delta_helio=None, 
+            helio_shifted=True, 
+            lsf=None, 
+            lsf_degree="quadratic"
+    ):
         """a class that encapsulates the manner in which a spectrum is sampled
         
         wavelengths: np.ndarray
@@ -97,13 +97,9 @@ class WavelengthSolution(ThimblesTable, Base):
           wavelengths = wavlengths*(1-rv/c)
         lsf: ndarray
           the line spread function in units of pixel width.
-        lsf_type: string
-          how to treat the passed lsf parameter.
-          'cached' store the passed array as a PickleParameter
-          'quadratic' fit a quadratic to the lsf and generate a
-             quadratic polynomial lsf model with this lsf as its output.
-          'cubic'   same as quadratic but degree==3
-          'quartic' same as quadratic but degree==4
+        lsf_degree: int or 'max'
+          the degree of the polynomial to use to model the variation in line spread function width.
+          'max' store the passed array as a PickleParameter
         """       
         
         #set up rv
@@ -136,19 +132,15 @@ class WavelengthSolution(ThimblesTable, Base):
         if lsf is None:
             lsf = np.ones(len(self))
         
-        if lsf_type == "cached":
+        if lsf_degree == "max":
             lsf_p = PickleParameter(lsf)
-        else:
+        elif isinstance(lsf_degree, int):
             lsf_p = Parameter(lsf)
-        self.lsf_p = lsf_p
-        if lsf_type == "quadratic":
-            lsf_mod = PolynomialLSFModel(lsf_p, degree=2)
-        elif lsf_type == "cubic":
-            lsf_mod = PolynomialLSFModel(lsf_p, degree=3)
-        elif lsf_type == "quartic":
-            lsf_mod = PolynomialLSFModel(lsf_p, degree=4)
+            lsf_mod = PolynomialLSFModel(lsf_p, degree=lsf_degree)
+            #import pdb; pdb.set_trace()
         else:
-            raise ValueError("lsf_type {} is not recognized")
+            raise ValueError("lsf_degree of {} not understood".format(lsf_degree))
+        self.lsf_p = lsf_p
     
     def __len__(self):
         return len(self.indexer)
@@ -278,10 +270,8 @@ class FluxParameter(Parameter):
 class Spectrum(ThimblesTable, Base):
     """A representation of a collection of relative flux measurements
     """
-    #_flux_p_id = Column(Integer, ForeignKey("FluxParameter._id"))
-    #flux_p = relationship("FluxParameter")
-    _obs_prior_id = Column(Integer, ForeignKey("Distribution._id"))
-    obs_prior = relationship("Distribution")
+    _obs_flux_id = Column(Integer, ForeignKey("Distribution._id"))
+    obs_flux = relationship("Distribution")
     
     info = Column(PickleType)
     _flag_id = Column(Integer, ForeignKey("SpectrumFlags._id"))
@@ -291,19 +281,31 @@ class Spectrum(ThimblesTable, Base):
     _observation_id = Column(Integer, ForeignKey("Observation._id"))
     observation = relationship("Observation", foreign_keys=_observation_id)
     
+    #class attributes
+    pseudonorm_func = tmb.pseudonorms.sorting_norm
+    pseudonorm_kwargs = {}
+    
     def __init__(
             self,
             wavelengths, 
-            flux, 
+            flux,
             ivar=None,
+            var=None,
+            rv=None,
+            rv_shifted=True,
+            delta_helio=None,
+            helio_shifted=True,
             lsf=None,
+            lsf_degree=2,
             flags=None,
             info=None,
             source=None,
-            pseudonorm_func=None,
-            pseudonorm_kwargs=None,
+            observation=None,
     ):
-        """makes a spectrum
+        """a representation of a spectrum object
+        
+        parameters
+        
         wavelengths: ndarray or WavelengthSolution
           the wavelengths at each pixel, if more specific information
           is required (e.g. specifying the lsf or the heliocentric vel
@@ -311,35 +313,44 @@ class Spectrum(ThimblesTable, Base):
           pass that in instead of an ndarray.
         flux: ndarray
           the measured flux in each pixel
-        ivar: ndarray or Distribution
-          the inverse variance of the noise in each pixel
+        ivar: ndarray
+          the inverse variance of the noise in each pixel.
+        var: ndarray
+          the variance of the noise in each pixel
+          one of ivar and var must be None.
+        lsf: ndarray
+          line spread function
         flags: an optional SpectrumFlags object
-          see thimbles.flags for info
+          see thimbles.flags.SpectrumFlags for info
+        info: dict
+          dictionary of relevant metadata (must be pickleable)
+        source: Source or None
+          the astrophysical light source
+        observation: Observation
+          the observation which resulted in this spectrum
         """
-        if pseudonorm_func is None:
-            pseudonorm_func = tmb.pseudonorms.sorting_norm
-        self.pseudonorm_func=pseudonorm_func
-        if pseudonorm_kwargs is None:
-            pseudonorm_kwargs = {}
-        self.pseudonorm_kwargs = pseudonorm_kwargs
+        if (not (var is None)) and (not (ivar is None)):
+            raise ValueError("redundant specification: got a value for both ivar and var!")
+        elif ivar is None:
+            if var is None: #neither is specified
+                var = tmb.utils.misc.smoothed_mad_error(flux)
+        else: #ivar is specified
+            var = tmb.utils.misc.inv_var_2_var(ivar)
         
-        self.flux_p = FluxParameter(wavelengths)
-        if not lsf is None:
-            self.flux_p.wv_sample.wv_soln.lsf = lsf
-        
+        if not isinstance(wavelengths, (WavelengthSolution, WavelengthSample)):
+            wv_soln = WavelengthSolution(wavelengths, rv=rv, delta_helio=delta_helio, rv_shifted=rv_shifted, helio_shifted=helio_shifted, lsf=lsf, lsf_degree=lsf_degree)
+        else:
+            wv_soln = wavelengths
+        flux_p = FluxParameter(wv_soln)
         flux = np.asarray(flux)
-        if ivar is None:
-            ivar = tmb.utils.misc.smoothed_mad_error(flux)
         #treat the observed flux as a prior on the flux parameter values
-        self.obs_prior = VectorNormalDistribution(flux, ivar)
+        self.obs_flux = VectorNormalDistribution(flux, var, parameters=[flux_p])
         
         if flags is None:
             flags = SpectrumFlags()
         elif isinstance(flags, SpectrumFlags):
             flags = flags
-        elif isinstance(flags, int):
-            flags = SpectrumFlags(flags)
-        elif isinstance(flags, dict):
+        elif isinstance(flags, (int, dict)):
             flags = SpectrumFlags(flags)
         self.flags = flags
         
@@ -348,6 +359,11 @@ class Spectrum(ThimblesTable, Base):
         self.info = info
         
         self.source = source
+        self.observation = observation
+    
+    @property
+    def flux_p(self):
+        return self.obs_flux.parameters[0]
     
     @property
     def wv_sample(self):
@@ -355,31 +371,27 @@ class Spectrum(ThimblesTable, Base):
     
     @property
     def flux(self):
-        return self.obs_prior.mean
+        return self.obs_flux.mean
     
     @flux.setter
     def flux(self, value):
-        self.obs_prior.mean = value
-    
-    @flux.setter
-    def flux(self, value):
-        self.flux_p.value = value
-    
-    @property
-    def ivar(self):
-        return self.obs_prior.ivar
-    
-    @ivar.setter
-    def ivar(self, value):
-        self.obs_prior.ivar = value
+        self.obs_flux.mean = value
     
     @property
     def var(self):
-        return tmb.utils.misc.inv_var_2_var(self.ivar)
+        return self.obs_flux.var
     
     @var.setter
     def var(self, value):
-        self.ivar = tmb.utils.misc.inv_var_2_var(value)
+        self.obs_flux.var = value
+    
+    @property
+    def ivar(self):
+        return tmb.utils.misc.var_2_inv_var(self.var)
+    
+    @ivar.setter
+    def ivar(self, value):
+        self.var = tmb.utils.misc.inv_var_2_var(value)
     
     def sample(self,
             wavelengths,

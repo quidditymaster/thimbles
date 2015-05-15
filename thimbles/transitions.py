@@ -332,7 +332,6 @@ def update_linelist(
             if len(cdb_match) > 0:
                 ctrans = on_match(new_lines[new_idx], database, cdb_match)
             else:
-                print("no match executing matchless")
                 ctrans = on_matchless(new_lines[new_idx], database)
             ctrans.ion = cur_ion
             database.add(ctrans)

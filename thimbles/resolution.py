@@ -8,32 +8,8 @@ from thimbles.modeling.factor_models import PickleParameter
 from .sqlaimports import *
 from thimbles.thimblesdb import ThimblesTable, Base
 
-
-n_delts = 1024
-min_z, max_z = -6, 6
-z_scores = np.linspace(min_z, max_z, n_delts)
-cdf_vals = scipy.stats.norm.cdf(z_scores)
-z_delta = (z_scores[1]-z_scores[0])
-
-#@jit(double[:](double[:]))
-def approximate_normal_cdf(zscore):
-    cdf = np.zeros(zscore.shape)
-    for idx in range(zscore.shape[0]):
-        cur_score = zscore[idx]
-        if cur_score > max_z-z_delta-1e-5:
-            cdf[idx] = 1.0
-        elif cur_score < min_z:
-            cdf[idx] = 0.0
-        else:
-            z_idx = (cur_score-min_z)/z_delta
-            base_idx = int(z_idx)
-            alpha = z_idx-base_idx
-            cdf[idx] = cdf_vals[base_idx]*(1-alpha) + cdf_vals[base_idx+1]*alpha
-    return cdf
-
-
 class PolynomialLSFModel(Model):
-    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)  
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__ = {
         "polymorphic_identity":"PolynomialLSFModel"
     }
@@ -43,7 +19,7 @@ class PolynomialLSFModel(Model):
     def __init__(self, lsf_p, degree):
         lsf_val = lsf_p.value
         npts = len(lsf_val)
-        self.oputput_p = lsf_p
+        self.output_p = lsf_p
         self.npts = npts
         self.degree = degree
         
@@ -52,10 +28,11 @@ class PolynomialLSFModel(Model):
         coeffs_p = PickleParameter(coeffs)
         self.add_input("coeffs", coeffs_p)
     
-    def __call__(self, vprep):
+    def __call__(self, vprep=None):
         coeffs_p ,= self.inputs["coeffs"]
         vdict = self.get_vdict(vprep)
         coeffs = vdict[coeffs_p]
+        npts = self.npts
         x = (np.arange(npts, dtype=float)-npts)/npts
         return np.polyval(coeffs, x)
 

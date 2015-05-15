@@ -8,6 +8,7 @@ from copy import copy
 from thimbles.sqlaimports import *
 from thimbles.thimblesdb import ThimblesTable, Base
 from sqlalchemy.orm.collections import attribute_mapped_collection
+from sqlalchemy.orm.collections import collection
 from functools import reduce
 
 mult_func = lambda x, y: x*y
@@ -17,124 +18,7 @@ def flat_size(shape_tup):
     return reduce(mult_func, shape_tup)
 
 
-class Slice(ThimblesTable, Base):
-    start = Column(Integer)
-    stop = Column(Integer)
-    step = Column(Integer)
-    
-    def __init__(self, start=None, stop=None, step=None):
-        self.start=start
-        self.stop=stop
-        self.step=step
-
-class ParameterView(object):
-    """A class that emulates a Parameter object
-    and provides a sliced view into that parameter.
-    
-    A parameter view will hash the same as its parent parameter
-    and so may be used interchangeably with its parent parameter as
-    a key in a dictionary or as a unique element in a set.
-    """
-    
-    def __init__(self, parameter, slice_):
-        self.parameter = parameter        
-        self.slice_ = slice_
-    
-    def __getattr__(self, attr):
-        return getattr(self.parameter, attr)
-    
-    @property
-    def value(self):
-        if self.slice_ is None:
-            return self.parameter
-        else:
-            return self.parameter[self.slice_]
-    
-    @value.setter
-    def value(self, value):
-        if self.slice_ is None:
-            self.parameter = value
-        else:
-            self.parameter[self.slice_] = value
-    
-    def __hash__(self):
-        return hash(self.parameter)
-    
-    def __eq__(self, other):
-        return self.parameter is other
-    
-    def _get_sub_slice(self, slice_=None):
-        if slice_ is None:
-            return self.slice_
-        else:
-            start = slice_.start - self.slice_.start
-            stop = slice_.stop - self.slice_.start
-            step = slice_.step*self.slice_.step
-            return slice(start, stop, step)
-    
-    def invalid(self, slice_=None):
-        slice_ = self._get_sub_slice(slice_)
-        return self.parameter.invalid(slice_=slice_)
-    
-    def invalidate(self, slice_=None):
-        slice_ = self._get_sub_slice(slice_)
-        self.parameter.invalidate(slice_=slice_)
-
-
-parameter_vector_assoc = sa.Table(
-    "parameter_vector_assoc", 
-    Base.metadata,
-    Column("vector_id", Integer, ForeignKey("ParameterVector._id")),
-    Column("parameter_id", Integer, ForeignKey("Parameter._id")),
-)
-
-class ParameterVector(ThimblesTable, Base):
-    parameters = relationship("Parameter", secondary=parameter_vector_assoc)
-    _group_id = Column(Integer, ForeignKey("ParameterGroup._id"))
-    name = Column(String)
-    
-    def __init__(self, name, parameters=None):
-        self.name = name
-        if parameters is None:
-            parameters = []
-        self.parameters = parameters
-    
-    def __getitem__(self, index):
-        return self.parameters[index]
-
-class ParameterGroup(ThimblesTable, Base):
-    vectors = relationship(
-        "ParameterVector",
-        collection_class=attribute_mapped_collection("name"),
-        backref="group",
-        #cascade="all, delete-orphan",
-    )
-    
-    def __init__(self, **parameters):
-        for param_name in parameters:
-            named_p = parameters[param_name]
-            if isinstance(p, list):
-                for p in named_p:
-                    self.add_parameter(param_name, p)
-            else:
-                raise ValueError("unable to parse input to ParameterGroup should be instantiated as ParameterGroup(name1=[p1, p2], name2=[p3], ...)")
-    
-    def add_parameter(self, name, parameter,):
-        pvec = self.vectors.get(name)
-        if pvec is None:
-            pvec = ParameterVector(name)
-        pvec.parameters.append(parameter)
-        self.vectors[name] = pvec
-    
-    @property
-    def parameters(self):
-        parameters = []
-        for vec_name in self.vectors :
-            parameters.extend(self.vectors[vec_name].parameters)
-        return parameters
-    
-    def __getitem__(self, index):
-        return self.vectors[index].parameters
+class ParameterGroup(object):
     
     @property
     def free_parameters(self):
@@ -227,12 +111,15 @@ class InformedModels(object):
     
     def __init__(self):
         self.models = []
+        self._aliases = []
     
     def append(self, param_alias):
         self.models.append(param_alias.model)
+        self._aliases.append(param_alias)
     
     def remove(self, param_alias):
         self.models.remove(param_alias.model)
+        self._aliases.remove(param_alias)
     
     def __len__(self):
         return len(self.models)
@@ -243,7 +130,11 @@ class InformedModels(object):
     def __iter__(self):
         for mod in self.models:
             yield mod
-
+    
+    @collection.iterator
+    def _iter_aliases(self):
+        for alias in self._aliases:
+            yield alias
 
 class Parameter(ThimblesTable, Base):
     parameter_class = Column(String)

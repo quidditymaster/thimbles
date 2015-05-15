@@ -9,21 +9,20 @@ from thimbles.sqlaimports import *
 from thimbles.thimblesdb import ThimblesTable, Base
 from thimbles.modeling import ParameterGroup
 
-#dist_assoc = sa.Table("distribution_assoc", Base.metadata,
-#    Column("distribution_id", Integer, ForeignKey("Distribution._id")),
-#    Column("parameter_id", Integer, ForeignKey("Parameter._id")),
-#)
+dist_assoc = sa.Table(
+    "distribution_assoc", 
+    Base.metadata,
+    Column("distribution_id", Integer, ForeignKey("Distribution._id")),
+    Column("parameter_id", Integer, ForeignKey("Parameter._id")),
+)
 
 class Distribution(ThimblesTable, Base):
-    #parameters = relationship("Parameter", secondary=dist_assoc)
-    _parameter_group_id = Column(Integer, ForeignKey("ParameterGroup._id"))
-    parameters = relationship("ParameterGroup", foreign_keys=_parameter_group_id)
+    parameters = relationship("Parameter", secondary=dist_assoc)
     distribution_class = Column(String)
     __mapper_args__={
         "polymorphic_identity":"Distribution",
         "polymorphic_on":distribution_class
     }
-    #rooted = Column(Boolean)
     
     def log_likelihood(self, value):
         raise NotImplementedError("Abstract Class")
@@ -49,6 +48,8 @@ class NormalDistribution(Distribution):
     def __init__(self, mean, ivar, parameters=None):
         if parameters is None:
             parameters = []
+        elif len(parameters) > 1:
+            raise ValueError("a NormalDistribution is strictly one dimensional perhaps try using VectorNormalDistribution instead")
         self.parameters=parameters
         self.mean = np.asarray(mean)
         self.ivar = np.asarray(ivar)
@@ -60,17 +61,18 @@ class VectorNormalDistribution(Distribution):
         "polymorphic_identity":"NormalDistribution",
     }
     mean = Column(PickleType)
-    ivar = Column(PickleType)
+    var = Column(PickleType)
     
-    def __init__(self, mean, ivar, parameters=None):
+    def __init__(self, mean, var, parameters=None):
         if parameters is None:
             parameters = []
         self.parameters=parameters
         self.mean = np.asarray(mean)
-        self.ivar = np.asarray(ivar)
+        self.var = np.asarray(var)
     
     def realize(self):
         return np.random.normal(size=self.var.shape)*self.var
+
 
 class SumOfGaussians:#(ParameterDistribution):
     _relative_probs = Column(PickleType) #(n_gauss,) numpy array

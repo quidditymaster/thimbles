@@ -464,12 +464,13 @@ def detect_features(values,
     return msres, feature_mask
 
 
-def smoothed_mad_error(values, 
-                       smoothing_scale=3.0, 
-                       median_scale = 200,
-                       apply_poisson=True, 
-                       post_smooth=5.0,
-                       max_snr=1000.0,
+def smoothed_mad_error(
+        values, 
+        smoothing_scale=3.0, 
+        median_scale = 200,
+        apply_poisson=True, 
+        post_smooth=5.0,
+        max_snr=1000.0,
     ):
     """estimate the noise characteristics of an input data vector under the assumption
     that the underlying "true" value is slowly varying and the high frequency fluctuations
@@ -483,8 +484,7 @@ def smoothed_mad_error(values,
         values = values.flux
     
     #detect and reject perfectly flat regions and 2 pixels outside them
-    der = scipy.gradient(values)
-    sec_der = scipy.gradient(der)
+    sec_der = scipy.gradient(scipy.gradient(values))
     good_mask *= filters.uniform_filter(np.abs(sec_der) > 0, 3) > 0
     
     #smooth the flux accross the accepted fluxes
@@ -506,10 +506,9 @@ def smoothed_mad_error(values,
     else:
         var = char_sigma**2
     #put an upper limit on detected snr
-    var += np.clip(var, 0.0, (values*max_snr)**2)
-    new_inv_var = np.where(good_mask, 1.0/var, 0.0)
-    new_inv_var = clean_inverse_variances(new_inv_var)
-    return new_inv_var
+    var = np.where(np.abs(values)**2/var < max_snr**2, var, 1.0/max_snr**2)
+    #var = clean_variances(var)
+    return var
 
 @task(result_name="noise_estimate")
 def estimate_spectrum_noise(
@@ -521,9 +520,9 @@ def estimate_spectrum_noise(
         max_snr=1000.0,
         overwrite_noise=False,
 ):
-    sm_ivar = smoothed_mad_error(spectrum.flux, smoothing_scale=smoothing_scale, median_scale=median_scale, apply_poisson=apply_poisson, post_smooth=post_smooth, max_snr=max_snr)
+    sm_var = smoothed_mad_error(spectrum.flux, smoothing_scale=smoothing_scale, median_scale=median_scale, apply_poisson=apply_poisson, post_smooth=post_smooth, max_snr=max_snr)
     if overwrite_noise:
-        spectrum.ivar = sm_ivar
+        spectrum.var = sm_var
 
 @task()
 def min_delta_bins(x, min_delta, target_n=1, forced_breaks=None):

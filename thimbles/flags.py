@@ -73,16 +73,6 @@ class FlagSpace(object):
 
 class Flags(object):
     
-    def __init__(self, flag_space, flag_int=None):
-        """
-        """
-        #the internal integer representation of our flag set
-        self.flag_space = flag_space
-        if flag_int is None:
-            flag_int = self.flag_space.default_int
-        #TODO: allow flags also to be initialized with boolean dicts
-        self.flag_int = int(flag_int)
-    
     def __getitem__(self, flag_name):
         return bool(self.flag_space[flag_name] & self.flag_int)
     
@@ -108,9 +98,12 @@ feature_flag_space.add_dimension("fiducial", bit_index=0, default=True)
 
 class FeatureFlags(Flags, Base, ThimblesTable):
     flag_int= Column(Integer)
+    flag_space = feature_flag_space
     
     def __init__(self, flag_int=None):
-        super(FeatureFlags, self).__init__(feature_flag_space, flag_int)
+        if flag_int is None:
+            flag_int = self.flag_space.default_int
+        self.flag_int = flag_int
 
 
 spectrum_flag_space = FlagSpace()
@@ -123,7 +116,9 @@ spectrum_flag_space.add_dimension("sky", bit_index=4)
 
 class SpectrumFlags(Flags, ThimblesTable, Base):
     flag_int= Column(Integer)    
+    flag_space = spectrum_flag_space
     
     def __init__(self, flag_int=None):
-        #ThimblesTable.__init__(self)
-        Flags.__init__(self, spectrum_flag_space, flag_int)
+        if flag_int is None:
+            flag_int = self.flag_space.default_int
+        self.flag_int = flag_int

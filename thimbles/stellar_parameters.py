@@ -62,10 +62,8 @@ class Star(Source):
     _stellar_parameters_id = Column(Integer, ForeignKey("StellarParameters._id"))
     stellar_parameters = relationship("StellarParameters", backref="star", uselist=False)
     
-    def __init__(self, name=None, ra=None, dec=None, stellar_parameters=None):
-        self.name = name
-        self.ra = ra
-        self.dec = dec
+    def __init__(self, name=None, ra=None, dec=None, stellar_parameters=None, info=None):
+        Source.__init__(self, name=name, ra=ra, dec=dec, info=info)
         if stellar_parameters is None:
             stellar_parameters = StellarParameters()
         self.stellar_parameters = stellar_parameters

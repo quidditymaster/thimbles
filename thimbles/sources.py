@@ -11,12 +11,15 @@ class Source(Base, ThimblesTable):
     name = Column(String)
     ra = Column(Float)
     dec = Column(Float)
+    info = Column(PickleType)
     
-    def __init__(self, name=None, ra=None, dec=None):
+    def __init__(self, name=None, ra=None, dec=None, info=None):
         self.name = name
         self.ra=ra
         self.dec=dec
-
+        if info is None:
+            info = {}
+        self.info = {}
 
 grouping_assoc = sa.Table(
     "source_group_assoc", 

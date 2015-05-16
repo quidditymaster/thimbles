@@ -121,7 +121,7 @@ def from_w0 (header):
         w0 = header['W0'] 
         wpc = header['WPC']
     except KeyError as e:
-        raise IncompatibleWavelengthSolution(e.message)
+        raise IncompatibleWavelengthSolution()
     warnings.warn("First time using W0 and WPC, check output of wavelength/flux")
     # create the pixels for naxis1
     pixels = np.arange(naxis1)+1
@@ -231,7 +231,7 @@ def from_crvl (header):
         naxis1 = header['NAXIS1']
         naxis2 = header['NAXIS2']
     except KeyError as e:
-        raise IncompatibleWavelengthSolution(e.message)    
+        raise IncompatibleWavelengthSolution()    
     # pixels from NAXIS1        
     pixels = np.arange(naxis1)+1
     
@@ -304,7 +304,7 @@ def from_makee_wv (header):
         naxis1 = header['NAXIS1']
         naxis2 = header['NAXIS2']
     except KeyError as e:
-        raise IncompatibleWavelengthSolution(e.message)        
+        raise IncompatibleWavelengthSolution()        
     # pixels from NAXIS1      
     pixels = np.arange(naxis1)+1
     
@@ -627,7 +627,7 @@ def _wcs_arguments_to_dict (value,lower=False):
     key = value[equals[-2]+1:equals[-1]].split()[-1]
     val = value[equals[-1]+1:]
     parsed[key] = val.strip().replace('"',"")
-        
+    
     return parsed
 
 def _parse_wcs_keywords (header,base="WAT2_",lower=False):
@@ -657,7 +657,7 @@ def from_wcs (header):
         naxis1 = header['naxis1']
         naxis2 = header['naxis2']
     except KeyError as e:
-        raise IncompatibleWavelengthSolution(e.message)
+        raise IncompatibleWavelengthSolution()
     
     # check the format of the wavelength solution    
     wat0 = _parse_wcs_keywords(header,'WAT0_',lower=True) # WAT0_001 
@@ -841,7 +841,7 @@ def from_spectre (header):
         # get all history tags from the header
         histories = header['HISTORY']        
     except KeyError as e:
-        raise IncompatibleWavelengthSolution(e.message)    
+        raise IncompatibleWavelengthSolution()    
     # parse all the history tags
     spectre_history = _parse_spectre_history(histories)
     # is the parsed history appropriate?

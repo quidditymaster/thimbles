@@ -953,13 +953,16 @@ class ForegroundTransitionListWidget(QtGui.QWidget):
         self.selection.transitions.foreground.set_selection_model(self.table_view.selectionModel())
         table_selection = self.table_view.selectionModel()
         layout.addWidget(self.table_view, 1, 0, 1, 3)
-        self.inject_btn = QtGui.QPushButton("group+")
+        self.inject_btn = QtGui.QPushButton("add to group")
         self.inject_btn.clicked.connect(self.on_inject)
         layout.addWidget(self.inject_btn, 2, 0, 1, 1)
-        self.remove_btn = QtGui.QPushButton("group-")
+        self.remove_btn = QtGui.QPushButton("remove from group")
         self.remove_btn.clicked.connect(self.on_remove)
         layout.addWidget(self.remove_btn, 2, 1, 1, 1)
-    
+        self.select_all_btn = QtGui.QPushButton("select all")
+        self.select_all_btn.clicked.connect(self.on_select_all)
+        layout.addWidget(self.select_all_btn, 2, 2, 1, 1)    
+
     @Slot(list)
     def set_transition_constraints(self, constraint_list):
         self.table_model.beginResetModel()
@@ -1043,6 +1046,12 @@ class ForegroundTransitionListWidget(QtGui.QWidget):
                     "{} transitions added; {} empty groups purged".format(len(new_trans), len(groups_to_purge)))
             else:
                 sbar.showMessage("all selected transitions already in selected group!")
+    
+    def on_select_all(self):
+        n_foreground = len(self.selection.transitions.foreground.values)
+        focus_idxs = range(n_foreground)
+        self.selection.transitions.foreground.set_focus(focus_idxs)
+
 
 class GroupSelectionWidget(QtGui.QWidget):
     

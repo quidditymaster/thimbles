@@ -4,46 +4,6 @@ import scipy
 from scipy.special import erf, erfinv
 from scipy import ndimage
 
-def running_acorr(arr, avg=None, window_sigma=5, ncorr=21, mode="reflect"):
-    """
-    generate a running auto-correlation estimate.
-    
-    parameters
-    arr: numpy ndarray
-      the data array to be autocorrelated  
-    avg: function, numpy array, float or None
-      The running mean of the data in arr.
-      if avg is a callable it will be called on arr and the result treated as 
-      the running mean. If avg is None the median value of arr will be used.
-    window_sigma: float
-      the width of the gaussian filter to use to obtain a local estimate
-      of the correlation E[(arr-avg)_i*(arr-avg)_i+lag]
-    """
-    gauss_filter = ndimage.filters.gaussian_filter
-    assert ncorr >= 1
-    npts = len(arr)
-    if avg is None:
-        avg = np.median(arr)
-    if hasattr(avg, "__call__"):
-        avg = avg(arr)
-    diff = arr - avg
-    acorr_out = np.zeros((npts, 2*ncorr+1))
-    acorr_out[:, ncorr] = gauss_filter(diff**2, sigma=window_sigma, mode=mode)
-    for i in range(1, ncorr+1):
-        diff_prod = gauss_filter(diff[i:]*diff[:-i], sigma=window_sigma, mode=mode)
-        lb_out = i//2
-        ub_out = npts-i//2
-        if i % 2 == 1:
-            if (i-1) % 4 == 1:
-                acorr_out[lb_out:ub_out-1, ncorr-i] = diff_prod 
-                acorr_out[lb_out+1:ub_out, ncorr+i] = diff_prod
-            else:
-                acorr_out[lb_out+1:ub_out, ncorr-i] = diff_prod 
-                acorr_out[lb_out:ub_out-1, ncorr+i] = diff_prod
-        else:
-            acorr_out[lb_out:ub_out, ncorr-i] = diff_prod
-            acorr_out[lb_out:ub_out, ncorr+i] = diff_prod
-    return acorr_out
 
 def max_norm(spectrum):
     return np.repeat(np.max(spectrum.flux), len(spectrum))

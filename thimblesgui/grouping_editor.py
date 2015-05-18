@@ -1403,7 +1403,7 @@ class GroupingStandardEditor(QtGui.QMainWindow):
                 twvs = [t.wv for t in translist]
                 min_wv = np.min(twvs)
                 max_wv = np.max(twvs)
-                delta_wv = 0.0001*max_wv
+                delta_wv = 0.001*max_wv
                 self.flux_display.ax.set_xlim(min_wv-delta_wv, max_wv+delta_wv)
     
     @Slot(list)

@@ -955,6 +955,24 @@ def cache_decorator (cache,key):
         return inner
     return outer
 
+def vac_to_air(vac_wvs):
+    """
+    following the vald conversion 
+    http://www.astro.uu.se/valdwiki/Air-to-vacuum%20conversion
+    """
+    s = vac_wvs/1.0e4
+    n = 1 + 0.0000834254 + 0.02406147 / (130 - s**2) + 0.00015998 / (38.9 - s**2)
+    return vac_wvs/n
+    
+def air_to_vac(air_wvs):
+    """
+    following the vald conversion
+    http://www.astro.uu.se/valdwiki/Air-to-vacuum%20conversion
+    """
+    s = air_wvs/1.0e4
+    n = 1 + 0.00008336624212083 + 0.02408926869968 / (130.1065924522 - s**2) + 0.0001599740894897 / (38.92568793293 - s**2)
+    return air_wvs*n
+    
 def vac_to_air_sdss(vac_wvs):
     return vac_wvs/(1.0 + 2.735182e-4 + 131.4182 /vac_wvs**2 + 2.76249e8/vac_wvs**4)
 

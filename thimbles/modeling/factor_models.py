@@ -41,6 +41,16 @@ class PickleParameter(Parameter):
         self._value = value
 
 
+class IntegerParameter(Parameter):
+    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"FloatParameter",
+    }
+    _value = Column(Integer)
+
+    def __init__(self, value=None):
+        self._value = value
+
 class FloatParameter(Parameter):
     _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
     __mapper_args__={

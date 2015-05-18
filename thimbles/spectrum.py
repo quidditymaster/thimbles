@@ -615,6 +615,30 @@ def divide_spectra(
     return tmb.Spectrum(target_wvs, out_flux, out_ivar)
 
 
+class SamplingModel(tmb.modeling.Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"SamplingModel",
+    }
+    
+    def __init__(self, output_p, input_wv_soln, output_wv_soln):
+        self.output_p = output_p
+        self.add_input("input_wvs", input_wv_soln.coordinates_p)
+        self.add_input("input_lsf", input_wv_soln.lsf_p)
+        self.add_input("output_wvs", output_wv_soln.coordinates_p)
+        self.add_input("output_lsf", output_wv_soln.lsf_p)  
+        
+        self.output_wv_soln = output_wv_soln
+        self.input_wv_soln = input_wv_soln
+    
+    def __call__(self, vprep=None):
+        vdict = self.get_vdict(vprep)
+        x_in = vdict[self.inputs["input_wvs"]]
+        x_out = vdict[self.inputs["output_wvs"]]
+        lsf_in = vdict[self.inputs["input_lsf"]]
+        lsf_out = vdict[self.inputs["output_lsf"]]
+        return tmb.resampling.resampling_matrix(x_in, x_out, lsf_in, lsf_out)
+
 class RootSpectrumModel(tmb.modeling.Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__={
@@ -624,11 +648,13 @@ class RootSpectrumModel(tmb.modeling.Model):
     def __init__(self, spectrum, model_wv_soln=None):
         self.output_p = spectrum.flux_p
         self.add_input("norm", FluxParameter(spec.wv_sample))
-        self.add_input("sampling_matrix", Parameter())
+        samp_mat_p = Parameter()
+        self.add_input("sampling_matrix", samp_mat_p)
+        #generate the lsf+sampling matrix modeler.
         self.add_input("sky_add", FluxParameter(model_wv_soln))
         self.add_input("sky_mul", FluxParameter(model_wv_soln))
         self.add_input("broadening_matrix", Parameter())
-        self.add_input("continuum", Parameter())
+        self.add_input("continuum", FluxParameter(model_wv_soln))
         self.add_input("features", FluxParameter(model_wv_soln))
     
     def __call__(self, vprep):

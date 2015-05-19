@@ -141,18 +141,70 @@ class TestSpectrum (unittest.TestCase):
         perfect_rebin = self.flux_slope*rebin_wvs[2:-2]+self.flux_offset
         np.testing.assert_almost_equal(rebin_spec.flux[2:-2], perfect_rebin)
 
-core_prop_names = \
-"""
-spectrograph_multiplier    
-spectrograph_adder
-sampling_matrix_multiplier
-inner_multiplier
-inner_adder
-broadening_matrix_multiplier
-feature_multiplier
-feature_adder
-""".split()
 
+class TestRVSetting(unittest.TestCase):
+    min_wv = 5000
+    max_wv = 6000
+    npts = 100
+    
+    def setUp(self):
+        pass
+    
+    def make_spec(self, rv, dh, rv_shifted, dh_shifted):
+        return tmb.Spectrum(
+            np.linspace(5000, 6000, 100), 
+            np.ones(100), 
+            np.ones(100), 
+            rv=rv, 
+            delta_helio=dh, 
+            rv_shifted=rv_shifted, 
+            helio_shifted=dh_shifted
+        )
+    
+    def test_set_rv_shifts(self):
+        spec = self.make_spec(0.0, 0.0, rv_shifted=True, dh_shifted=True) 
+        pre_shift_wvs = spec.wvs
+        shift_vel = 100
+        spec.set_rv(shift_vel)
+        wvs = spec.wvs
+        assert wvs[0] < self.min_wv
+        assert wvs[-1] < self.max_wv
+        assert wvs[0] < wvs[-1]
+        np.testing.assert_almost_equal(wvs, pre_shift_wvs*(1.0-shift_vel/tmb.speed_of_light))
+        spec.set_rv(-shift_vel)
+        wvs = spec.wvs
+        assert wvs[0] > self.min_wv
+        assert wvs[-1] > self.max_wv
+        assert wvs[-1] > wvs[0]
+        np.testing.assert_almost_equal(wvs, pre_shift_wvs*(1.0+shift_vel/tmb.speed_of_light))
+    
+    def test_initialize_rv(self):
+        shift_vel = 100.0
+        spec = self.make_spec(rv=shift_vel, dh=0.0, rv_shifted=True, dh_shifted=True)
+        rest_min = self.min_wv
+        obs_min = self.min_wv/(1.0-shift_vel/tmb.speed_of_light)
+        np.testing.assert_almost_equal(rest_min, spec.wvs[0])
+        rest_indexer = spec.wv_sample.wv_soln.indexer
+        spec_min_p = rest_indexer.inputs["min"][0]
+        obs_min_p = spec_min_p.mapped_models[0].inputs["wvs"][0]
+        np.testing.assert_almost_equal(obs_min, obs_min_p.value)
+        spec_min_p.invalidate()
+        np.testing.assert_almost_equal(rest_min, spec_min_p.value)
+    
+    def test_initialize_vs_set_rv(self):
+        shift_vel = 100.0
+        spec1 = self.make_spec(rv=0.0, dh=0.0, rv_shifted=True, dh_shifted=True)
+        spec1.set_rv(shift_vel)
+        spec2 = self.make_spec(rv=shift_vel, dh=0.0, rv_shifted=False, dh_shifted=True)
+        np.testing.assert_almost_equal(spec1.wvs, spec2.wvs)
+
+    def test_initialize_vs_set_dh(self):
+        shift_vel = 100.0
+        spec1 = self.make_spec(rv=0.0, dh=0.0, rv_shifted=True, dh_shifted=True)
+        spec1.wv_sample.wv_soln.delta_helio_p.value = shift_vel
+        spec2 = self.make_spec(rv=0.0, dh=shift_vel, rv_shifted=True, dh_shifted=False)
+        np.testing.assert_almost_equal(spec1.wvs, spec2.wvs)
+        
 class TestRootSpectrumModel(unittest.TestCase):
     
     def setUp(self):

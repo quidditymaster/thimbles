@@ -137,18 +137,14 @@ class WavelengthSolution(ThimblesTable, Base):
         del delta_helio
         
         wavelengths = np.asarray(wavelengths)
-        shift_rel_obs = 0.0
-        shift_rel_rest = 0.0
-        if helio_shifted:
-            shift_rel_obs += self.delta_helio_p.value
-        else:
-            shift_rel_rest += self.delta_helio_p.value
+        applied_vel = 0.0
+        to_apply = self.rv_p.value + self.delta_helio_p.value
         if rv_shifted:
-            shift_rel_obs += self.rv_p.value
-        else:
-            shift_rel_rest += self.rv_p.value
-        rest_wvs = wavelengths*(1.0-shift_rel_rest/tmb.speed_of_light)
-        obs_wvs = wavelengths*(1.0-shift_rel_obs/tmb.speed_of_light)
+            applied_vel += self.rv_p.value
+        if helio_shifted:
+            applied_vel += self.delta_helio_p.value
+        obs_wvs = wavelengths/(1.0-applied_vel/tmb.speed_of_light)
+        rest_wvs = obs_wvs*(1.0-to_apply/tmb.speed_of_light)
         indexer = as_coordinatization(rest_wvs)
         self.indexer = indexer
         

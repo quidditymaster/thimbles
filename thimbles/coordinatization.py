@@ -29,7 +29,7 @@ def centers_to_edges(centers):
     edges[-1] = centers[-1] + 0.5*(centers[-1] - centers[-2])
     return edges
 
-def as_coordinatization(coordinates, delta_max=1e-10, force_linear=False, force_log_linear=False):
+def as_coordinatization(coordinates, delta_max=1e-5, force_linear=False, force_log_linear=False):
     """convert a set of coordinates into a coordinatization
     or if passed a coordinatization return it. This function detects
     whether the given coordinates are sufficiently close to 

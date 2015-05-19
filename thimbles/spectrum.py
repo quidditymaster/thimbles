@@ -686,7 +686,9 @@ class RootSpectrumModel(tmb.modeling.Model):
     
     def __init__(self, spectrum, model_wv_soln=None):
         self.output_p = spectrum.flux_p
-        self.add_input("norm", FluxParameter(spec.wv_sample))
+        spec_wv_soln = spectrum.wv_sample.wv_soln
+        model_wv_soln = as_wavelength_solution(model_wv_soln)
+        self.add_input("norm", FluxParameter(spec_wv_soln))
         #generate the lsf+sampling matrix modeler
         samp_mat_p = Parameter()
         self.add_input("sampling_matrix", samp_mat_p)

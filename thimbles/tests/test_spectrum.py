@@ -206,16 +206,21 @@ class TestRVSetting(unittest.TestCase):
         np.testing.assert_almost_equal(spec1.wvs, spec2.wvs)
         
 class TestRootSpectrumModel(unittest.TestCase):
+    min_wv = 100
+    max_wv = 200
+    npts_spec = 30
+    npts_model = 100    
     
     def setUp(self):
-        min_wv = 100
-        max_wv = 200
-        npts_spec = 30
-        npts_model = 100
-        spec_wvs = np.linspace(min_wv, max_wv, npts_spec)
-        model_wvs = np.linspace(min_wv, max_wv, npts_model)
-        self.spec = tmb.Spectrum(spec_wvs, np.ones(npts_spec), np.ones(npts_spec))
-        self.spec_core_sub = tmb.spectrum.RootSpectrumModel(self.spec, model_wvs)
+        spec_wvs = np.linspace(self.min_wv, self.max_wv, self.npts_spec)
+        model_wvs = np.linspace(self.min_wv, self.max_wv, self.npts_model)
+        self.spec = tmb.Spectrum(spec_wvs, np.ones(self.npts_spec), np.ones(self.npts_spec))
+        self.root_mod = tmb.spectrum.RootSpectrumModel(self.spec, model_wvs)
+
+    def test_sampling_matrix(self):
+        samp_mat_p ,= self.root_mod.inputs["sampling_matrix"]
+        res = samp_mat_p.value*np.ones(self.npts_model)
+        np.testing.assert_almost_equal(res, np.ones(self.npts_spec))
 
 
 if __name__ == "__main__":

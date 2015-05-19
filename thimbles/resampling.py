@@ -61,9 +61,10 @@ def pixel_integrated_lsf(
     
     lsf_in = lsf
     #interpolate the input lsf onto the output lsf
-    in_to_out = x_out.interpolant_sampling_matrix(in_coords)
+    in_to_out = x_in.interpolant_sampling_matrix(out_coords)
+    if not hasattr(lsf_in, "shape"):
+        lsf_in = np.repeat(lsf_in, len(x_in))
     lsf_out = in_to_out*lsf_in
-    
     #calculate needed bandwidth in rows for each output pixel
     max_lsf_delt = lsf_out*lsf_cut
     max_out_idxs = x_out.get_index(out_coords+max_lsf_delt)
@@ -171,7 +172,7 @@ def resampling_matrix(
     out_coords = x_out.coordinates
     
     if lsf_cdf is None:
-        lsf_cdf = approx_normal_cdf
+        lsf_cdf = scipy.stats.norm.cdf
     
     if not hasattr(lsf_in, "shape"):
         lsf_in = np.repeat(lsf_in, len(x_in))
@@ -187,7 +188,7 @@ def resampling_matrix(
         dx_out = scipy.gradient(out_coords)
         lsf_out *= dx_out
     
-    out_to_in = x_in.interpolant_sampling_matrix(x_out.coordinates)
+    out_to_in = x_out.interpolant_sampling_matrix(x_in.coordinates)
     iterped_lsf_out = out_to_in*lsf_out
     
     diff_lsf_sq = lsf_in**2 - iterped_lsf_out**2

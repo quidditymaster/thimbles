@@ -51,10 +51,28 @@ class RadialVelocityParameter(Parameter):
     def __init__(self, value):
         self._value = value
 
+class RVShiftModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"RVShiftModel",
+    }
+    
+    def __init__(self, output_p, wvs_p, rv_p, delta_helio_p):
+        self.output_p = output_p
+        self.add_input("wvs", wvs_p)
+        self.add_input("rv_params", rv_p)
+        self.add_input("rv_params", delta_helio_p)
+    
+    def __call__(self, vprep=None):
+        vdict = self.get_vdict(vprep)
+        wvs = vdict[self.inputs["wvs"][0]]
+        rv_tot = sum([vdict[p] for p in self.inputs["rv_params"]])
+        return wvs*(1.0-rv_tot/tmb.speed_of_light)
+
 
 class WavelengthSolution(ThimblesTable, Base):
     _indexer_id = Column(Integer, ForeignKey("Coordinatization._id"))
-    indexer = relationship("Coordinatization")
+    indexer = relationship("Coordinatization", foreign_keys=_indexer_id)
     
     #the parameters
     _rv_id = Column(Integer, ForeignKey("Parameter._id"))
@@ -119,19 +137,47 @@ class WavelengthSolution(ThimblesTable, Base):
         del delta_helio
         
         wavelengths = np.asarray(wavelengths)
-        shift_to_apply = 0.0
-        if not helio_shifted:
-            shift_to_apply += self.delta_helio_p.value
-        if not rv_shifted:
-            shift_to_apply += self.rv_p.value
-        fractional_shift = shift_to_apply/speed_of_light
-        correction = 1.0/(1.0 + fractional_shift)
-        wavelengths = wavelengths * correction
-        self.indexer = as_coordinatization(wavelengths) 
+        shift_rel_obs = 0.0
+        shift_rel_rest = 0.0
+        if helio_shifted:
+            shift_rel_obs += self.delta_helio_p.value
+        else:
+            shift_rel_rest += self.delta_helio_p.value
+        if rv_shifted:
+            shift_rel_obs += self.rv_p.value
+        else:
+            shift_rel_rest += self.rv_p.value
+        rest_wvs = wavelengths*(1.0-shift_rel_rest/tmb.speed_of_light)
+        obs_wvs = wavelengths*(1.0-shift_rel_obs/tmb.speed_of_light)
+        indexer = as_coordinatization(rest_wvs)
+        self.indexer = indexer
+        
+        coo_mod = tmb.coordinatization
+        if isinstance(indexer, coo_mod.ArbitraryCoordinatization):
+            obs_wvs_p = PickleParameter(obs_wvs)
+            shift_mod = RVShiftModel(
+                output_p=indexer.inputs["coordinates"][0],
+                wvs_p=obs_wvs_p,
+                rv_p = self.rv_p,
+                delta_helio_p=self.delta_helio_p
+            )
+        elif isinstance(indexer, (coo_mod.LinearCoordinatization, coo_mod.LogLinearCoordinatization)):
+            min_shift_mod = RVShiftModel(
+                output_p=indexer.inputs["min"][0],
+                wvs_p=FloatParameter(obs_wvs[0]),
+                rv_p = self.rv_p,
+                delta_helio_p = self.delta_helio_p,
+            )
+            max_shift_mod = RVShiftModel(
+                output_p=indexer.inputs["max"][0],
+                wvs_p=FloatParameter(obs_wvs[-1]),
+                rv_p = self.rv_p,
+                delta_helio_p = self.delta_helio_p,
+            )
+        
         
         if lsf is None:
             lsf = np.ones(len(self))
-        
         if lsf_degree == "max":
             lsf_p = PickleParameter(lsf)
         elif isinstance(lsf_degree, int):
@@ -522,7 +568,7 @@ class Spectrum(ThimblesTable, Base):
             return global_indexes - self.wv_sample.start
         else:
             return global_indexes
-        
+    
     def normalized(self, norm=None, **kwargs):
         if norm is None:
             if not self.flags["normalized"]:
@@ -623,20 +669,17 @@ class SamplingModel(tmb.modeling.Model):
     
     def __init__(self, output_p, input_wv_soln, output_wv_soln):
         self.output_p = output_p
-        self.add_input("input_wvs", input_wv_soln.coordinates_p)
+        self.add_input("input_wvs", input_wv_soln.indexer.output_p)
         self.add_input("input_lsf", input_wv_soln.lsf_p)
-        self.add_input("output_wvs", output_wv_soln.coordinates_p)
+        self.add_input("output_wvs", output_wv_soln.indexer.output_p)
         self.add_input("output_lsf", output_wv_soln.lsf_p)  
-        
-        self.output_wv_soln = output_wv_soln
-        self.input_wv_soln = input_wv_soln
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
-        x_in = vdict[self.inputs["input_wvs"]]
-        x_out = vdict[self.inputs["output_wvs"]]
-        lsf_in = vdict[self.inputs["input_lsf"]]
-        lsf_out = vdict[self.inputs["output_lsf"]]
+        x_in = vdict[self.inputs["input_wvs"][0]]
+        x_out = vdict[self.inputs["output_wvs"][0]]
+        lsf_in = vdict[self.inputs["input_lsf"][0]]
+        lsf_out = vdict[self.inputs["output_lsf"][0]]
         return tmb.resampling.resampling_matrix(x_in, x_out, lsf_in, lsf_out)
 
 class RootSpectrumModel(tmb.modeling.Model):
@@ -648,9 +691,14 @@ class RootSpectrumModel(tmb.modeling.Model):
     def __init__(self, spectrum, model_wv_soln=None):
         self.output_p = spectrum.flux_p
         self.add_input("norm", FluxParameter(spec.wv_sample))
+        #generate the lsf+sampling matrix modeler
         samp_mat_p = Parameter()
         self.add_input("sampling_matrix", samp_mat_p)
-        #generate the lsf+sampling matrix modeler.
+        samp_mod = SamplingModel(
+            output_p=samp_mat_p,
+            input_wv_soln=model_wv_soln, 
+            output_wv_soln=spectrum.wv_sample.wv_soln
+        )
         self.add_input("sky_add", FluxParameter(model_wv_soln))
         self.add_input("sky_mul", FluxParameter(model_wv_soln))
         self.add_input("broadening_matrix", Parameter())
@@ -669,4 +717,3 @@ class RootSpectrumModel(tmb.modeling.Model):
         
         pre_samp = sky_add*sky_mul*(bmat*(continuum*features))
         return norm*(samp_mat*(pre_samp))
-        

@@ -151,7 +151,6 @@ class Coordinatization(tmb.modeling.Model):
 
 class ArbitraryCoordinatization(Coordinatization):
     _id = Column(Integer, ForeignKey("Coordinatization._id"), primary_key=True)
-    coordinates = Column(PickleType)
     _start_dx = None
     _end_dx = None
     __mapper_args__={

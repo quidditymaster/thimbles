@@ -47,7 +47,7 @@ class IntegerParameter(Parameter):
         "polymorphic_identity":"FloatParameter",
     }
     _value = Column(Integer)
-
+    
     def __init__(self, value=None):
         self._value = value
 
@@ -179,3 +179,13 @@ class IdentityMap(object):
     
     def __rsub__(self, other):
         return other
+
+def IdentityMapModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key)
+    __mapper_args__={
+        "polymorphic_identity":"IdentityMatrixModel",
+    }
+    
+    def __call__(self, vprep):
+        return IdentityMap()
+    

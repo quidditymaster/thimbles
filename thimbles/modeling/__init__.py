@@ -5,4 +5,4 @@
 from thimbles.modeling.parameters import Parameter, ParameterGroup
 from thimbles.modeling.models import Model
 from thimbles.modeling.distributions import Distribution
-from thimbles.modeling.factor_models import FloatParameter, PickleParameter, IntegerParameter
+from thimbles.modeling.factor_models import *

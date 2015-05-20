@@ -7,39 +7,14 @@ from thimbles.thimblesdb import Base, ThimblesTable
 from thimbles.modeling import Model, Parameter
 from thimbles.sqlaimports import *
 from thimbles.spectrum import FluxParameter
+from thimbles.modeling import PixelPolynomialModel
+import thimbles as tmb
 
-class BlazeCoefficientsParameter(Parameter):
-    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
-    __mapper_args__={
-        "polymorphic_identity":"BlazeCoefficientsParameter"
-    }
-    _value = Column(PickleType)
-    
-    def __init__(self, coeffs=None):
-        if coeffs is None:
-            coeffs = np.zeros(2, dtype=float)
-        self._value = coeffs
-
-
-class PolynomialBlazeModel(Model):
-    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
-    _coeffs_id = Column(Integer, ForeignKey("BlazeCoefficientsParameter._id"))
-    coeffs_p = relationship("BlazeCoefficientsParameter")
-    __mapper_args__={
-        "polymorphic_identity":"PolynomialBlazeModel",
-    }
-    
-    def __init__(self, generator=None):
-        bcp = BlazeCoefficientsParameter()
-        self.parameters = [bcp]
-        
-        
 
 class PiecewisePolynomialSpectrographEfficiencyModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     
     def __init__(self, spec_wvs, degree=3, n_max_part=5):
-        Model.__init__(self)
         self.wv = spec_wvs
         self.degree = degree
         self.n_max_part = n_max_part
@@ -67,15 +42,12 @@ class PiecewisePolynomialSpectrographEfficiencyModel(Model):
     def blaze(self):
         return np.dot(self._basis, self.coefficients)
     
-    #@parameter(free=True, scale=10.0, min=-np.inf, max=np.inf)
     def poly_coeffs_p(self):
         return self.coefficients
     
-    #@poly_coeffs_p.setter
     def set_poly_coeffs(self, value):
         self.coefficients = value
     
-    #@poly_coeffs_p.expander
     def parameter_expansion(self, input, **kwargs):
         return scipy.sparse.csc_matrix((self._basis*input.reshape((-1, 1))))
     
@@ -84,3 +56,66 @@ class PiecewisePolynomialSpectrographEfficiencyModel(Model):
         
     def __call__(self, input, **kwargs):
         return self.blaze()*input
+
+
+class SamplingModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"SamplingModel",
+    }
+    
+    def __init__(self, output_p, input_wv_soln, output_wv_soln):
+        self.output_p = output_p
+        self.add_input("input_wvs", input_wv_soln.indexer.output_p)
+        self.add_input("input_lsf", input_wv_soln.lsf_p)
+        self.add_input("output_wvs", output_wv_soln.indexer.output_p)
+        self.add_input("output_lsf", output_wv_soln.lsf_p)  
+    
+    def __call__(self, vprep=None):
+        vdict = self.get_vdict(vprep)
+        x_in = vdict[self.inputs["input_wvs"][0]]
+        x_out = vdict[self.inputs["output_wvs"][0]]
+        lsf_in = vdict[self.inputs["input_lsf"][0]]
+        lsf_out = vdict[self.inputs["output_lsf"][0]]
+        return tmb.resampling.resampling_matrix(x_in, x_out, lsf_in, lsf_out)
+
+
+class SpectrographModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"SpectrographModel",
+    }
+    
+    def __init__(
+            self, 
+            spectrum, 
+            model_wv_soln,
+            model_flux_p,
+            fine_norm_p = None,
+            samp_mat_p = None,
+    ):
+        self.output_p = spectrum.flux_p
+        spec_wv_soln = spectrum.wv_sample.wv_soln
+        model_wv_soln = tmb.as_wavelength_solution(model_wv_soln)
+        self.add_input("model_flux", model_flux_p)
+        
+        if fine_norm_p is None:
+            fine_norm_p = FluxParameter(spec_wv_soln, flux=spectrum.flux)
+            fine_norm_mod = PixelPolynomialModel(output_p=fine_norm_p)
+        self.add_input("fine_norm", fine_norm_p)
+        
+        if samp_mat_p is None:
+            samp_mat_p = Parameter()
+            samp_mod = SamplingModel(
+                output_p=samp_mat_p,
+                input_wv_soln=model_wv_soln, 
+                output_wv_soln=spectrum.wv_sample.wv_soln
+            )
+        self.add_input("sampling_matrix", samp_mat_p)
+    
+    def __call__(self, vprep=None):
+        vdict = self.get_vdict(vprep)
+        fine_norm = vdict[self.inputs["fine_norm"][0]]
+        samp_mat = vdict[self.inputs["sampling_matrix"][0]]
+        input_model = vdict[self.inputs["model_flux"][0]]
+        return fine_norm

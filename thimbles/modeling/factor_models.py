@@ -7,6 +7,15 @@ from thimbles.thimblesdb import HasName
 from thimbles.sqlaimports import *
 from functools import reduce
 
+__all__ = \
+"""
+FloatParameter
+PickleParameter
+IntegerParameter
+PixelPolynomialModel
+IdentityMap
+IdentityMapModel
+""".split()
 
 class MultiplierModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
@@ -118,38 +127,39 @@ class NegativeExponentialModel(Model):
 class PixelPolynomialModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__={
-        "polymorphic_identity":"PolynomialFluxModel",
+        "polymorphic_identity":"PixelPolynomialModel",
     }
-    center = Column(Float)
-    scale = Column(Float)
+    npts = Column(Integer)
     
     def __init__(
             self, 
             output_p,
             coeffs=None,
-            autofit=False,
-            center=None, 
-            scale=None, 
+            autofit=True,
+            degree=4,
     ):
         self.output_p = output_p
+        self.npts = len(self.output_p.value)
         wv_sample = output_p.wv_sample
         if coeffs is None:
-            coeffs = np.zeros(3)
-            coeffs[-1] = 1.0
+            if autofit:
+                x = self.get_x(wv_sample.pixels)
+                y = self.output_p.value
+                coeffs = np.polyfit(x, y, deg=degree)
+            else:
+                coeffs = np.zeros(degree)
+                coeffs[-1] = 1.0
         coeffs_p = PickleParameter(coeffs)
         self.add_input("coeffs", coeffs_p)
-        if center is None:
-            center = 0.5*(wv_sample.start + wv_sample.end)
-        self.center = center
-        if scale is None:
-            scale = max(0.25*(wv_sample.end - wv_sample.start), 1.0)
-        self.scale = scale
+    
+    def get_x(self, pixels):
+        return (pixels-self.npts)/self.npts
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
-        pix = self.output_p.wv_sample.pixels
+        pix = self.output_p.wv_sample.pixels.astype(float)
         coeffs ,= vdict[self.inputs["coeffs"]]
-        return np.polyval(coeffs, (pix-self.center)/self.scale)
+        return np.polyval(coeffs, self.get_x(pixels))
 
 
 class IdentityMap(object):

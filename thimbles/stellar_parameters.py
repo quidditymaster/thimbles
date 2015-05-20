@@ -63,7 +63,7 @@ class Star(Source):
     stellar_parameters = relationship("StellarParameters", backref="star", uselist=False)
     
     def __init__(self, name=None, ra=None, dec=None, stellar_parameters=None, info=None):
-        Source.__init__(self, name=name, ra=ra, dec=dec, info=info)
+        super(Star, self).__init__(name=name, ra=ra, dec=dec, info=info)
         if stellar_parameters is None:
             stellar_parameters = StellarParameters()
         self.stellar_parameters = stellar_parameters
@@ -112,6 +112,9 @@ class StellarParameters(ThimblesTable, Base):
             abundances = []
         self.abundances = abundances
     
+    def __repr__(self):
+        return "<Stellar Parameters Teff:{} log(g):{} [M/H]:{} Vmicro:{} Mass:{}>".format(self.teff, self.logg, self.metalicity, self.vmicro, self.mass)
+
     @property
     def teff(self):
         return self.teff_p.value

@@ -440,6 +440,9 @@ class LogLinearCoordinatization(Coordinatization):
         self.add_input("max", FloatParameter())
         self.output_p = Parameter()
         
+        min_p ,= self.inputs["min"]
+        max_p ,= self.inputs["max"]
+        
         if not (coordinates is None):
             if not all([(val is None) for val in [min, max, npts, R]]):
                 raise ValueError("if coordinates are specified none of min, max, npts or R may be")
@@ -449,35 +452,33 @@ class LogLinearCoordinatization(Coordinatization):
                 if any([val is None for val in [min, npts, R]]):
                     raise ValueError("three of min, max, npts, and dx must be specified")
                 raise NotImplementedError("haven't gotten to it yet")
-                self.min = min
+                min_p.value = min
                 #np.log(max/min)*R = npts
-                self.max = doot
+                max_p.value = doot
                 self.npts = npts
-                self.R = R
             elif min is None:
                 raise NotImplementedError("haven't gotten to it yet")
                 if any([val is None for val in [max, npts, R]]):
                     raise ValueError("three of min, max, npts, and dx must be specified")
-                self.max = max
-                self.min = self.max - np.abs(dx)*(npts-1)
+                max_p.value = max
+                min_p.value = max - np.abs(dx)*(npts-1)
                 self.npts = npts
-                self.R = R
             elif npts is None:
                 if any([val is None for val in [min, max, R]]):
                     raise ValueError("three of min, max, npts, and dx must be specified")
-                self.min = min
-                self.max = max
-                self.npts = int(round(np.log(self.max/self.min)*R))
+                min_p.value = min
+                max_p.value = max
+                self.npts = int(round(np.log(max/min)*R))
             elif R is None:
                 if not all([not (val is None) for val in [min, max, npts]]):
                     raise ValueError("three of min, max, npts, and dx must be specified")        
-                self.min = min
-                self.max = max
+                min_p.value = min
+                max_p.value = max
                 self.npts = npts
     
     def _from_coord_vec(self, coord_vec):
         self.min = coord_vec[0]
-        self.max = coord_vec[-1]
+        self.max= coord_vec[-1]
         self.npts = len(coord_vec)
     
     @property
@@ -486,7 +487,7 @@ class LogLinearCoordinatization(Coordinatization):
     
     @property
     def min(self):
-        return self.coordinates[0]
+        return self.inputs["min"][0].value
     
     @min.setter
     def min(self, value):
@@ -494,7 +495,7 @@ class LogLinearCoordinatization(Coordinatization):
     
     @property
     def max(self):
-        return self.coordinates[-1]
+        return self.inputs["max"][0].value
     
     @max.setter
     def max(self, value):

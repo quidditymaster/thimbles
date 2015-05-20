@@ -19,7 +19,7 @@ class Source(Base, ThimblesTable):
         self.dec=dec
         if info is None:
             info = {}
-        self.info = {}
+        self.info = info
 
 grouping_assoc = sa.Table(
     "source_group_assoc", 

@@ -105,7 +105,7 @@ class SharedGammaFeatureMatrixModel(Model):
 class RelativeStrengthMatrixModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__={
-        "polymorphic_identity":"GroupedFeatureMatrixModel"
+        "polymorphic_identity":"RelatveStrengthMatrixModel"
     }
     _grouping_standard_id = Column(Integer, ForeignKey("TransitionGroupingStandard._id"))
     grouping_standard = relationship("TransitionGroupingStandard")
@@ -144,7 +144,7 @@ class RelativeStrengthMatrixModel(Model):
                 ctrans_idx += 1
         out_shape = (ctrans_idx, len(groups))
         return scipy.sparse.csr_matrix((rel_strengths, (row_idxs, col_idxs)), shape=out_shape)
-    
+
 class GroupedFeatureMatrixModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__={

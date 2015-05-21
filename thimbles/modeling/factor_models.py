@@ -171,13 +171,15 @@ class PixelPolynomialModel(Model):
         coeffs_p = PickleParameter(coeffs)
         self.add_input("coeffs", coeffs_p)
     
-    def get_x(self, pixels):
+    def get_x(self, pixels=None):
+        if pixels is None:
+            pixels = np.arange(self.npts)
         return (pixels-self.npts)/self.npts
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
-        pix = self.output_p.wv_sample.pixels.astype(float)
-        coeffs ,= vdict[self.inputs["coeffs"]]
+        pixels = self.output_p.wv_sample.pixels.astype(float)
+        coeffs = vdict[self.inputs["coeffs"][0]]
         return np.polyval(coeffs, self.get_x(pixels))
 
 

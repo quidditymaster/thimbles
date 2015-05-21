@@ -601,8 +601,8 @@ def layered_median_mask(arr, n_layers=3, first_layer_width=31, last_layer_width=
     for layer_idx in range(n_layers):
         lw = layer_widths[layer_idx]
         masked_arr = marr[mask]
-        filtered = filters.median_filter(masked_arr, lw)
-        local_mad = filters.median_filter(np.abs(masked_arr-filtered), lw)
+        filtered = filters.median_filter(masked_arr, int(lw))
+        local_mad = filters.median_filter(np.abs(masked_arr-filtered), int(lw))
         mask[mask] = masked_arr >= (filtered - rejection_sigma*1.4*local_mad)
     return mask
 

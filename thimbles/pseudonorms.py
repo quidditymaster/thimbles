@@ -3,7 +3,7 @@ import numpy as np
 import scipy
 from scipy.special import erf, erfinv
 from scipy import ndimage
-
+import thimbles as tmb
 
 def max_norm(spectrum):
     return np.repeat(np.max(spectrum.flux), len(spectrum))
@@ -111,13 +111,13 @@ def feature_masked_partitioned_lad_norm(
     """
     #import matplotlib.pyplot as plt
     #import pdb; pdb.set_trace()
-    wavelengths = spectrum.get_wvs()
+    wavelengths = spectrum.wvs
     pix_delta = np.median(scipy.gradient(wavelengths))
     pscale = partition_scale*pix_delta
     flux = spectrum.flux
-    variance = spectrum.get_var()
-    inv_var = spectrum.get_inv_var()
-    hmask = hydrogen.get_H_mask(wavelengths, H_mask_radius)
+    variance = spectrum.var
+    inv_var = spectrum.ivar
+    hmask = tmb.hydrogen.get_H_mask(wavelengths, H_mask_radius)
     good_mask = (inv_var > 0)*(flux > 0)*hmask
     #min_stats, fmask = detect_features(flux, variance, 
     #                                   reject_fraction=reject_fraction,
@@ -128,13 +128,13 @@ def feature_masked_partitioned_lad_norm(
     #generate a layered median mask.
     if mask_kwargs is None:
         mask_kwargs = {'n_layers':3, 'first_layer_width':201, 'last_layer_width':11, 'rejection_sigma':1.5} 
-    fmask = layered_median_mask(flux, **mask_kwargs)*good_mask
+    fmask = tmb.utils.misc.layered_median_mask(flux, **mask_kwargs)*good_mask
     
     mwv = wavelengths[fmask].copy()
     mflux = flux[fmask].copy()
     minv = inv_var[fmask]
-    break_wvs = min_delta_bins(mwv, min_delta=pscale, target_n=20*(poly_order+1)+10)
-    pp_gen = piecewise_polynomial.RCPPB(poly_order=poly_order, control_points=break_wvs)
+    break_wvs = tmb.utils.misc.min_delta_bins(mwv, min_delta=pscale, target_n=20*(poly_order+1)+10)
+    pp_gen = tmb.utils.piecewise_polynomial.RCPPB(poly_order=poly_order, control_points=break_wvs)
     if norm_hints:
         hint_wvs, hint_flux, hint_inv_var = norm_hints
         mwv = np.hstack((mwv, hint_wvs))
@@ -145,17 +145,19 @@ def feature_masked_partitioned_lad_norm(
     in_sig = 1.0/np.sqrt(minv)
     med_sig = np.median(in_sig)
     print(med_sig, "med sig")
-    fit_coeffs = pseudo_huber_irls(ppol_basis, mflux, 
-                      sigma=in_sig, 
-                      gamma=2.0*med_sig, 
-                      max_iter=10, conv_thresh=1e-4)
+    fit_coeffs = tmb.utils.misc.irls(
+        ppol_basis, mflux, 
+        sigma=in_sig, 
+        max_iter=10, 
+        resid_delta_thresh=1e-2
+    )
     n_polys = len(break_wvs) + 1
     n_coeffs = poly_order+1
     out_coeffs = np.zeros((n_polys, n_coeffs))
     for basis_idx in range(pp_gen.n_basis):
         c_coeffs = pp_gen.basis_coefficients[basis_idx].reshape((n_polys, n_coeffs))
         out_coeffs += c_coeffs*fit_coeffs[basis_idx]
-    continuum_ppol = piecewise_polynomial.PiecewisePolynomial(out_coeffs, break_wvs, centers=pp_gen.centers, scales=pp_gen.scales, bounds=pp_gen.bounds)
+    continuum_ppol = tmb.utils.piecewise_polynomial.PiecewisePolynomial(out_coeffs, break_wvs, centers=pp_gen.centers, scales=pp_gen.scales, bounds=pp_gen.bounds)
     approx_norm = continuum_ppol(wavelengths)
     if overwrite:
         spectrum.norm = approx_norm

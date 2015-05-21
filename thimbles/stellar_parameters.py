@@ -113,7 +113,7 @@ class StellarParameters(ThimblesTable, Base):
         self.abundances = abundances
     
     def __repr__(self):
-        return "<Stellar Parameters Teff:{} log(g):{} [M/H]:{} Vmicro:{} Mass:{}>".format(self.teff, self.logg, self.metalicity, self.vmicro, self.mass)
+        return "<Stellar Parameters Teff:{:6f} log(g):{:4.2f} [M/H]:{:4.2f} Vmicro:{:4.2f} Mass:{:2.1f}>".format(self.teff, self.logg, self.metalicity, self.vmicro, self.mass)
 
     @property
     def teff(self):

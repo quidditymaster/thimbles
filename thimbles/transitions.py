@@ -120,6 +120,12 @@ class TransitionGroup(ThimblesTable, Base):
     def __setitem__(self, index, value):
         self.transitions[index] = value
     
+    @property
+    def exemplar(self):
+        ntrans = len(self.transitions)
+        exemplar_idx = ntrans//2
+        return self.transitions[exemplar_idx]
+    
     def pop(self, index):
         self.transitions.pop(index)
     
@@ -194,7 +200,7 @@ def segmented_grouping_standard(
         transition_filters.insert(0, Transition.wv < max_wv)
     t_query = database.query(Transition)
     for t_filter in transition_filters:
-        t_query.filter(t_filter)
+        t_query = t_query.filter(t_filter)
     transitions = t_query.all()
     split_scales=[
         ("z", 0.1),

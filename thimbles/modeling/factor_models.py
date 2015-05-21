@@ -15,6 +15,7 @@ IntegerParameter
 PixelPolynomialModel
 IdentityMap
 IdentityMapModel
+MatrixMultiplierModel
 """.split()
 
 class MultiplierModel(Model):
@@ -69,6 +70,24 @@ class FloatParameter(Parameter):
     
     def __init__(self, value=None):
         self._value = value
+
+
+class MatrixMultiplierModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"MatrixMultiplierModel",
+    }
+    
+    def __init__(self, output_p, matrix_p, vector_p):
+        self.output_p = output_p
+        self.add_input("matrix", matrix_p)
+        self.add_input("vector", vector_p)
+    
+    def __call__(self, vprep=None):
+        vdict = self.get_vdict(vprep)
+        mat = vdict[self.inputs["matrix"][0]]
+        vec = vdict[self.inputs["vector"][0]]
+        return mat*vec
 
 
 class FluxSumLogic(object):

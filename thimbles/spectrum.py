@@ -136,13 +136,18 @@ class WavelengthSolution(ThimblesTable, Base):
         self.delta_helio_p = delta_helio
         del delta_helio
         
-        wavelengths = np.asarray(wavelengths)
         applied_vel = 0.0
         to_apply = self.rv_p.value + self.delta_helio_p.value
         if rv_shifted:
             applied_vel += self.rv_p.value
         if helio_shifted:
             applied_vel += self.delta_helio_p.value
+        
+        is_coord = isinstance(wavelengths, tmb.coordinatization.Coordinatization)
+        if is_coord:
+            print("Warning: implicit coordinatization recasting")
+            wavelengths = wavelengths.coordinates
+        wavelengths = np.asarray(wavelengths)
         obs_wvs = wavelengths/(1.0-applied_vel/tmb.speed_of_light)
         rest_wvs = obs_wvs*(1.0-to_apply/tmb.speed_of_light)
         indexer = as_coordinatization(rest_wvs)

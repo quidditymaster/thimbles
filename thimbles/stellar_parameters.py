@@ -157,7 +157,7 @@ class StellarParameters(ThimblesTable, Base):
     
     @property
     def mass(self):
-        return self.mass_p
+        return self.mass_p.value
     
     @mass.setter
     def mass(self, value):

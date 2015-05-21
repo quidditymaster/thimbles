@@ -86,15 +86,10 @@ def as_coordinatization(coordinates, delta_max=1e-5, force_linear=False, force_l
 
 class Coordinatization(tmb.modeling.Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
-    #min = Column(Float)
-    #max = Column(Float)
     npts = Column(Integer)
-    #_coordinatization_type = Column(String)
     __mapper_args__ = {
         "polymorphic_identity":"Coordinatization",
     }
-    #    "polymorphic_on": _coordinatization_type
-    #}
     
     def get_index(self, coord):
         raise NotImplementedError("abstract class")
@@ -102,13 +97,13 @@ class Coordinatization(tmb.modeling.Model):
     def get_coord(self, index):
         raise NotImplementedError("abstract class")
     
-    def __getitem__(self, index):
-        if isinstance(index, slice):
-            return self.coordinates[index]
-        else:
-            if index < 0:
-                print("warning Coordinatization[-n] does not wrap around")
-            return self.get_coord(index)
+    #def __getitem__(self, index):
+    #    if isinstance(index, slice):
+    #        return self.coordinates[index]
+    #    else:
+    #        if index < 0:
+    #            print("warning Coordinatization[-n] does not wrap around")
+    #        return self.get_coord(index)
     
     def __len__(self):
         return self.npts
@@ -200,7 +195,7 @@ class ArbitraryCoordinatization(Coordinatization):
     @property
     def coordinates(self):
         return self.output_p.value
-        
+    
     @property
     def min(self):
         return self.coordinates[0]
@@ -377,7 +372,7 @@ class LinearCoordinatization(Coordinatization):
     
     @property
     def min(self):
-        return self.coordinates[0]
+        return self.inputs["min"][0].value
     
     @min.setter
     def min(self, value):
@@ -385,7 +380,7 @@ class LinearCoordinatization(Coordinatization):
     
     @property
     def max(self):
-        return self.coordinates[-1]
+        return self.inputs["max"][0].value
     
     @max.setter
     def max(self, value):
@@ -412,7 +407,7 @@ class LinearCoordinatization(Coordinatization):
     @property
     def coordinates(self):
         return self.output_p.value
-        
+    
     def get_index(self, coord, clip=False, snap=False):
         indexes = (np.asarray(coord) - self.min)/self.dx
         if clip:
@@ -506,6 +501,7 @@ class LogLinearCoordinatization(Coordinatization):
         return self.output_p.value
     
     def __call__(self, vprep=None):
+        print("coordinates regenerated")
         vdict = self.get_vdict(vprep)
         min_val = vdict[self.inputs["min"][0]]
         max_val = vdict[self.inputs["max"][0]]

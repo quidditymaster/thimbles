@@ -60,12 +60,12 @@ class RVShiftModel(Model):
     def __init__(self, output_p, wvs_p, rv_p, delta_helio_p):
         self.output_p = output_p
         self.add_input("wvs", wvs_p)
-        self.add_input("rv_params", rv_p)
-        self.add_input("rv_params", delta_helio_p)
+        self.add_input("rv_params", rv_p, is_compound=True)
+        self.add_input("rv_params", delta_helio_p, is_compound=True)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
-        wvs = vdict[self.inputs["wvs"][0]]
+        wvs = vdict[self.inputs["wvs"]]
         rv_tot = sum([vdict[p] for p in self.inputs["rv_params"]])
         return wvs*(1.0-rv_tot/tmb.speed_of_light)
 
@@ -157,20 +157,20 @@ class WavelengthSolution(ThimblesTable, Base):
         if isinstance(indexer, coo_mod.ArbitraryCoordinatization):
             obs_wvs_p = PickleParameter(obs_wvs)
             shift_mod = RVShiftModel(
-                output_p=indexer.inputs["coordinates"][0],
+                output_p=indexer.inputs["coordinates"],
                 wvs_p=obs_wvs_p,
                 rv_p = self.rv_p,
                 delta_helio_p=self.delta_helio_p
             )
         elif isinstance(indexer, (coo_mod.LinearCoordinatization, coo_mod.LogLinearCoordinatization)):
             min_shift_mod = RVShiftModel(
-                output_p=indexer.inputs["min"][0],
+                output_p=indexer.inputs["min"],
                 wvs_p=FloatParameter(obs_wvs[0]),
                 rv_p = self.rv_p,
                 delta_helio_p = self.delta_helio_p,
             )
             max_shift_mod = RVShiftModel(
-                output_p=indexer.inputs["max"][0],
+                output_p=indexer.inputs["max"],
                 wvs_p=FloatParameter(obs_wvs[-1]),
                 rv_p = self.rv_p,
                 delta_helio_p = self.delta_helio_p,

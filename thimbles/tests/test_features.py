@@ -29,7 +29,7 @@ class TestVoigtProfileModel(unittest.TestCase):
     
     def test_teff_listen(self):
         prof_orig = self.vpm()
-        teff_p ,= self.vpm.inputs["teff"]
+        teff_p = self.vpm.inputs["teff"]
         orig_teff = teff_p.value
         call_dbl_teff = self.vpm({teff_p:orig_teff*2.0})
         teff_p.value = orig_teff*2.0
@@ -75,7 +75,7 @@ class TestFeatureGroupModel(unittest.TestCase):
         dx = scipy.gradient(self.fgmod.output_p.wv_sample.wvs)
         flux_sum = -np.sum(flux*dx)
         ntrans = len(self.fgmod.inputs["profiles"])
-        ew_p ,= self.fgmod.inputs["ew"]
+        ew_p = self.fgmod.inputs["ew"]
         assert np.abs(ew_p.value*ntrans - flux_sum) < 0.01
     
     def test_teff_listen(self):

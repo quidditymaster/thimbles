@@ -218,7 +218,7 @@ class ArbitraryCoordinatization(Coordinatization):
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
-        return vdict[self.inputs["coordinates"][0]]
+        return vdict[self.inputs["coordinates"]]
     
     def __len__(self):
         return len(self.coordinates)
@@ -372,19 +372,19 @@ class LinearCoordinatization(Coordinatization):
     
     @property
     def min(self):
-        return self.inputs["min"][0].value
+        return self.inputs["min"].value
     
     @min.setter
     def min(self, value):
-        self.inputs["min"][0].value = value
+        self.inputs["min"].value = value
     
     @property
     def max(self):
-        return self.inputs["max"][0].value
+        return self.inputs["max"].value
     
     @max.setter
     def max(self, value):
-        self.inputs["max"][0].value = value
+        self.inputs["max"].value = value
     
     @property
     def dx(self):
@@ -392,16 +392,16 @@ class LinearCoordinatization(Coordinatization):
     
     def _from_coord_vec(self, coordinates):
         self.npts = len(coordinates)
-        self.inputs["min"][0].value = coordinates[0]
-        self.inputs["max"][0].value = coordinates[-1]
+        self.inputs["min"].value = coordinates[0]
+        self.inputs["max"].value = coordinates[-1]
     
     def __len__(self):
         return self.npts
     
     def __call__(self, vprep=None):
         vdict=self.get_vdict()
-        min_val = vdict[self.inputs["min"][0]]
-        max_val = vdict[self.inputs["max"][0]]
+        min_val = vdict[self.inputs["min"]]
+        max_val = vdict[self.inputs["max"]]
         return np.linspace(min_val, max_val, self.npts) 
     
     @property
@@ -435,8 +435,8 @@ class LogLinearCoordinatization(Coordinatization):
         self.add_input("max", FloatParameter())
         self.output_p = Parameter()
         
-        min_p ,= self.inputs["min"]
-        max_p ,= self.inputs["max"]
+        min_p = self.inputs["min"]
+        max_p = self.inputs["max"]
         
         if not (coordinates is None):
             if not all([(val is None) for val in [min, max, npts, R]]):
@@ -482,19 +482,19 @@ class LogLinearCoordinatization(Coordinatization):
     
     @property
     def min(self):
-        return self.inputs["min"][0].value
+        return self.inputs["min"].value
     
     @min.setter
     def min(self, value):
-        self.inputs["min"][0].value = value
+        self.inputs["min"].value = value
     
     @property
     def max(self):
-        return self.inputs["max"][0].value
+        return self.inputs["max"].value
     
     @max.setter
     def max(self, value):
-        self.inputs["max"][0].value = value
+        self.inputs["max"].value = value
     
     @property
     def coordinates(self):
@@ -503,8 +503,8 @@ class LogLinearCoordinatization(Coordinatization):
     def __call__(self, vprep=None):
         print("coordinates regenerated")
         vdict = self.get_vdict(vprep)
-        min_val = vdict[self.inputs["min"][0]]
-        max_val = vdict[self.inputs["max"][0]]
+        min_val = vdict[self.inputs["min"]]
+        max_val = vdict[self.inputs["max"]]
         return np.exp(np.linspace(np.log(min_val), np.log(max_val), self.npts))
     
     def get_index(self, coord, clip=False, snap=False):

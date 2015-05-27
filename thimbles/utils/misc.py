@@ -911,6 +911,7 @@ def irls(A,
         if resids_converged and x_converged:
             break
         weights = reweighting_func(cur_resids, sigma, **reweighting_kwargs)
+        weights = np.where(np.isnan(weights), 0, weights)
         diag_weights = scipy.sparse.dia_matrix((weights, 0), (len(weights), len(weights)))
         A_reweighted = diag_weights*A
         resids_reweighted = weights*cur_resids

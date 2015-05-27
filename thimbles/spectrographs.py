@@ -73,10 +73,10 @@ class SamplingModel(Model):
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
-        x_in = vdict[self.inputs["input_wvs"][0]]
-        x_out = vdict[self.inputs["output_wvs"][0]]
-        lsf_in = vdict[self.inputs["input_lsf"][0]]
-        lsf_out = vdict[self.inputs["output_lsf"][0]]
+        x_in = vdict[self.inputs["input_wvs"]]
+        x_out = vdict[self.inputs["output_wvs"]]
+        lsf_in = vdict[self.inputs["input_lsf"]]
+        lsf_out = vdict[self.inputs["output_lsf"]]
         return tmb.resampling.resampling_matrix(x_in, x_out, lsf_in, lsf_out)
 
 
@@ -115,7 +115,7 @@ class SpectrographModel(Model):
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
-        fine_norm = vdict[self.inputs["fine_norm"][0]]
-        samp_mat = vdict[self.inputs["sampling_matrix"][0]]
-        input_model = vdict[self.inputs["model_flux"][0]]
-        return fine_norm
+        fine_norm = vdict[self.inputs["fine_norm"]]
+        samp_mat = vdict[self.inputs["sampling_matrix"]]
+        input_flux = vdict[self.inputs["model_flux"]]
+        return fine_norm*(samp_mat*input_flux)

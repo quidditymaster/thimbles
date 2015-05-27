@@ -83,11 +83,11 @@ class SharedGammaFeatureMatrixModel(Model):
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
-        mod_wv_param = self.inputs["model_wvs"][0]
+        mod_wv_param = self.inputs["model_wvs"]
         mod_wvs = vdict[mod_wv_param]
-        teff = vdict[self.inputs["teff"][0]]
-        vmicro = vdict[self.inputs["vmicro"][0]]
-        gamma  = vdict[self.inputs["gamma"][0]]
+        teff = vdict[self.inputs["teff"]]
+        vmicro = vdict[self.inputs["vmicro"]]
+        gamma  = vdict[self.inputs["gamma"]]
         gaw = self.gamma_anchor_wv 
         fmats = []
         indexer = mod_wv_param.mapped_models[0]
@@ -125,7 +125,7 @@ class RelativeStrengthMatrixModel(Model):
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
-        teff = vdict[self.inputs["teff"][0]]
+        teff = vdict[self.inputs["teff"]]
         row_idxs = [] #transition indexes
         col_idxs = [] #group indexes
         rel_strengths = []
@@ -158,10 +158,27 @@ class GroupedFeatureMatrixModel(Model):
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict()
-        fmat = vdict[self.inputs["feature_matrix"][0]]
-        gmat = vdict[self.inputs["grouping_matrix"][0]]
+        fmat = vdict[self.inputs["feature_matrix"]]
+        gmat = vdict[self.inputs["grouping_matrix"]]
         return fmat*gmat
+
+class NormalizedFluxModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"NormalizedFluxModel",
+    }
     
+    def __init__(self, output_p, group_flux_p, residual_flux_p):
+        self.output_p = output_p
+        self.add_input("group_flux", group_flux_p)
+        self.add_input("residual_flux", residual_flux_p)
+    
+    def __call__(self, vprep=None):
+        vdict = self.get_vdict(vprep)
+        groups_flux = vdict[self.inputs["group_flux"]]
+        residual_flux = vdict[self.inputs["residual_flux"]]
+        return 1.0-groups_flux-residual_flux
+
     #def fit_offsets(self):
     #    #import pdb; pdb.set_trace()
     #    species_gb = self.fdat.groupby("species_group")
@@ -230,7 +247,7 @@ class FeatureGroupModel(Model):
             gamma_p = None
             if len(profile_models) > 0:
                 if share_gamma:
-                    gamma_p ,= profile_models[-1].inputs["gamma"]
+                    gamma_p = profile_models[-1].inputs["gamma"]
             pmod = VoigtProfileModel(
                 wv_soln=wv_soln, 
                 transition=trans,
@@ -238,7 +255,7 @@ class FeatureGroupModel(Model):
                 gamma=gamma_p
             )
             profile_models.append(pmod)
-            self.add_input("profiles", pmod.output_p)
+            self.add_input("profiles", pmod.output_p, is_compound=True)
         
         min_start = np.min([pmod.output_p.wv_sample.start for pmod in profile_models])
         max_end = np.max([pmod.output_p.wv_sample.end for pmod in profile_models])
@@ -250,7 +267,7 @@ class FeatureGroupModel(Model):
         profile_ps = self.inputs["profiles"]
         prof_strengths = np.zeros(len(profile_ps))
         stell_ps = self.stellar_parameters
-        ew_p ,= self.inputs["ew"]
+        ew_p = self.inputs["ew"]
         exemplar = ew_p.transition
         exemplar_pst = exemplar.pseudo_strength(stellar_parameters=stell_ps)
         for prof_idx in range(len(profile_ps)):
@@ -315,16 +332,16 @@ class VoigtProfileModel(Model):
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
-        teff_p ,= self.inputs["teff"]
+        teff_p = self.inputs["teff"]
         teff_val = vdict[teff_p]
-        vmicro_p ,= self.inputs["vmicro"]
+        vmicro_p = self.inputs["vmicro"]
         vmicro_val = vdict[vmicro_p]
         twv = self.transition.wv
         weight = self.transition.ion.weight
         therm_sig = tmb.utils.misc.thermal_width(teff_val, twv, weight)
         vmicro_sig = (vmicro_val/speed_of_light)*twv
         sigma_val = np.sqrt(therm_sig**2 + vmicro_sig**2)
-        gamma_p ,= self.inputs["gamma"]
+        gamma_p = self.inputs["gamma"]
         gamma_val = vdict[gamma_p]
         wvs = self.output_p.wv_sample.wvs
         try:

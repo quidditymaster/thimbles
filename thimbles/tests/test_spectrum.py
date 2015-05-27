@@ -185,8 +185,8 @@ class TestRVSetting(unittest.TestCase):
         obs_min = self.min_wv/(1.0-shift_vel/tmb.speed_of_light)
         np.testing.assert_almost_equal(rest_min, spec.wvs[0])
         rest_indexer = spec.wv_sample.wv_soln.indexer
-        spec_min_p = rest_indexer.inputs["min"][0]
-        obs_min_p = spec_min_p.mapped_models[0].inputs["wvs"][0]
+        spec_min_p = rest_indexer.inputs["min"]
+        obs_min_p = spec_min_p.mapped_models[0].inputs["wvs"]
         np.testing.assert_almost_equal(obs_min, obs_min_p.value)
         spec_min_p.invalidate()
         np.testing.assert_almost_equal(rest_min, spec_min_p.value)

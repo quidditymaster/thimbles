@@ -41,7 +41,7 @@ def read_moog_linelist(fname):
     ldf = pd.DataFrame(data=ldat)
     return LineList(ldf)
 
-def write_moog_linelist(fname, linelist, comment=None):
+def write_moog_linelist(fname, linelist, equivalent_widths=None, comment=None):
     out_file = open(fname,'w')
     
     # write the header line if desired
@@ -52,20 +52,25 @@ def write_moog_linelist(fname, linelist, comment=None):
     fmt_string = "% 10.3f% 10.5f% 10.2f% 10.2f"
     
     for line_idx in range(len(linelist)):
-        cline = linelist.iloc[line_idx]
-        wv,species,ep,loggf = cline["wv"], cline["species"], cline["ep"], cline["loggf"]
+        cline = linelist[line_idx]
+        wv,ep,loggf = cline.wv, cline.ep, cline.loggf
+        #TODO: add in the isotopes
+        species = cline.ion.z + cline.ion.charge*0.1
         out_str = fmt_string % (wv, species, ep, loggf)
-        for v_str in "moog_damp D0 ew".split():
-            bad_value = False
-            if not v_str in linelist.columns:
-                bad_value = True
-            elif np.isnan(cline[v_str]):
-                bad_value = True
-            if bad_value:
-                out_str += 10*" "
-            else:
-                val = cline[v_str]
-                out_str +="{: 10.4f}".format(val)
+        empirical_damp = cline.damp.empirical
+        if not empirical_damp is None:
+            out_str +="{: 10.4f}".format(empirical_damp)
+        else:
+            out_str += 10*" "
+        if not cline.ion.d0 is None:
+            out_str +="{: 10.4f}".format(ion.d0)
+        else:
+            out_str += 10*" "
+        if not equivalent_widths is None:
+            ew = equivalent_widths[line_idx]
+            out_str += "{: 10.4f}".format(ew)
+        else:
+            out_str += 10*" "
         out_file.write(out_str)
         out_file.write("\n")
     out_file.close()

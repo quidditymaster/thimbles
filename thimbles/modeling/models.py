@@ -17,13 +17,15 @@ class InputAlias(ThimblesTable, Base):
     _model_id = Column(Integer, ForeignKey("Model._id"))
     model = relationship("Model", foreign_keys=_model_id, back_populates="inputs")
     name = Column(String)
+    is_compound = Column(Boolean)
     
     _param_temp = None
     
-    def __init__(self, name, model, parameter):
+    def __init__(self, name, model, parameter, is_compound=False):
         self.name = name
         #an assignment that does not trigger the back populate
         #so that when we assign to model we have access to the param
+        self.is_compound=is_compound
         self._param_temp = parameter
         self.model = model
         self.parameter = parameter
@@ -43,26 +45,38 @@ class InputGroup(ParameterGroup):
     
     @collection.appender
     def append(self, param_alias):
-        #import pdb; pdb.set_trace()
         pname = param_alias.name
-        pg = self.groups.get(pname)
-        if pg is None:
-            pg = []
-            self.groups[pname] = pg
         if param_alias._param_temp is None:
             param = param_alias.parameter
         else:
             param = param_alias._param_temp
-        pg.append(param)
+        is_compound = param_alias.is_compound
+        pgroup = self.groups.get(pname)
+        if pgroup is None:
+            if is_compound:
+                self.groups[pname] = [param]
+            else:
+                self.groups[pname] = param
+        else:
+            if is_compound:
+                self.groups[pname].append(param)
+            else:
+                print("WARNING: redundant non-compound InputAlias objects for model {} and parameter {}\n former alias is unreachable by name but will still show up in the .parameters collection".format(param_alias.model, param))
+                self.groups[pname] = param
         self.parameters.append(param)
         self._aliases.append(param_alias)
     
     @collection.remover
     def remove(self, param_alias):
         pname = param_alias.name
-        pg = self.groups[pname]
         param = param_alias.parameter
-        pg.remove(param)
+        if param_alias.is_compound:
+            pgroup = self.groups[pname]
+            pgroup.remove(param)
+            if len(pgroup) == 0:
+                self.groups.pop(pname)
+        else:
+            self.groups[pname].pop(pname)
         self.parameters.remove(param)
         self._aliases.remove(param_alias)
     
@@ -82,12 +96,9 @@ class Model(ThimblesTable, Base):
         "polymorphic_identity": "Model",
         "polymorphic_on": model_class
     }
-    #_input_group_id = Column(Integer, ForeignKey("ParameterGroup._id"))
-    #inputs = relationship("ParameterGroup")
     inputs = relationship(
         "InputAlias",
         collection_class=InputGroup,
-        #cascade="all, delete-orphan",
     )
     
     _output_id = Column(
@@ -103,8 +114,8 @@ class Model(ThimblesTable, Base):
     def __init__(self):
         pass
     
-    def add_input(self, name, parameter, ):
-        inp_alias = InputAlias(name=name, model=self, parameter=parameter)
+    def add_input(self, name, parameter, is_compound=False):
+        inp_alias = InputAlias(name=name, model=self, parameter=parameter, is_compound=is_compound)
     
     def __call__(self, vdict=None):
         raise NotImplementedError("Model is intended strictly as a parent class. you must subclass it and implement a __call__ method.")

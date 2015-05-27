@@ -21,6 +21,9 @@ class Source(Base, ThimblesTable):
             info = {}
         self.info = info
 
+    def __repr__(self):
+        return "<Source: {}>".format(self.name)
+
 grouping_assoc = sa.Table(
     "source_group_assoc", 
     Base.metadata,

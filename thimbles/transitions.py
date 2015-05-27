@@ -286,8 +286,8 @@ def update_linelist(
     
     #species keyed dictionary of line lists
     lbs = lines_by_species(linelist, match_isotopes=match_isotopes)
-    
-    for species in lbs:
+    species_keys = sorted(lbs.keys())
+    for species in species_keys:
         if len(species) == 3:
             z, charge, isotope = species
         elif len(species) == 2:

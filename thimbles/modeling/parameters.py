@@ -168,13 +168,16 @@ class Parameter(ThimblesTable, Base):
         marking them as invalid, so that subsequent calls asking
         for their value will trigger an update cascade.
         """
-        parameter_front = [self]
+        parameter_front = [self] #queue of parameters to invalidate
         while len(parameter_front) > 0:
             param = parameter_front.pop(0)
             param.invalidate()
+            #find all the downstream parameters
             for mod in param.models:
                 out_p = mod.output_p
+                #check that the model actually maps to something.
                 if not out_p is None:
+                    #if parameter is not already invalid add it to the queue.
                     if not out_p.invalid():
                         parameter_front.append(out_p)
     

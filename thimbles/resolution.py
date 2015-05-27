@@ -29,7 +29,7 @@ class PolynomialLSFModel(Model):
         self.add_input("coeffs", coeffs_p)
     
     def __call__(self, vprep=None):
-        coeffs_p ,= self.inputs["coeffs"]
+        coeffs_p = self.inputs["coeffs"]
         vdict = self.get_vdict(vprep)
         coeffs = vdict[coeffs_p]
         npts = self.npts

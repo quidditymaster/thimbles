@@ -85,8 +85,8 @@ class MatrixMultiplierModel(Model):
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
-        mat = vdict[self.inputs["matrix"][0]]
-        vec = vdict[self.inputs["vector"][0]]
+        mat = vdict[self.inputs["matrix"]]
+        vec = vdict[self.inputs["vector"]]
         return mat*vec
 
 
@@ -174,12 +174,12 @@ class PixelPolynomialModel(Model):
     def get_x(self, pixels=None):
         if pixels is None:
             pixels = np.arange(self.npts)
-        return (pixels-self.npts)/self.npts
+        return (pixels-0.5*self.npts)/self.npts
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
         pixels = self.output_p.wv_sample.pixels.astype(float)
-        coeffs = vdict[self.inputs["coeffs"][0]]
+        coeffs = vdict[self.inputs["coeffs"]]
         return np.polyval(coeffs, self.get_x(pixels))
 
 

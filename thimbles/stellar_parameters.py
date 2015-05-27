@@ -121,7 +121,7 @@ class StellarParameters(ThimblesTable, Base):
     
     @teff.setter
     def teff(self, value):
-        self.teff_p.value
+        self.teff_p.value = value
     
     @property
     def theta(self):

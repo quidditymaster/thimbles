@@ -279,7 +279,7 @@ class WavelengthSample(ThimblesTable, Base):
     
     @property
     def wvs(self):
-        return self.wv_soln.get_wvs(self.pixels)
+        return self.wv_soln.indexer.output_p.value
     
     def interpolant_sampling_matrix(self, wavelengths):
         """calculate the sparse matrix which linearly interpolates"""
@@ -550,8 +550,12 @@ class Spectrum(ThimblesTable, Base):
     
     @property
     def wvs(self):
-        return self.wv_sample.wv_soln.get_wvs(self.pixels)
+        return self.wv_sample.wv_soln.indexer.output_p.value
     
+    @property
+    def wv(self):
+        return self.wv_sample.wv_soln.indexer.output_p.value
+
     def set_rv(self, rv):
         self.wv_sample.wv_soln.set_rv(rv)
     
@@ -584,7 +588,7 @@ class Spectrum(ThimblesTable, Base):
         return nspec
     
     def plot(self, ax=None, **mpl_kwargs):
-        return tmb.charts.SpectrumChart(self, ax=ax)
+        return tmb.charts.SpectrumChart(self, ax=ax, **mpl_kwargs)
 
 
 def add_spectra(

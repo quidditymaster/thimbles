@@ -85,7 +85,7 @@ def from_pixels (header):
         naxis1 = header['NAXIS1']
         naxis2 = header.get('NAXIS2',1)
     except KeyError as e:
-        raise IncompatibleWavelengthSolution(e.message)    
+        raise IncompatibleWavelengthSolution()    
     wv_solns = []
     progressive = 1
     for _ in range(naxis2):
@@ -164,7 +164,7 @@ def from_crval (header):
         cdelt1 = header["CDELT1"]
         crpix1 = header.get("CRPIX1",1)
     except KeyError as e: 
-        raise IncompatibleWavelengthSolution(e.message)
+        raise IncompatibleWavelengthSolution()
     
     start_pix = crpix1
     pixels = np.arange(naxis1)+start_pix    

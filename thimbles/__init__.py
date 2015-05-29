@@ -42,6 +42,7 @@ from thimbles.spectrum import \
 from thimbles import features
 #from thimbles import velocity
 from thimbles import continuum
+from thimbles import coadd
 from thimbles import radtran
 from thimbles import resampling
 from thimbles import transitions
@@ -52,6 +53,7 @@ from thimbles.thimblesdb import ThimblesDB
 from thimbles.stellar_parameters import Star
 
 from thimbles import workingdataspace as wds
+
 opts = options.opts
 options.Option("db_path", 
     envvar="THIMBLESPROJECTDB", 

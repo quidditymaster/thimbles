@@ -279,7 +279,7 @@ class WavelengthSample(ThimblesTable, Base):
     
     @property
     def wvs(self):
-        return self.wv_soln.indexer.output_p.value
+        return self.wv_soln.indexer.output_p.value[self.start:self.end]
     
     def interpolant_sampling_matrix(self, wavelengths):
         """calculate the sparse matrix which linearly interpolates"""
@@ -381,6 +381,7 @@ class Spectrum(ThimblesTable, Base):
                 var = tmb.utils.misc.smoothed_mad_error(flux)
         else: #ivar is specified
             var = tmb.utils.misc.inv_var_2_var(ivar)
+        var = tmb.utils.misc.clean_variances(var)
         
         if not isinstance(wavelengths, (WavelengthSolution, WavelengthSample)):
             wv_soln = WavelengthSolution(wavelengths, rv=rv, delta_helio=delta_helio, rv_shifted=rv_shifted, helio_shifted=helio_shifted, lsf=lsf, lsf_degree=lsf_degree)
@@ -389,7 +390,7 @@ class Spectrum(ThimblesTable, Base):
         flux_p = FluxParameter(wv_soln)
         flux = np.asarray(flux)
         #treat the observed flux as a prior on the flux parameter values
-        self.obs_flux = VectorNormalDistribution(flux, var, parameters=[flux_p])
+        self.obs_flux = VectorNormalDistribution(flux, var, parameters={"obs_flux":flux_p})
         
         if flags is None:
             flags = SpectrumFlags()
@@ -408,7 +409,7 @@ class Spectrum(ThimblesTable, Base):
     
     @property
     def flux_p(self):
-        return self.obs_flux.parameters[0]
+        return self.obs_flux.parameters["obs_flux"]
     
     @property
     def wv_sample(self):
@@ -550,12 +551,12 @@ class Spectrum(ThimblesTable, Base):
     
     @property
     def wvs(self):
-        return self.wv_sample.wv_soln.indexer.output_p.value
+        return self.wv_sample.wvs
     
     @property
     def wv(self):
-        return self.wv_sample.wv_soln.indexer.output_p.value
-
+        return self.wv_sample.wvs
+    
     def set_rv(self, rv):
         self.wv_sample.wv_soln.set_rv(rv)
     

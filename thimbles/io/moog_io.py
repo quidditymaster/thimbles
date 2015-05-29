@@ -19,7 +19,7 @@ def read_moog_linelist(fname):
     file = open(fname)
     lines = file.readlines()
     file.close()
-    ldat = {"wv":[], "species":[], "ep":[], "loggf":[], "moog_damp":[], "D0":[], "ew":[]}
+    ldat = []
     for line in lines:
         line = line.split("#")[0]
         moog_cols = [line[i*10:(i+1)*10].strip() for i in range(7)]
@@ -31,15 +31,16 @@ def read_moog_linelist(fname):
             continue
         if np.isnan(moog_cols[1]):
             continue
-        ldat["wv"].append(moog_cols[0])
-        ldat["species"].append(moog_cols[1])
-        ldat["ep"].append(moog_cols[2])
-        ldat["loggf"].append(moog_cols[3])
-        ldat["moog_damp"].append(moog_cols[4])
-        ldat["D0"].append(moog_cols[5])
-        ldat["ew"].append(moog_cols[6])
-    ldf = pd.DataFrame(data=ldat)
-    return LineList(ldf)
+        wv, species, ep, loggf = moog_cols[:4]
+        damp=None
+        if len(moog_cols) >= 6:
+            damp = tmb.transitions.Damping(empirical = moog_cols[6])
+        trans = tmb.Transition(wv, species, ep, loggf, damp=damp)
+        ldat.append(trans)
+        #ldat["moog_damp"].append(moog_cols[4])
+        #ldat["D0"].append(moog_cols[5])
+        #ldat["ew"].append(moog_cols[6])
+    return ldat
 
 def write_moog_linelist(fname, linelist, equivalent_widths=None, comment=None):
     out_file = open(fname,'w')

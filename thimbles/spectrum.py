@@ -487,12 +487,16 @@ class Spectrum(ThimblesTable, Base):
             in_wvs = self.wvs
             wavelengths = as_wavelength_sample(wavelengths)
             out_wvs = wavelengths.wvs
-            transform = resampling.pixel_integrated_lsf(
-                in_wvs, 
+            np.median(scipy.gradient(out_wvs)/out_wvs)
+            transform = resampling.resampling_matrix(
+                in_wvs,
                 out_wvs, 
-                lsf=1.0,
+                lsf_in = 1.0,
+                lsf_out= 1.0,
                 lsf_cdf=resampling.uniform_cdf,
-                normalize="rows"
+                lsf_cut=2.0,
+                normalize="rows",
+                lsf_units="pixel",
             )
             out_flux = transform*self.flux
             var = self.var
@@ -516,7 +520,7 @@ class Spectrum(ThimblesTable, Base):
         else:
             return add_spectra(self, other, self.wv_sample)
     
-    def __div__(self, other):
+    def __truediv__(self, other):
         if isinstance(other, (float, int)):
             return Spectrum(self.wv_soln, self.flux/other, self.ivar*other**2)
         else:

@@ -110,7 +110,6 @@ class TestSpectrum (unittest.TestCase):
         self.assertRaises(ValueError, call_sample, mode="not a mode")
     
     def test_bounded_view(self):
-        import pdb; pdb.set_trace()
         min_wv = self.min_wv+0.37*(self.max_wv-self.min_wv)
         max_wv = self.min_wv+0.89*(self.max_wv-self.min_wv)
         bspec = self.spec.sample([min_wv, max_wv], mode="bounded")

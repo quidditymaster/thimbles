@@ -1078,28 +1078,6 @@ def saturated_voigt_cog(gamma_ratio=0.1):
     #import pdb; pdb.set_trace()
     return cog
 
-def extract_banded_part(A, k):
-    A = scipy.sparse.dia_matrix(A)
-    offsets = A.offsets
-    off_mask = (offsets >= -k)*(offsets <= k)
-    clip_data = A.data[off_mask].copy()
-    clip_offs = offsets[off_mask]
-    return scipy.sparse.dia_matrix((clip_data, clip_offs), A.shape) 
-
-def banded_approximate_inverse(A, k, gamma=None, extract_bands=True):
-    #TODO: add the citation for the paper this is from
-    assert A.shape[0] == A.shape[1]
-    if extract_bands:
-        A = extract_banded_part(A)
-    else:
-        A = scipy.sparse.dia_matrix(A)
-    
-    if gamma is None:
-        gamma = 2.0/scipy.sparse.linalg.eigs(A, 1)[0][0] #neglegcting the minimal eigenvectors
-    
-    inv = scipy.sparse.identity(A.shape[0])
-    last_pow = inv
-    #TODO complete this 
 
 def sparse_row_circulant_matrix(vec, npts):
     n_data = len(vec)*(npts-1)+2

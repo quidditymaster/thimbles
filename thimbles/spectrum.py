@@ -20,6 +20,7 @@ from thimbles.modeling.distributions import VectorNormalDistribution
 from thimbles.resolution import PolynomialLSFModel
 from thimbles.coordinatization import Coordinatization, as_coordinatization
 from thimbles.sqlaimports import *
+from thimbles.modeling.associations import HasParameterContext
 from sqlalchemy.orm.collections import attribute_mapped_collection
 
 from thimbles import speed_of_light
@@ -313,7 +314,7 @@ class FluxParameter(Parameter):
     def pixels(self):
         return self.wv_sample.pixels
 
-class Spectrum(ThimblesTable, Base):
+class Spectrum(ThimblesTable, Base, HasParameterContext):
     """A representation of a collection of relative flux measurements
     """
     _obs_flux_id = Column(Integer, ForeignKey("Distribution._id"))
@@ -374,6 +375,7 @@ class Spectrum(ThimblesTable, Base):
         observation: Observation
           the observation which resulted in this spectrum
         """
+        HasParameterContext.__init__(self)
         if (not (var is None)) and (not (ivar is None)):
             raise ValueError("redundant specification: got a value for both ivar and var!")
         elif ivar is None:

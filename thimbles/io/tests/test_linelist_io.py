@@ -1,27 +1,27 @@
 import unittest
-from thimbles.linelists import LineList
 from thimbles.io.linelist_io import read_linelist
 import os
 
 class LineListReadingTester(unittest.TestCase):
+    ll_path = os.path.join(os.path.dirname(__file__), "data")    
     
     def setUp(self):
-        self.ll_path = os.path.join(os.path.dirname(__file__), "data")
+        pass
     
     def test_ir_w_comment(self):
         fpath = os.path.join(self.ll_path, "ir_w_comment.ln") 
         result = read_linelist(fpath)
         self.assertTrue(len(result) == 11)
-        self.assertTrue(len(result["wv"]) == 11)
-        self.assertAlmostEqual(result["species"].iloc[0], 26.0)
-        self.assertAlmostEqual(result["species"].iloc[-1], 60.1)
+        self.assertAlmostEqual(result[0].ion.z, 26.0)
+        self.assertAlmostEqual(result[0].ion.charge, 0)
+        self.assertAlmostEqual(result[-1].ion.z, 60.0)
+        self.assertAlmostEqual(result[-1].ion.charge, 1)
     
     def test_single_line(self):
         fpath = os.path.join(self.ll_path, "single_line.ln") 
         result = read_linelist(fpath)
         self.assertTrue(len(result) == 1)
-        self.assertTrue(isinstance(result, LineList))
-
+    
     def test_read_vald(self):
         fpath = os.path.join(self.ll_path, "short_example.vald")
         result = read_linelist(fpath)

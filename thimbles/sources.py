@@ -1,7 +1,9 @@
+
 from thimbles.thimblesdb import Base, ThimblesTable
+from thimbles.modeling.associations import HasParameterContext
 from .sqlaimports import *
 
-class Source(Base, ThimblesTable):
+class Source(Base, ThimblesTable, HasParameterContext):
     """astrophysical light source"""
     source_class = Column(String)
     __mapper_args__={
@@ -14,15 +16,17 @@ class Source(Base, ThimblesTable):
     info = Column(PickleType)
     
     def __init__(self, name=None, ra=None, dec=None, info=None):
+        HasParameterContext.__init__(self)
         self.name = name
         self.ra=ra
         self.dec=dec
         if info is None:
             info = {}
         self.info = info
-
+    
     def __repr__(self):
         return "<Source: {}>".format(self.name)
+
 
 grouping_assoc = sa.Table(
     "source_group_assoc", 

@@ -8,89 +8,15 @@ from copy import copy
 from thimbles.sqlaimports import *
 from thimbles.thimblesdb import ThimblesTable, Base
 from thimbles.modeling import ParameterGroup
+from thimbles.modeling.associations import NamedParameters
+from thimbles.modeling.associations import DistributionAlias
 from sqlalchemy.orm.collections import collection
-
-class DistributionAlias(ThimblesTable, Base):
-    _parameter_id = Column(Integer, ForeignKey("Parameter._id"))
-    parameter = relationship("Parameter")#, back_populates="distributions")
-    _distribution_id = Column(Integer, ForeignKey("Distribution._id"))
-    distribution = relationship("Distribution", foreign_keys=_distribution_id, back_populates="parameters")
-    name = Column(String)
-    is_compound = Column(Boolean)
-    
-    _param_temp = None
-    
-    def __init__(self, name, distribution, parameter, is_compound=False):
-        self.name = name
-        self.is_compound=is_compound
-        self._param_temp = parameter #don't trigger the back pop yet
-        self.distribution = distribution
-        self.parameter = parameter
-
-class SampleSpace(ParameterGroup):
-    
-    def __init__(self):
-        self._aliases = []
-        self.groups = {}
-        self.parameters = []
-    
-    def __getitem__(self, index):
-        return self.groups[index]
-    
-    def __len__(self):
-        return len(self.parameters)
-    
-    @collection.appender
-    def append(self, param_alias):
-        pname = param_alias.name
-        if param_alias._param_temp is None:
-            param = param_alias.parameter
-        else:
-            param = param_alias._param_temp
-        is_compound = param_alias.is_compound
-        pgroup = self.groups.get(pname)
-        if pgroup is None:
-            if is_compound:
-                self.groups[pname] = [param]
-            else:
-                self.groups[pname] = param
-        else:
-            if is_compound:
-                self.groups[pname].append(param)
-            else:
-                print("WARNING: redundant non-compound InputAlias objects for model {} and parameter {}\n former alias is unreachable by name but will still show up in the .parameters collection".format(param_alias.model, param))
-                self.groups[pname] = param
-        self.parameters.append(param)
-        self._aliases.append(param_alias)
-    
-    @collection.remover
-    def remove(self, param_alias):
-        pname = param_alias.name
-        param = param_alias.parameter
-        if param_alias.is_compound:
-            pgroup = self.groups[pname]
-            pgroup.remove(param)
-            if len(pgroup) == 0:
-                self.groups.pop(pname)
-        else:
-            self.groups[pname].pop(pname)
-        self.parameters.remove(param)
-        self._aliases.remove(param_alias)
-    
-    @collection.iterator
-    def _iter_aliases(self):
-        for alias in self._aliases:
-            yield alias
-    
-    def __iter__(self):
-        for p in self.parameters:
-            yield p
 
 
 class Distribution(ThimblesTable, Base):
     parameters = relationship(
         "DistributionAlias", 
-        collection_class=SampleSpace,
+        collection_class=NamedParameters,
     )
     distribution_class = Column(String)
     __mapper_args__={

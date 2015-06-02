@@ -23,9 +23,9 @@ def make_wavelength_standard(
     coadd_wvs = np.power(10.0, np.linspace(np.log10(min_wv), np.log10(max_wv), npts_coadd))
     return coadd_wvs
 
+
 @task()
-def simple_coadd(spectra, coadd_wvs=None, pre_normalize=False):
-    import pdb; pdb.set_trace()
+def coadd_simple(spectra, coadd_wvs=None, pre_normalize=False):
     if coadd_wvs is None:
         coadd_wvs = make_wavelength_standard(spectra)
     npts_coadd = len(coadd_wvs)

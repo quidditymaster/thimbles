@@ -43,6 +43,7 @@ from thimbles import features
 #from thimbles import velocity
 from thimbles import continuum
 from thimbles import coadd
+from thimbles import noise
 from thimbles import radtran
 from thimbles import resampling
 from thimbles import transitions

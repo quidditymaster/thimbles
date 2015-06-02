@@ -130,22 +130,8 @@ class HasParameterContext(object):
         p_alias = ParameterAlias(name=name, context=self.context, parameter=parameter, is_compound=is_compound)
     
     def __getitem__(self, index):
-        val = self.context.params
+        val = self.context.params[index]
+        return val
 
 
-class DistributionAlias(ThimblesTable, Base):
-    _parameter_id = Column(Integer, ForeignKey("Parameter._id"))
-    parameter = relationship("Parameter")#, back_populates="distributions")
-    _distribution_id = Column(Integer, ForeignKey("Distribution._id"))
-    distribution = relationship("Distribution", foreign_keys=_distribution_id, back_populates="parameters")
-    name = Column(String)
-    is_compound = Column(Boolean)
-    
-    _param_temp = None
-    
-    def __init__(self, name, distribution, parameter, is_compound=False):
-        self.name = name
-        self.is_compound=is_compound
-        self._param_temp = parameter #don't trigger the back pop yet
-        self.distribution = distribution
-        self.parameter = parameter
+

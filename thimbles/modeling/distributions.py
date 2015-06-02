@@ -9,26 +9,26 @@ from thimbles.sqlaimports import *
 from thimbles.thimblesdb import ThimblesTable, Base
 from thimbles.modeling import ParameterGroup
 from thimbles.modeling.associations import NamedParameters
-from thimbles.modeling.associations import DistributionAlias
+from thimbles.modeling.associations import HasParameterContext
 from sqlalchemy.orm.collections import collection
 
 
-class Distribution(ThimblesTable, Base):
-    parameters = relationship(
-        "DistributionAlias", 
-        collection_class=NamedParameters,
-    )
+class Distribution(ThimblesTable, Base, HasParameterContext):
     distribution_class = Column(String)
     __mapper_args__={
         "polymorphic_identity":"Distribution",
         "polymorphic_on":distribution_class
     }
     
+    def __init__(self):
+        HasParameterContext.__init__(self)
+    
+    @property
+    def parameters(self):
+        return self.context
+    
     def log_likelihood(self, value):
         raise NotImplementedError("Abstract Class")
-
-    def add_parameter(self, name, param, is_compound=False):
-        dist_alias = DistributionAlias(name, self, param, is_compound=is_compound)
     
     def __getitem__(self, index):
         return self.parameters[index]
@@ -52,6 +52,7 @@ class NormalDistribution(Distribution):
     ivar = Column(Float)
     
     def __init__(self, mean, ivar, parameters=None):
+        Distribution.__init__(self)
         if parameters is None:
             parameters = []
         elif len(parameters) > 1:
@@ -70,6 +71,7 @@ class VectorNormalDistribution(Distribution):
     var = Column(PickleType)
     
     def __init__(self, mean, var, parameters=None):
+        Distribution.__init__(self)
         if parameters is None:
             parameters = {}
         for pname in parameters:
@@ -86,6 +88,4 @@ class VectorNormalDistribution(Distribution):
 class SumOfGaussians:#(ParameterDistribution):
     _relative_probs = Column(PickleType) #(n_gauss,) numpy array
     _covariances = Column(PickleType) #(n_gauss, n_dims) numpy array for axis aligned or (n_gauss, n_dims, n_dims) for full covariance matrices
-    
-    
     

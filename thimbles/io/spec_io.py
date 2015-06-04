@@ -34,6 +34,7 @@ __all__ = ["read_spec","read_ascii","read_fits",
            "read_many_fits", "read_hdf5",
            "read_json", "read_spec_list",
            "write_ascii", "write_ascii", "write_hdf5",
+           "write_spec",
 ]
 
 def read_hdf5(filepath, source=None):

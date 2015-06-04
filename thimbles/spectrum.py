@@ -279,6 +279,10 @@ class WavelengthSample(ThimblesTable, Base):
         return np.arange(self.start, self.end)
     
     @property
+    def lsf(self):
+        return self.wv_soln.lsf_p.value[self.start:self.end]
+    
+    @property
     def wvs(self):
         return self.wv_soln.indexer.output_p.value[self.start:self.end]
     
@@ -416,6 +420,10 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
     @property
     def wv_sample(self):
         return self.flux_p.wv_sample
+
+    @property
+    def lsf(self):
+        return self.flux_p.wv_sample.lsf
     
     @property
     def flux(self):

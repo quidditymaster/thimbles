@@ -21,11 +21,12 @@ def make_wavelength_standard(
         sampling_resolution = np.median([np.median(spec.wvs/scipy.gradient(spec.wvs)) for spec in spectra])
     npts_coadd = int(np.log(max_wv/min_wv)*sampling_resolution + 1)
     coadd_wvs = np.power(10.0, np.linspace(np.log10(min_wv), np.log10(max_wv), npts_coadd))
+    print("coadd wvs", coadd_wvs)
     return coadd_wvs
 
 
 @task()
-def coadd_simple(spectra, coadd_wvs=None, pre_normalize=False):
+def coadd_simple(spectra, coadd_wvs=None, sampling_mode="rebin", pre_normalize=False):
     if coadd_wvs is None:
         coadd_wvs = make_wavelength_standard(spectra)
     npts_coadd = len(coadd_wvs)
@@ -34,11 +35,12 @@ def coadd_simple(spectra, coadd_wvs=None, pre_normalize=False):
     for spec in spectra:
         if pre_normalize:
             spec = spec.normalized()
-        sampled_spec=spec.sample(coadd_wvs)
-        coadd_flux += sampled_spec.flux
-        weights += sampled_spec.ivar
+        sampled_spec=spec.sample(coadd_wvs, mode=sampling_mode)
+        cweights = sampled_spec.ivar
+        coadd_flux += sampled_spec.flux*cweights
+        weights += cweights
     coadd_flux /= weights
     coadd_spec = tmb.Spectrum(coadd_wvs, coadd_flux)
-    return spec
+    return coadd_spec
     
     

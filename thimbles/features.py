@@ -179,197 +179,51 @@ class NormalizedFluxModel(Model):
         residual_flux = vdict[self.inputs["residual_flux"]]
         return 1.0-groups_flux-residual_flux
 
-    #def fit_offsets(self):
-    #    #import pdb; pdb.set_trace()
-    #    species_gb = self.fdat.groupby("species_group")
-    #    groups = species_gb.groups
-    #    #order the species keys so we do the species with the most exemplars first
-    #    #num_exemplars = sorted([(len(groups[k]), k) for k in groups.keys()], reverse=True)
-    #    fallback_offset = 10.0 #totally arbitrary
-    #    for species_key in range(len(groups)):
-    #        species_df = self.fdat.ix[groups[species_key]]
-    #        exemplars = species_df[species_df.group_exemplar > 0]
-    #        delta_rews = np.log10(exemplars.ew/exemplars.doppler_width)
-    #        x_deltas = exemplars.x.values - self.cog.inverse(delta_rews.values)
-    #        offset = np.sum(x_deltas)
-    #        if np.isnan(offset):
-    #            offset = fallback_offset
-    #        self.fdat.ix[groups[species_key], "x_offset"] = offset
+
+def fit_offsets():
+    num_exemplars = sorted([(len(groups[k]), k) for k in groups.keys()], reverse=True)
+    fallback_offset = 10.0 #totally arbitrary
+    for species_key in range(len(groups)):
+        species_df = self.fdat.ix[groups[species_key]]
+        exemplars = species_df[species_df.group_exemplar > 0]
+        delta_rews = np.log10(exemplars.ew/exemplars.doppler_width)
+        x_deltas = exemplars.x.values - self.cog.inverse(delta_rews.values)
+        offset = np.sum(x_deltas)
+        if np.isnan(offset):
+            offset = fallback_offset
+        self.fdat.ix[groups[species_key], "x_offset"] = offset
 
 
-class EWParameter(Parameter):
+class TransitionIndexer(object):
+    pass
+
+class TransitionVectorizer(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"TransitionMappedVectorizer"
+    }
+    
+
+class HasTransition(object):
+    
+    @declared_attr
+    def _transition_id(self):
+        _transition_id = Column(Integer, ForeignKey("Transition._id"))
+    
+    @declared_attr
+    def transition(self):
+        trasition = relationship("Transition")
+
+class EWParameter(Parameter, HasTransition):
     _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
     __mapper_args__={
         "polymorphic_identity":"EWParameter",
     }
     _value = Column(Float)
-    _transition_id = Column(Integer, ForeignKey("Transition._id"))
-    trasition = relationship("Transition")
     
     def __init__(self, ew, transition):
         self._value = ew
         self.transition=transition
-
-
-class FeatureGroupModel(Model):
-    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
-    __mapper_args__={
-        "polymorphic_identity":"FeatureGroupModel",
-    }
-    _stellar_parameters_id = Column(Integer, ForeignKey("StellarParameters._id"))
-    stellar_parameters = relationship("StellarParameters")
-    _transition_group_id = Column(Integer, ForeignKey("TransitionGroup._id"))
-    transition_group = relationship("TransitionGroup")
-    
-    def __init__(
-            self,
-            wv_soln,
-            transition_group,
-            stellar_parameters,
-            ew=None,
-            exemplar=None,
-            share_gamma=True,
-    ):
-        self.transition_group = transition_group
-        transitions = transition_group.transitions
-        if ew is None:
-            ew = 0.01
-        if len(transitions) > 0:
-            if exemplar is None:
-                exemplar_idx = np.random.randint(len(transitions))
-                exemplar = transitions[exemplar_idx]
-        
-        ew_p = EWParameter(ew, transition=exemplar)
-        self.add_input("ew", ew_p)
-        self.stellar_parameters = stellar_parameters
-        profile_models = []
-        for trans in transitions:
-            gamma_p = None
-            if len(profile_models) > 0:
-                if share_gamma:
-                    gamma_p = profile_models[-1].inputs["gamma"]
-            pmod = VoigtProfileModel(
-                wv_soln=wv_soln, 
-                transition=trans,
-                stellar_parameters=stellar_parameters,
-                gamma=gamma_p
-            )
-            profile_models.append(pmod)
-            self.add_input("profiles", pmod.output_p, is_compound=True)
-        
-        min_start = np.min([pmod.output_p.wv_sample.start for pmod in profile_models])
-        max_end = np.max([pmod.output_p.wv_sample.end for pmod in profile_models])
-        wvsamp = WavelengthSample(wv_soln, start=min_start, end=max_end)
-        self.output_p = FluxParameter(wvsamp)
-    
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
-        profile_ps = self.inputs["profiles"]
-        prof_strengths = np.zeros(len(profile_ps))
-        stell_ps = self.stellar_parameters
-        ew_p = self.inputs["ew"]
-        exemplar = ew_p.transition
-        exemplar_pst = exemplar.pseudo_strength(stellar_parameters=stell_ps)
-        for prof_idx in range(len(profile_ps)):
-            profile_param = profile_ps[prof_idx]
-            transition = profile_param.mapped_models[0].transition
-            pstrength = transition.pseudo_strength(stellar_parameters=stell_ps)
-            pstrength -= exemplar_pst #normalize to exemplar
-            prof_strengths[prof_idx] = pstrength
-        prof_strengths= np.power(10.0, prof_strengths)
-        output_sample = self.output_p.wv_sample
-        fsum = np.zeros(len(output_sample))
-        out_start = output_sample.start
-        for prof_idx in range(len(profile_ps)):
-            profile_p = profile_ps[prof_idx]
-            start= profile_p.wv_sample.start - out_start
-            end = profile_p.wv_sample.end - out_start
-            profile = prof_strengths[prof_idx]*profile_p.value
-            fsum[start:end] -= profile
-        ew_val = vdict[ew_p]
-        fsum *= ew_val
-        return fsum
-
-
-class VoigtProfileModel(Model):
-    """a model for a voigt profile with the gaussian width determined 
-    by assuming a sqrt(thermal**2 + vmicro**2) = sigma, and a free 
-    gamma parameter.
-    """
-    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
-    __mapper_args__={
-        "polymorphic_identity":"VoigtProfileModel",
-    }
-    _transition_id = Column(Integer, ForeignKey("Transition._id"))
-    transition = relationship("Transition")
-    max_width = Column(Float)
-    
-    def __init__(
-            self, 
-            wv_soln, 
-            transition,
-            stellar_parameters,
-            max_width=None,
-            gamma=0.0,
-    ):
-        self.transition=transition
-        cent_wv = transition.wv
-        if max_width is None:
-            max_width = cent_wv*5e-4
-        self.max_width = max_width
-        if not isinstance(gamma, Parameter):
-            gamma_param = gamma
-        else:
-            gamma_param = FloatParameter(float(gamma))
-        self.add_input("gamma", gamma_param)
-        teff_p = stellar_parameters.teff_p
-        self.add_input("teff", teff_p)
-        vmicro_p = stellar_parameters.vmicro_p
-        self.add_input("vmicro", vmicro_p)
-        start, end = wv_soln.get_index([cent_wv-self.max_width, cent_wv+self.max_width], clip=True, snap=True)
-        wvsamp = WavelengthSample(wv_soln, start=start, end=end)
-        self.output_p = FluxParameter(wvsamp)
-    
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
-        teff_p = self.inputs["teff"]
-        teff_val = vdict[teff_p]
-        vmicro_p = self.inputs["vmicro"]
-        vmicro_val = vdict[vmicro_p]
-        twv = self.transition.wv
-        weight = self.transition.ion.weight
-        therm_sig = tmb.utils.misc.thermal_width(teff_val, twv, weight)
-        vmicro_sig = (vmicro_val/speed_of_light)*twv
-        sigma_val = np.sqrt(therm_sig**2 + vmicro_sig**2)
-        gamma_p = self.inputs["gamma"]
-        gamma_val = vdict[gamma_p]
-        wvs = self.output_p.wv_sample.wvs
-        try:
-            pflux = voigt(wvs, twv, sigma_val, gamma_val)
-        except:
-            import pdb; pdb.set_trace()
-        return pflux
-
-
-class GroupedFeaturesModel(tmb.modeling.factor_models.FluxSumLogic, Model):
-    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
-    __mapper_args__={
-        "polymorphic_identity":"GroupedFeaturesModel",
-    }
-    _star_id = Column(Integer, ForeignKey("Source._id"))
-    star = relationship("Star")
-        
-    def __init__(self, star, grouping_standard, wv_soln):
-        self.star = star
-        wv_soln = tmb.as_wavelength_solution(wv_soln)
-        self.output_p = FluxParameter(wv_soln)
-        for group in grouping_standard.groups:
-            fgm = FeatureGroupModel(
-                wv_soln=wv_soln,
-                transition_group=group,
-                stellar_parameters=star.stellar_parameters,
-            )
-            self.add_input("group_fluxes", fgm.output_p)
 
 
 class VoigtFitSingleLineSynthesis(ThimblesTable, Base):
@@ -378,8 +232,7 @@ transition then fitting the resultant spectrum with a voigt profile to determine
     """
     _transition_id = Column(Integer, ForeignKey("Transition._id"))
     transition = relationshp = relationship("Transition")
-    _stellar_parameters_id = Column(Integer, ForeignKey("StellarParameters._id"))
-    stellar_parameters = relationship("StellarParameters")
+    
     ew = Column(Float)
     sigma = Column(Float)
     gamma = Column(Float)

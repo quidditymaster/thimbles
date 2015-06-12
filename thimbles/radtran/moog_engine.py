@@ -31,10 +31,12 @@ Option("executable",parent="moog",envvar="MOOGSILENT")
 Option("opac_rad", parent="moog", default=3.0)
 Option("delta_wv", parent="moog", default=0.01)
 default_moog_wdir = os.path.join(config_dir, "working_dirs", "moog")
-Option("working_dir", 
-       parent="moog",
-       envvar="MOOGWORKINGDIR", 
-       default=default_moog_wdir,)
+Option(
+    "working_dir", 
+    parent="moog",
+    envvar="MOOGWORKINGDIR", 
+    default=default_moog_wdir,
+)
 #TODO: make a default strong lines file to crop to wavelengths and use always.
 
 # =========================================================================== #
@@ -91,7 +93,12 @@ class MoogEngine(RadiativeTransferEngine):
         finally:
             os.chdir(cur_dir)
     
-    def ew_to_abundance(self, linelist, stellar_params, central_intensity=False):
+    def ew_to_abundance(
+            self, 
+            linelist, 
+            stellar_params, 
+            central_intensity=False
+    ):
         """generate abundances on the basis of equivalent widths
         by performing a fit to predicted ew's instead of inverting
         the line by line abundances.
@@ -101,7 +108,13 @@ class MoogEngine(RadiativeTransferEngine):
         """
         self._not_implemented()
     
-    def line_abundance(self, linelist, stellar_params, inject_as=None, central_intensity=False):
+    def line_abundance(
+            self, 
+            linelist, 
+            stellar_params, 
+            inject_as=None, 
+            central_intensity=False
+    ):
         """line by line abundances for the given linelist (with an ew column)
         and stellar_params.
         
@@ -137,7 +150,13 @@ class MoogEngine(RadiativeTransferEngine):
         result = tmb.io.moog_io.read_moog_abfind_summary(summary_fname)
         return result
     
-    def abundance_to_ew(self, linelist, stellar_params, abundances=None, central_intensity=False):
+    def abundance_to_ew(
+            self, 
+            linelist, 
+            stellar_params, 
+            abundances=None, 
+            central_intensity=False
+    ):
         self._make_photo_file(stellar_params)
         #write out the linelist in moog format
         line_name = "templines.ln.tmp"

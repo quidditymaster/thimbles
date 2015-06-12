@@ -1115,11 +1115,10 @@ def unweighted_voigt_fit(x, y):
     center_x, start_sigma, peak_val = local_gaussian_fit(y, xvalues=x)
     start_vec = np.array([start_sigma, 0.0])
     opt_res = scipy.optimize.leastsq(_voigt_resids, start_vec, args=(center_x, x, y))
-    sig, gam = opt_res[0]
+    sig, gam = np.abs(opt_res[0])
     vprof = voigt(x, center_x, sig, gam)
     ew = np.sum(y*vprof)/np.sum(vprof**2)
     return sig, gam, ew
-
 
 def eval_multiplicative_models(model_mats, xvecs, offsets):
     eval_mods = [np.dot(mod, xv)+off for mod, xv, off in zip(model_mats, xvecs, offsets)]

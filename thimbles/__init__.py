@@ -51,7 +51,7 @@ from thimbles import charts
 from thimbles.radtran import mooger
 
 from thimbles.thimblesdb import ThimblesDB
-from thimbles.stellar_parameters import Star
+from thimbles.star import Star
 
 from thimbles import workingdataspace as wds
 

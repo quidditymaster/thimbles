@@ -159,10 +159,9 @@ class PixelPolynomialModel(Model):
     ):
         self.output_p = output_p
         self.npts = len(self.output_p.value)
-        wv_sample = output_p.wv_sample
         if coeffs is None:
             if autofit:
-                x = self.get_x(wv_sample.pixels)
+                x = self.get_x()
                 y = self.output_p.value
                 coeffs = np.polyfit(x, y, deg=degree)
             else:
@@ -178,9 +177,8 @@ class PixelPolynomialModel(Model):
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
-        pixels = self.output_p.wv_sample.pixels.astype(float)
         coeffs = vdict[self.inputs["coeffs"]]
-        return np.polyval(coeffs, self.get_x(pixels))
+        return np.polyval(coeffs, self.get_x())
 
 
 class IdentityMap(object):

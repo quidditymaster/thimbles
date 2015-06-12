@@ -11,53 +11,6 @@ from thimbles.modeling import PixelPolynomialModel
 import thimbles as tmb
 
 
-class PiecewisePolynomialSpectrographEfficiencyModel(Model):
-    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
-    
-    def __init__(self, spec_wvs, degree=3, n_max_part=5):
-        self.wv = spec_wvs
-        self.degree = degree
-        self.n_max_part = n_max_part
-        self.configure_control_points()
-        self.calc_basis()
-        self.coefficients = np.ones(self.n_coeffs)
-    
-    @property
-    def n_coeffs(self):
-        return self._basis.shape[1]
-    
-    def configure_control_points(self):
-        delta_pix = max(int(len(self.wv)/self.n_max_part), 2)
-        self.control_points = self.wv[delta_pix/2:-delta_pix/2:delta_pix].copy()
-    
-    def calc_basis(self):
-        self.rcppb = ppol.RCPPB(poly_order=self.degree, control_points=self.control_points, scales=np.std(self.wv)*np.ones(len(self.control_points)+1))
-        self._basis = self.rcppb.get_basis(self.wv).transpose()
-    
-    def retrain(self, target_output, input, **kwargs):
-        mult_basis = self._basis*input.reshape((-1, 1))
-        new_coeffs =  np.linalg.lstsq(mult_basis, target_output)[0]
-        self.coefficients = new_coeffs
-    
-    def blaze(self):
-        return np.dot(self._basis, self.coefficients)
-    
-    def poly_coeffs_p(self):
-        return self.coefficients
-    
-    def set_poly_coeffs(self, value):
-        self.coefficients = value
-    
-    def parameter_expansion(self, input, **kwargs):
-        return scipy.sparse.csc_matrix((self._basis*input.reshape((-1, 1))))
-    
-    def as_linear_op(self, input, **kwargs):
-        return scipy.sparse.dia_matrix((self.blaze(), 0), shape = (len(self.wv), len(self.wv)))
-        
-    def __call__(self, input, **kwargs):
-        return self.blaze()*input
-
-
 class SamplingModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__={
@@ -103,6 +56,7 @@ class SpectrographModel(Model):
             fine_norm_p = FluxParameter(spec_wv_soln, flux=spectrum.flux)
             fine_norm_mod = PixelPolynomialModel(output_p=fine_norm_p)
         self.add_input("fine_norm", fine_norm_p)
+        spectrum.add_parameter("fine_norm", fine_norm_p)
         
         if samp_mat_p is None:
             samp_mat_p = Parameter()
@@ -112,7 +66,30 @@ class SpectrographModel(Model):
                 output_wv_soln=spectrum.wv_sample.wv_soln
             )
         self.add_input("sampling_matrix", samp_mat_p)
+        spectrum.add_parameter("sampling_matrix", samp_mat_p)
     
+    def local_derivative(self, param, vprep=None):
+        """the derivative of the output parameter of this matrix
+        with respect to the particular specified input parameter.
+        """
+        vdict = self.get_vdict(vprep)
+        if param == self.inputs["model_flux"]:
+            fine_norm_val = vdict[self.inputs["fine_norm"]]
+            npts = len(fine_norm_val)
+            fnmat = scipy.sparse.dia_matrix((fine_norm_val, 0), shape=(npts, npts))
+            samp_mat_p = self.inputs["sampling_matrix"]
+            samp_mat = vdict[samp_mat_p]
+            return fnmat*samp_mat
+        elif param == self.inputs["fine_norm"]:
+            mod_flux = vdict[self.inputs["model_flux"]]
+            samp_mat = vdict[self.iputs["sampling_matrix"]]
+            samp_flux = samp_mat*mod_flux
+            npts = len(fine_norm_val)
+            der_mat = scipy.sparse.dia_matrix((samp_flux, 0), shape=(npts, npts))
+            return der_mat
+        return None
+            
+
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
         fine_norm = vdict[self.inputs["fine_norm"]]

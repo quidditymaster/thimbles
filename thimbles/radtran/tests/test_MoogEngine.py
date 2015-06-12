@@ -10,7 +10,6 @@ import numpy as np
 import unittest
 
 import thimbles as tmb
-from thimbles.stellar_parameters import StellarParameters
 from thimbles.radtran import MoogEngine
 from thimbles.radtran import MarcsInterpolator
 

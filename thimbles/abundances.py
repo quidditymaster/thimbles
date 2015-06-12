@@ -65,10 +65,11 @@ class Ion(ThimblesTable, Base):
     def symbol(self):
         if self._symbol is None:
             if self.monatomic:
-                self._symbol = ptable.ix[(self.z, self.isotope), "symbol"]
+                symbol = ptable.ix[(self.z, self.isotope), "symbol"]
             else:
                 k1, k2 = self.split_z_iso()
-                self._symbol = "{}{}".format(*ptable.ix[[k1, k2], "symbol"])
+                symbol = "{}{}".format(*ptable.ix[[k1, k2], "symbol"])
+            self._symbol = symbol
         return self._symbol
 
 
@@ -79,10 +80,12 @@ class Abundance(Parameter):
     }
     _ion_id = Column(Integer, ForeignKey("Ion._id"))
     ion = relationship("Ion")
-    _stellar_parameters_id = Column(Integer, ForeignKey("StellarParameters._id"))
     _value = Column(Float) #log(epsilon)
-
-    def __init__(self, ion, logeps):
+    
+    def __init__(self, ion, abund, bracket_notation=True):
         self._value = logeps
     
+    @property
+    def xonh(self):
+        return self.value - ptable.ix[(self.z, self.isotope)]
 

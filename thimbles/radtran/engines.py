@@ -1,5 +1,4 @@
 #from thimbles.abundances import Abundance
-from thimbles.stellar_parameters import StellarParameters
 import os
 import shutil
 
@@ -33,13 +32,13 @@ class RadiativeTransferEngine(object):
     
     def _make_photo_file(self, stellar_params):
         photo_file = os.path.join(self.working_dir, self._photosphere_fname)
-        if isinstance(stellar_params, StellarParameters):
-            self.photosphere_engine.make_photosphere(photo_file, stellar_params)
-        elif isinstance(stellar_params, str):
+        if isinstance(stellar_params, str):
             if os.path.exists(stellar_params):
                 shutil.copy(stellar_params, photo_file)
             else:
                 raise IOError("model atmosphere file {} not found".format(stellar_params))
+        else:
+            self.photosphere_engine.make_photosphere(photo_file, **stellar_params)
     
     def _not_implemented(self, msg=None):
         if msg is None:

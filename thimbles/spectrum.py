@@ -14,10 +14,9 @@ from thimbles.flags import SpectrumFlags
 from scipy.interpolate import interp1d
 from thimbles.thimblesdb import ThimblesTable, Base
 from thimbles.modeling import Model, Parameter
-from thimbles.modeling.factor_models import PickleParameter, FloatParameter
+from thimbles.modeling.factor_models import PickleParameter, FloatParameter, PixelPolynomialModel
 from thimbles.modeling.factor_models import IdentityMap
 from thimbles.modeling.distributions import VectorNormalDistribution
-from thimbles.resolution import PolynomialLSFModel
 from thimbles.coordinatization import Coordinatization, as_coordinatization
 from thimbles.sqlaimports import *
 from thimbles.modeling.associations import HasParameterContext
@@ -184,17 +183,13 @@ class WavelengthSolution(ThimblesTable, Base):
             lsf_p = PickleParameter(lsf)
         elif isinstance(lsf_degree, int):
             lsf_p = Parameter(lsf)
-            lsf_mod = PolynomialLSFModel(lsf_p, degree=lsf_degree)
-            #import pdb; pdb.set_trace()
+            lsf_mod = PixelPolynomialModel(output_p=lsf_p, autofit=True, degree=lsf_degree)
         else:
             raise ValueError("lsf_degree of {} not understood".format(lsf_degree))
         self.lsf_p = lsf_p
     
     def __len__(self):
         return len(self.indexer)
-    
-    def __getitem__(self, index):
-        return self.indexer[index]
     
     @property
     def lsf(self):
@@ -589,7 +584,7 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
         else:
             return global_indexes
     
-    def normalized(self, norm=None, **kwargs):
+    def normalized(self, norm=None, force_pseudonorm=False, **kwargs):
         if norm is None:
             if not self.flags["normalized"]:
                 norm = self.pseudonorm(**kwargs)

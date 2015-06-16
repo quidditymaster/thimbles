@@ -48,6 +48,7 @@ from thimbles import radtran
 from thimbles import resampling
 from thimbles import transitions
 from thimbles import charts
+from thimbles import velocity
 from thimbles.radtran import mooger
 
 from thimbles.thimblesdb import ThimblesDB

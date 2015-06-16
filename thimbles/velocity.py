@@ -5,6 +5,7 @@ import warnings
 
 # 3rd Party
 import numpy as np
+import scipy.ndimage
 import h5py
 
 # Internal
@@ -13,13 +14,11 @@ from .utils.misc import cross_corr
 from .utils.misc import local_gaussian_fit
 from .spectrum import WavelengthSolution
 from thimbles.tasks import task
-# ########################################################################### #
 
 from thimbles import resource_dir
 
 __all__ = ["template_cc_rv"]
 
-# ########################################################################### #
 
 def try_load_template():
     rv_standard = None
@@ -43,7 +42,7 @@ speed_of_light = 299792.458
 #TODO: make a general cross correlator task. one where we build a cross correlation stack and one where we do the whole spectrum at once
 
 @task()
-def template_cc_rv(spectra, template=rv_standard, max_velocity=500, pix_poly_width=2):
+def template_cc_rv(spectra, template=rv_standard, max_velocity=500, avg_width=20, pix_poly_width=2):
     """use a template spectrum to estimate a common rv shift for a collection
     of spectra.
     
@@ -61,13 +60,15 @@ def template_cc_rv(spectra, template=rv_standard, max_velocity=500, pix_poly_wid
         wv_min = min(wv_bnds)
         wv_max = max(wv_bnds)
         spec_bounds = (wv_min, wv_max)
-        bounded_template = template.bounded_sample(spec_bounds)
-        normed = spec.normalized()
-        rebinned = normed.rebin(bounded_template.wv)
+        bounded_template = template.sample(spec_bounds, mode="bounded")
+        template_avg = scipy.ndimage.filters.gaussian_filter(bounded_template.flux, sigma=avg_width)
+        template_diff = bounded_template.flux-template_avg
+        interped_spec = normed.sample(bounded_template.wv, mode="interpolate")
+        avg_interped = scipy.ndimage.filters.gaussian_filter(interped_spec.flux, sigma=avg_width)
+        interped_diff = interped_spec.flux-avg_interped
+        
         max_pix_off = int(np.log10(1.0+max_velocity/speed_of_light)/log_delta) + 1
-        rebinned_med = np.median(rebinned.flux)
-        template_med = np.median(bounded_template.flux)
-        ccors.append(cross_corr(rebinned.flux-rebinned_med, bounded_template.flux-template_med, max_pix_off, overlap_adj=True))
+        ccors.append(cross_corr(interped_diff, template_diff, max_pix_off, overlap_adj=True))
     ccors = np.asarray(ccors)
     ccor_maxes = np.max(ccors, axis=1)
     normed_ccors = ccors/ccor_maxes.reshape((-1, 1))

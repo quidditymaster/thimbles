@@ -63,7 +63,7 @@ def template_cc_rv(spectra, template=rv_standard, max_velocity=500, avg_width=20
         bounded_template = template.sample(spec_bounds, mode="bounded")
         template_avg = scipy.ndimage.filters.gaussian_filter(bounded_template.flux, sigma=avg_width)
         template_diff = bounded_template.flux-template_avg
-        interped_spec = normed.sample(bounded_template.wv, mode="interpolate")
+        interped_spec = spec.sample(bounded_template.wv, mode="interpolate")
         avg_interped = scipy.ndimage.filters.gaussian_filter(interped_spec.flux, sigma=avg_width)
         interped_diff = interped_spec.flux-avg_interped
         

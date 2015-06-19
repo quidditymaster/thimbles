@@ -154,7 +154,7 @@ def cross_corr(arr1, arr2, offset_number, overlap_adj=False):
     +offset_number and returning a 2*offset_number+1 length asarray. 
     To adjust for differences in the number of pixels overlapped if 
     overlap_adj==True we divide the result by the number of pixels
-    included in the overlap of the two spectra.
+    included in the overlap of the two arrays.
     """
     assert len(arr1) == len(arr2)
     npts = len(arr1)
@@ -162,8 +162,6 @@ def cross_corr(arr1, arr2, offset_number, overlap_adj=False):
     cor_out = np.zeros(2*offs+1)
     offsets = list(range(-offs, offs+1))
     for offset_idx in range(len(offsets)):
-        #print "offsets", offsets[offset_idx]
-        #print "shapes", arr1.shape, arr2.shape
         coff = offsets[offset_idx]
         lb1, ub1 = max(0, coff), min(npts, npts+coff)
         lb2, ub2 = max(0, -coff), min(npts, npts-coff)
@@ -175,9 +173,16 @@ def cross_corr(arr1, arr2, offset_number, overlap_adj=False):
     return cor_out
 
 @task()
-def local_gaussian_fit(yvalues, peak_idx=None, fit_width=2, xvalues=None):
+def local_gaussian_fit(
+        y_values, 
+        y_variance=None,
+        peak_idx=None, 
+        fit_width=2, 
+        xvalues=None, 
+        return_fit_dict=False
+):
     """fit a quadratic function taking pixels from 
-    peak_idx - fit_width to peak_idx + fit_width, to the log of the yvalues
+    peak_idx - fit_width to peak_idx + fit_width, to the log of the y_values
     passed in. Giving back the parameters of a best fit gaussian.
     
     inputs:
@@ -198,31 +203,71 @@ def local_gaussian_fit(yvalues, peak_idx=None, fit_width=2, xvalues=None):
     returns:
     center, sigma, peak_y_value
     """
-    #import pdb; pdb.set_trace()
     if peak_idx is None:
-        peak_idx = np.argmax(yvalues)
+        peak_idx = np.argmax(y_values)
+    if y_variance is None:
+        y_variance = y_values
     lb = max(peak_idx - fit_width, 0)
-    ub = min(peak_idx + fit_width, len(yvalues)-1)
+    ub = min(peak_idx + fit_width, len(y_values)-1)
     if xvalues is None:
         chopped_xvals = np.arange(lb, ub+1)
         peak_xval = peak_idx
     else:
-        assert len(yvalues) == len(xvalues)
+        assert len(y_values) == len(xvalues)
         chopped_xvals = xvalues[lb:ub+1]
         peak_xval = xvalues[peak_idx]
     xmatrix = np.ones((len(chopped_xvals), 3))
     delta = chopped_xvals-peak_xval
+    x_scale = np.std(delta)
+    delta /= x_scale
     xmatrix[:, 1] = delta
     xmatrix[:, 2] = delta**2
-    chopped_yvalues = np.log(yvalues[lb:ub+1])
-    #if the y values are negative 
-    poly_coeffs = np.linalg.lstsq(xmatrix, chopped_yvalues)[0]
+    chopped_y = y_values[lb:ub+1]
+    #make sure there are no negative numbers
+    chopped_y = np.where(chopped_y > 0, chopped_y, 0.0)
+    chopped_y = np.log(chopped_y)
+    
+    chopped_var = y_variance[lb:ub+1]
+    inv_noise_mat = np.diag(chopped_y/chopped_var, 0)
+    poly_covar = np.linalg.pinv(np.dot(np.dot(xmatrix.transpose(), inv_noise_mat), xmatrix))
+    
+    poly_var = np.abs(np.dot(poly_covar, np.ones(3)))
+    diag_var_est = np.diag(poly_covar)
+    poly_var = np.where(poly_var > diag_var_est, poly_var, diag_var_est)
+    
+    poly_coeffs = np.dot(poly_covar, np.dot(xmatrix.transpose(), np.dot(inv_noise_mat, chopped_y)))
+    
+    #poly_coeffs = np.linalg.lstsq(xmatrix, chopped_yvalues)[0]
     offset = -poly_coeffs[1]/(2*poly_coeffs[2])
     center = peak_xval + offset
-    sigma = 1.0/np.sqrt(2*np.abs(poly_coeffs[2])) 
+    sigma = x_scale/np.sqrt(2*np.abs(poly_coeffs[2])) 
     center_p_vec = np.asarray([1.0, offset, offset**2])
     peak_y_value = np.dot(center_p_vec, poly_coeffs)
-    return center, sigma, np.exp(peak_y_value)
+    
+    if return_fit_dict:
+        fd = {}
+        fd["poly_var"] = poly_var
+        fd["poly_covar"] = poly_covar
+        fd["poly_coeffs"] = poly_coeffs
+        fd["x_scale"] = x_scale
+        fd["center"] = center
+        fd["sigma"] = sigma
+        fd["peak_value"] = peak_y_value
+        
+        #applying first order error propagation theory
+        cent_var = (poly_var[1]/poly_coeffs[2])**2
+        cent_var += (poly_coeffs[1]/poly_coeffs[2]**2 * poly_var[2])**2
+        cent_err = 0.5*x_scale*np.sqrt(cent_var)
+        fd["center_error"] = cent_err
+        
+        sigma_var = 1.0/8.0*(np.power(np.abs(poly_coeffs[2]), -3.0/2.0)*poly_var[2])**2
+        sigma_err = x_scale*np.sqrt(sigma_var)
+        fd["sigma_error"] = sigma_err
+        
+        return (center, sigma, np.exp(peak_y_value)), fd
+        
+    else:
+        return center, sigma, np.exp(peak_y_value)
 
 def get_local_maxima(arr):
     # http://stackoverflow.com/questions/3684484/peak-detection-in-a-2d-asarray/3689710#3689710
@@ -1030,56 +1075,7 @@ def fit_blackbody_phirls(spectrum, start_teff=5000.0, gamma_frac=3.0):
     x0 = np.array([start_norm, start_teff])
     return scipy.optimize.leastsq(get_resids, x0)
 
-@task()
-def saturated_voigt_cog(gamma_ratio=0.1):
-    min_log_strength = -1.5
-    max_log_strength = 5.0
-    n_strength = 105
-    log_strengths = np.linspace(min_log_strength, max_log_strength, n_strength)
-    strengths = np.power(10.0, log_strengths)
-    npts = 1001
-    
-    dx = np.power(10.0, np.linspace(-8, 8, npts))
-    opac_profile = voigt(dx, 0.0, 1.0, gamma_ratio)        
-    log_rews = np.zeros(n_strength)
-    for strength_idx in range(n_strength):
-        flux_deltas = 1.0-np.exp(-strengths[strength_idx]*opac_profile)
-        cur_rew = 2.0*integrate.trapz(flux_deltas, x=dx)
-        log_rews[strength_idx] = np.log10(cur_rew)
-    
-    cog_slope = scipy.gradient(log_rews)/scipy.gradient(log_strengths)
-    
-    n_extend = 3
-    low_strengths = min_log_strength - np.linspace(0.2, 0.1, n_extend)
-    high_strengths = max_log_strength + np.linspace(0.1, 0.2, n_extend)
-    extended_log_strengths = np.hstack((low_strengths, log_strengths, high_strengths))
-    extended_slopes = np.hstack((np.ones(n_extend), cog_slope, 0.5*np.ones(n_extend)))
-    
-    cpoints = np.linspace(min_log_strength, max_log_strength, 10)
-    constrained_ppol = ppol.RCPPB(poly_order=1, control_points=cpoints)
-    linear_basis = constrained_ppol.get_basis(extended_log_strengths)
-    n_polys = len(cpoints) + 1
-    n_coeffs = 2
-    out_coeffs = np.zeros((n_polys, n_coeffs))
-    fit_coeffs = np.linalg.lstsq(linear_basis.transpose(), extended_slopes)[0]
-    for basis_idx in range(constrained_ppol.n_basis):
-        c_coeffs = constrained_ppol.basis_coefficients[basis_idx].reshape((n_polys, n_coeffs))
-        out_coeffs += c_coeffs*fit_coeffs[basis_idx]
-    #linear_ppol = ppol.fit_piecewise_polynomial(extended_log_strengths, extended_slopes, order=1, control_points=cpoints)
-    linear_ppol = ppol.PiecewisePolynomial(out_coeffs, control_points=cpoints)
-    
-    fit_quad = linear_ppol.integ()
-    #set the integration constant and redo the integration
-    new_offset = fit_quad([min_log_strength])[0] - log_rews[0]
-    fit_quad = linear_ppol.integ(-new_offset)
-    
-    #fit_quad = smooth_ppol_fit(log_strengths, log_rews, y_inv=10.0*np.ones(n_strength), order=2)
-    cog= ppol.InvertiblePiecewiseQuadratic(fit_quad.coefficients, fit_quad.control_points, centers=fit_quad.centers, scales=fit_quad.scales)
-    #import pdb; pdb.set_trace()
-    return cog
-
-
-def sparse_row_circulant_matrix(vec, npts):
+def sparse_row_circulant_matrix(vec, npts, normalize=False):
     n_data = len(vec)*(npts-1)+2
     n_half = len(vec)//2
     row_idxs = np.zeros(n_data)
@@ -1097,7 +1093,14 @@ def sparse_row_circulant_matrix(vec, npts):
         else:
             data[count:count+len(cur_r_idxs)] = vec[-len(cur_r_idxs):]
         count += len(cur_r_idxs)
-    return scipy.sparse.coo_matrix((data, (row_idxs, col_idxs)), shape=(npts, npts))
+    
+    cmat = scipy.sparse.coo_matrix((data, (row_idxs, col_idxs)), shape=(npts, npts))
+    
+    if normalize:
+        mult_vec = cmat*np.ones(npts)
+        mult_dia_mat = scipy.sparse.dia_matrix((1.0/mult_vec, 0), shape=(npts, npts))
+        cmat = mult_dia_mat*cmat
+    return cmat
 
 def anti_smoothing_matrix(width, npts):
     max_width = int(max(1, 5*width))+1

@@ -72,7 +72,7 @@ def try_load_lemke():
             warnings.warn(e)
 
 
-class HydrogenLineOpacity(tmb.profiles.LineProfile):
+class HydrogenLineOpacity(object):
     
     def __init__(self, wv, nlow, nup):
         try_load_lemke()
@@ -91,8 +91,10 @@ class HydrogenLineOpacity(tmb.profiles.LineProfile):
         self.alphas = np.array(lemke_dat[base_group+"alphas"])
         self.alpha_binner = tmb.coordinatization.as_coordinatization(self.alphas)
         profile_grid = np.array(lemke_dat[base_group+"profile"])
-        pinterp = HypercubeGridInterpolator(coordinates=[self.log_ts, self.log_nes],
-                                            grid_data=profile_grid)
+        pinterp = HypercubeGridInterpolator(
+            coordinates=[self.log_ts, self.log_nes],
+            grid_data=profile_grid
+        )
         self.pinterp = pinterp
     
     def __call__(self, wvs, parameters):

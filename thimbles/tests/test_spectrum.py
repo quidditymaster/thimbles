@@ -6,9 +6,8 @@ except ImportError:
     import pdb
 from thimbles.coordinatization import *
 import thimbles as tmb
-from thimbles.spectrum import Spectrum, WavelengthSolution
+from thimbles.spectrum import Spectrum
 
-# ########################################################################### #
 # np.testing.assert_almost_equal(x, y, nulp)
 
 
@@ -31,42 +30,40 @@ class TestWavelengthSolution(unittest.TestCase):
         self.spectra = [self.linspec, self.logspec, self.polyspec]
         
     def test_coordinatization_types(self):
-        lin_idxer = self.linspec.wv_sample.wv_soln.indexer
+        lin_idxer = self.linspec.wv_soln
         assert isinstance(lin_idxer, LinearCoordinatization)
-        log_idxer = self.logspec.wv_sample.wv_soln.indexer
+        log_idxer = self.logspec.wv_soln
         assert isinstance(log_idxer, LogLinearCoordinatization)
-        poly_idxer = self.polyspec.wv_sample.wv_soln.indexer
+        poly_idxer = self.polyspec.wv_soln
         assert isinstance(poly_idxer, ArbitraryCoordinatization)
     
     def test_spec_passthrough(self):
         for spec in self.spectra:
             wvs = np.linspace(self.min_wv, self.max_wv, 5)
             indexes = spec.get_index(wvs)
-            wv_sol_indexes = spec.wv_sample.wv_soln.get_index(wvs)
+            wv_sol_indexes = spec.get_index(wvs)
             np.testing.assert_almost_equal(indexes, wv_sol_indexes)
             spec_back_wvs = spec.get_wvs(indexes)
-            wv_soln_back_wvs = spec.wv_sample.wv_soln.get_wvs(indexes)
+            wv_soln_back_wvs = spec.get_wvs(indexes)
             np.testing.assert_almost_equal(spec_back_wvs, wv_soln_back_wvs)
             np.testing.assert_almost_equal(wvs, spec_back_wvs)
     
     def test_scalar_indexing(self):
         for spec in self.spectra:
-            wvsoln = spec.wv_sample.wv_soln
             cent_wv = 0.5*(self.max_wv+self.min_wv)
-            cent_idx = wvsoln.get_index(cent_wv)
-            back_wv = wvsoln.get_wvs(cent_idx)
+            cent_idx = spec.get_index(cent_wv)
+            back_wv = spec.get_wvs(cent_idx)
             assert np.abs(back_wv-cent_wv) < 1e-7
     
     def test_index_snap_clip(self):
         for spec in self.spectra:
-            wvsoln = spec.wv_sample.wv_soln
             wvs = np.linspace(self.min_wv, self.max_wv, 7)
-            res = wvsoln.get_index(wvs, snap=True)
+            res = spec.get_index(wvs, snap=True)
             assert res.astype(int).dtype == res.dtype
-            res = wvsoln.get_index(wvs-10.0, clip=True)
+            res = spec.get_index(wvs-10.0, clip=True)
             assert np.min(res) == 0
-            res = wvsoln.get_index(wvs+10.0, clip=True)
-            assert np.max(res) == len(wvsoln)-1
+            res = spec.get_index(wvs+10.0, clip=True)
+            assert np.max(res) == len(spec)-1
 
 class TestSpectrum (unittest.TestCase):
     
@@ -181,15 +178,13 @@ class TestRVSetting(unittest.TestCase):
     def test_initialize_rv(self):
         shift_vel = 100.0
         spec = self.make_spec(rv=shift_vel, dh=0.0, rv_shifted=True, dh_shifted=True)
-        rest_min = self.min_wv
-        obs_min = self.min_wv/(1.0-shift_vel/tmb.speed_of_light)
-        np.testing.assert_almost_equal(rest_min, spec.wvs[0])
-        rest_indexer = spec.wv_sample.wv_soln.indexer
-        spec_min_p = rest_indexer.inputs["min"]
-        obs_min_p = spec_min_p.mapped_models[0].inputs["wvs"]
-        np.testing.assert_almost_equal(obs_min, obs_min_p.value)
-        spec_min_p.invalidate()
-        np.testing.assert_almost_equal(rest_min, spec_min_p.value)
+        rest_min_true = self.min_wv
+        obs_min_true = self.min_wv/(1.0-shift_vel/tmb.speed_of_light)
+        np.testing.assert_almost_equal(rest_min_true, spec.wvs[0])
+        rest_indexer = spec.wv_soln
+        spec_obs_wvs = spec.context["obs_wvs"].value
+        obs_min = spec_obs_wvs.coordinates[0]
+        np.testing.assert_almost_equal(obs_min, obs_min_true)
     
     def test_initialize_vs_set_rv(self):
         shift_vel = 100.0
@@ -201,7 +196,7 @@ class TestRVSetting(unittest.TestCase):
     def test_initialize_vs_set_dh(self):
         shift_vel = 100.0
         spec1 = self.make_spec(rv=0.0, dh=0.0, rv_shifted=True, dh_shifted=True)
-        spec1.wv_sample.wv_soln.delta_helio_p.value = shift_vel
+        spec1.context["delta_helio"].value = shift_vel
         spec2 = self.make_spec(rv=0.0, dh=shift_vel, rv_shifted=True, dh_shifted=False)
         np.testing.assert_almost_equal(spec1.wvs, spec2.wvs)
 

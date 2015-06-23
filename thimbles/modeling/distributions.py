@@ -5,6 +5,7 @@ import scipy.sparse
 import scipy.sparse.linalg
 from copy import copy
 
+import thimbles as tmb
 from thimbles.sqlaimports import *
 from thimbles.thimblesdb import ThimblesTable, Base
 from thimbles.modeling import ParameterGroup
@@ -20,27 +21,11 @@ class Distribution(ThimblesTable, Base, HasParameterContext):
         "polymorphic_on":distribution_class
     }
     
-    def __init__(self):
-        HasParameterContext.__init__(self)
-    
-    @property
-    def parameters(self):
-        return self.context
-    
-    def log_likelihood(self, value):
-        raise NotImplementedError("Abstract Class")
+    def __init__(self, parameters=None):
+        HasParameterContext.__init__(self, context_dict=parameters)
     
     def __getitem__(self, index):
-        return self.parameters[index]
-        
-    def as_sog(self, center=None, radius=None, embedding_space=None, n_max=10):
-        raise NotImplementedError("Abstract Class")
-    
-    def realize(self):
-        raise NotImplementedError("Abstract Class")
-    
-    def __add__(self, other):
-        raise NotImplementedError("Abstract Class")
+        return self.context[index]
 
 
 class NormalDistribution(Distribution):
@@ -48,44 +33,18 @@ class NormalDistribution(Distribution):
     __mapper_args__={
         "polymorphic_identity":"NormalDistribution",
     }
-    mean = Column(Float)
-    ivar = Column(Float)
+    mean = Column(PickleType)
+    ivar = Column(PickleType)
     
     def __init__(self, mean, ivar, parameters=None):
-        Distribution.__init__(self)
-        if parameters is None:
-            parameters = []
-        elif len(parameters) > 1:
-            raise ValueError("a NormalDistribution is strictly one dimensional perhaps try using VectorNormalDistribution instead")
-        self.parameters=parameters
+        Distribution.__init__(self, parameters=parameters)
         self.mean = np.asarray(mean)
         self.ivar = np.asarray(ivar)
-
-
-class VectorNormalDistribution(Distribution):
-    _id = Column(Integer, ForeignKey("Distribution._id"), primary_key=True)
-    __mapper_args__={
-        "polymorphic_identity":"NormalDistribution",
-    }
-    mean = Column(PickleType)
-    var = Column(PickleType)
     
-    def __init__(self, mean, var, parameters=None):
-        Distribution.__init__(self)
-        if parameters is None:
-            parameters = {}
-        for pname in parameters:
-            self.add_parameter(pname, parameters[pname])
-        
-        #self.parameters=parameters
-        self.mean = np.asarray(mean)
-        self.var = np.asarray(var)
+    @property
+    def var(self):
+        return tmb.utils.misc.inv_var_2_var(self.ivar)
     
-    def realize(self):
-        return np.random.normal(size=self.var.shape)*self.var
-
-
-class SumOfGaussians:#(ParameterDistribution):
-    _relative_probs = Column(PickleType) #(n_gauss,) numpy array
-    _covariances = Column(PickleType) #(n_gauss, n_dims) numpy array for axis aligned or (n_gauss, n_dims, n_dims) for full covariance matrices
-    
+    @var.setter
+    def var(self, value):
+        self.ivar = tmb.utils.misc.var_2_inv_var(value)

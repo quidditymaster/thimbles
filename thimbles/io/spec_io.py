@@ -23,7 +23,7 @@ import thimbles as tmb
 from thimbles.thimblesdb import find_or_create
 from thimbles.tasks import task
 from thimbles.utils.misc import var_2_inv_var
-from thimbles.spectrum import Spectrum, WavelengthSolution
+from thimbles.spectrum import Spectrum
 from . import wavelength_extractors
 
 # ########################################################################### #
@@ -76,7 +76,19 @@ def write_hdf5(filepath, spectra):
 
 # ########################################################################### #
 
-def read_ascii(fname, wv_col=0, flux_col=1, ivar_col=2, lsf_col=3, ivar_as_var=False, **np_kwargs):
+_spectrum_separator = "#new_spectrum"
+
+def read_ascii(
+        fname, 
+        wv_col=0, 
+        flux_col=1, 
+        ivar_col=None, 
+        lsf_col=None, 
+        lsf_degree=2,
+        ivar_as_var=False, 
+        spectrum_separator=None, 
+        comment="#",
+):
     """
     Readin ascii tables as a spectrum
     
@@ -94,41 +106,80 @@ def read_ascii(fname, wv_col=0, flux_col=1, ivar_col=2, lsf_col=3, ivar_as_var=F
       index to interpret as line spread function
     ivar_as_var: bool
       if True interpret the ivar_col as variance instead of inverse variance.
-    np_kwargs:
-       pass the extra arguments through to np.readtxt e.g. to change delimeters or comment style.
-
+    spectrum_separator: string
+      lines matching this token will cause subsequent lines to be
+      loaded into a new spectrum.
     Returns
     -------
-    spectrum : list of `thimbles.spectrum.Spectrum` objects     
+    spectra : list of `thimbles.spectrum.Spectrum` objects     
     """ 
     #### check if file exists   ####### #############
     if not os.path.isfile(fname): 
         raise IOError("File does not exist:'{}'".format(fname))
     
-    data = np.loadtxt(fname, **np_kwargs)
-    wvs = data[:, wv_col]
-    flux = data[:, flux_col]
-    ivar =None
-    lsf = None
-    if data.shape[1] >= 3:
-        ivar = data[:, ivar_col]
-        if ivar_as_var:
-            ivar = var_2_inv_var(ivar)
-    if data.shape[1] >= 4:
-        lsf = data[:, lsf_col]
+    if spectrum_separator is None:
+        spectrum_separator = _spectrum_separator
     
-    return [Spectrum(wvs, data, ivar, lsf=lsf)]
+    spectra = []
+    wvs = []
+    flux = []
+    ivar = []
+    lsf = []
+    for line in open(fname):
+        if line.match(comment):
+            continue
+        elif line.match(spectrum_separator):
+            if len(ivar)==0:
+                ivar = None
+            if len(lsf) == 0:
+                lsf = None
+            spectra.append(Spectrum(wvs, flux, ivar=ivar, lsf=lsf))
+            wvs = []
+            flux = []
+            ivar = []
+            lsf = []
+        else:
+            lspl = line.split()
+            wvs.append(float(lspl[wv_col]))
+            flux.append(float(lspl[flux_col]))
+            if not ivar_col is None:
+                ivar.append(float(lspl[ivar_col]))
+            if not lsf_col is None:
+                lsf.append(float(lspl[lsf_col]))
+    if len(wvs) > 0:
+        if len(ivar) == 0:
+            ivar = None
+        if len(lsf) == 0:
+            lsf=None
+        spectra.append(Spectrum(wvs, flux, ivar=ivar, lsf=lsf))
+    
+    return spectra
 
 
-def write_ascii(spectra, fpath, fmt="%.8e", ivar_as_var=False):
+def write_ascii(
+        spectra, 
+        fpath, 
+        fmt="%.8e", 
+        ivar_as_var=False,
+        spectrum_separator=None, 
+):
     if isinstance(spectra, tmb.Spectrum):
         spectra = [spectra]
-    for spec in spectra:
+    if spectrum_separator is None:
+        spectrum_separator = _spectrum_separator
+    if spectrum_separator[-1] != "\n":
+        spectrum_separator[-1] = "\n"
+    f = open(fpath, "w")
+    fmt_str = "{wv: 11.4f} {flux: 15.5f} {ivar: 15.5f} {lsf: 15.5f}\n"
+    for spec_idx, spec in enumerate(spectra):
         wvs, flux, ivar, lsf = spec.wvs, spec.flux, spec.ivar, spec.lsf
         if ivar_as_var:
             ivar = inv_var_2_var(ivar)
-        data = np.array([wvs, flux, ivar, lsf]).transpose()
-        np.savetxt(fpath, data, fmt=fmt)
+        for idx in range(len(wvs)):
+            line = fmt_str.format(wv=wvs[idx], flux=flux[idx], ivar=ivar[idx], lsf=lsf[idx])
+            f.write(line)
+        if spec_idx != (len(spectra)-1):
+            f.write(spectrum_separator)
     return True
 
 
@@ -186,7 +237,6 @@ def read_json(fname, database=None, auto_add=True):
             spectra.append(spec)
     return spectra
 
-############################################################################    
 
 def read_fits (filepath, which_hdu=0, band=0, preference=None):
     if not os.path.isfile(filepath): 

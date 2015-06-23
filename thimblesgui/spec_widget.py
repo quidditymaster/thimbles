@@ -5,7 +5,6 @@ import numpy as np
 
 import thimblesgui as tmbg
 import thimbles as tmb
-from thimbles import as_wavelength_sample
 import thimbles.charts as charts
 from thimbles.charts import SpectrumChart
 from thimblesgui import MatplotlibWidget

@@ -9,6 +9,7 @@ import thimbles as tmb
 from thimbles import speed_of_light
 from functools import reduce
 sqrt2pi = np.sqrt(2*np.pi)
+sqrt2 = np.sqrt(2)
 
 profile_functions = {}
 
@@ -30,27 +31,25 @@ def voigt(wvs, center, g_width, l_width):
     "returns a voigt profile with gaussian sigma g_width and lorentzian width l_width."
     g_w = np.abs(g_width)
     l_w = np.abs(l_width)
-    if g_w == 0 and l_width == 0:
-        dirac_delta = np.zeros(len(wvs), dtype=float)
-        dirac_delta[int(len(wvs)/2)] = 1.0
-        return dirac_delta
-    elif l_w == 0:
-        return gauss(wvs, center, g_width)
+    if l_w == 0:
+        if g_w == 0:
+            g_w = 1e-10
+        return gauss(wvs, center, g_w)
     elif g_w == 0 and l_width != 0:
         g_w = 0.0001*l_w
-    z = ((wvs-center)+l_w*1j)/(g_w*np.sqrt(2))
-    cplxv = scipy.special.wofz(z)/(g_w*np.sqrt(2*np.pi))
-    return (cplxv.real).copy()
+    z = ((wvs-center)+l_w*1j)/(g_w*sqrt2)
+    cplxv = scipy.special.wofz(z)/(g_w*sqrt2pi)
+    return cplxv.real
 
 profile_functions["voigt"] = voigt
 
-#TODO: implement a more accurate stark profile such as the holtsmark distribution
+#TODO: implement the holtsmark distribution
 def nnstark(wvs, center, stark_width):
     """nearest neighbor approximation to a stark broadening profile"""
     delta_wvs = (np.abs(wvs-center) + 1e-10)/np.abs(stark_width) #1e-10 to regularize the limit delta_lam->0  
     return 3.0/(4.0*stark_width)*np.power(delta_wvs, -5.0/2.0)*np.exp(-np.power(delta_wvs, -3.0/2.0))
 
-profile_functions["stark"] = nnstark
+profile_functions["nearest_neighbor_stark"] = nnstark
 
 def rotational(wvs, center, vsini, limb_dark = 0):
     "for wavelengths in angstroms and v*sin(i) in km/s"
@@ -96,20 +95,6 @@ def radial_tangential_macroturbulence(wvs, center, eta_rt, n_freqs=1024):
 
 profile_functions["radial_tangential_macroturbulence"] = radial_tangential_macroturbulence
 
-#def voigt_rotational(wvs, center, g_width, l_width, vsini, limb_darkening): #this routine has edge problems with the convolution
-#    "generates a voigt profile convolved with a rotational broadening profile"
-#    rprof = rotational(wvs, center, vsini, limb_darkening)
-#    if len(wvs) % 2 == 1:
-#        array_central_wv = wvs[int(len(wvs)/2)]
-#    else:
-#        array_central_wv = 0.5*(wvs[int(len(wvs)/2)] + wvs[int(len(wvs)/2)-1])
-#    #if center is not the central wavelength
-#    vprof = voigt(wvs, array_central_wv, g_width, l_width)
-#    #plt.plot(vprof)
-#    return np.convolve(rprof, vprof, mode="same")/np.convolve(np.ones(wvs.shape), rprof, mode="same")
-#
-#profile_functions["voigt_rotational"] = voigt_rotational
-
 def convolved_stark(wvs, center, g_width, l_width, stark_width):
     """a numerically simple model for the line shape of a hydrogen feature.
     a Voigt profile convolved with a nearest-neighbor stark"""
@@ -123,12 +108,12 @@ def convolved_stark(wvs, center, g_width, l_width, stark_width):
 
 
 def compound_profile(wvs, center, sigma, gamma, vsini, limb_dark, vmacro, convolution_mode="fft", normalize=True):
-    """a helper class for convolving together the voigt, rotational, 
-    radial tangential macroturbulent profiles. 
+    """a helper function for convolving together the voigt, rotational, 
+    and radial tangential macroturbulent profiles.
+    
     Note: the convolution procedure may induce shifts, warps and
     other unphysical artefacts so always examine the output.
-    The convolution will not get it right if the center wv is not actually in
-    the center of the passed in wvs.
+    In particular problems will crop up if wvs[len(wvs)//2] != center
     
     parameters:
     wvs: ndarray
@@ -157,10 +142,17 @@ def compound_profile(wvs, center, sigma, gamma, vsini, limb_dark, vmacro, convol
     normalize: bool
      if True then nomalize the result to have sum=1
     """
-    vprof = voigt(wvs, center, sigma, gamma)
-    rotprof = rotational(wvs, center, vsini, limb_dark)
-    macroprof = radial_tangential_macroturbulence(wvs, center, vmacro)
-    all_profs = [vprof, rotprof, macroprof]
+    all_profs = []
+    if not ((sigma ==0) and (gamma==0)):
+        vprof = voigt(wvs, center, sigma, gamma)
+        all_profs.append(vprof)
+    if not (vsini == 0):
+        rotprof = rotational(wvs, center, vsini, limb_dark)
+        all_profs.append(rotprof)
+    if not (vmacro == 0):
+        macroprof = radial_tangential_macroturbulence(wvs, center, vmacro)
+        all_profs.append(macroprof)
+    
     if convolution_mode == "fft":
         ffts = [fftpack.fft(prof) for prof in all_profs]
         fft_prod = reduce(lambda x, y: x*y, ffts)
@@ -170,7 +162,8 @@ def compound_profile(wvs, center, sigma, gamma, vsini, limb_dark, vmacro, convol
     else:
         raise ValueError("convolution mode {} is not recognized".format(convolution_mode))
     if normalize:
-        prof /= np.sum(prof)
+        dlam = scipy.gradient(wvs)
+        prof /= np.sum(prof*dlam)
     return prof
 
 
@@ -212,33 +205,6 @@ def pca_matched_feature_filter(k, **kwargs):
     import pdb; pdb.set_trace()
     return u, s, v
 
-class InterpolatedGridProfileFunction(object):
-    
-    def __init__(self, parameter_points):
-        pass
-    
-    def get_interp(self):
-        pass
-    
-    def __call__(self, wvs, center, params=None):
-        pass
         
-class LineProfile:
-    
-    def __init__(self, center, parameters, profile_func="voigt"):
-        self.center = center
-        self.parameters = np.asarray(parameters)
-        if isinstance(profile_func, str):
-            profile_func = profile_functions[profile_func]
-        self.profile_func = profile_func
-    
-    def __call__(self, wvs, parameters=None):
-        if parameters is None:
-            parameters = self.parameters
-        return self.profile_func(wvs, self.center, *parameters)
 
-
-if __name__ == "__main__":
-    wvs = np.linspace(4990, 5010, 1000)
-    cprof = compound_profile(wvs, 5000.0, 1.0, 1.0, 1.0, 0.8, 1.0)
     

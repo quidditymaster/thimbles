@@ -19,7 +19,6 @@ import subprocess
 import numpy as np
 
 import thimbles as tmb
-from thimbles import as_wavelength_sample
 from thimbles.radtran.engines import RadiativeTransferEngine
 from thimbles.radtran.marcs_engine import MarcsInterpolator
 from thimbles.options import Option,opts
@@ -27,7 +26,7 @@ from thimbles.options import config_dir
 
 
 Option('moog',option_style="parent_dict")
-Option("executable",parent="moog",envvar="MOOGSILENT")
+Option("executable",parent="moog",envvar="MOOGSILENT", default=None)
 Option("opac_rad", parent="moog", default=3.0)
 Option("delta_wv", parent="moog", default=0.01)
 default_moog_wdir = os.path.join(config_dir, "working_dirs", "moog")
@@ -202,8 +201,6 @@ class MoogEngine(RadiativeTransferEngine):
         if central_intensity:
             flux_int = 1 
         f = open(os.path.join(self.working_dir, "batch.par"), "w")
-        wavelengths = as_wavelength_sample(wavelengths)
-        wvs = wavelengths.wvs
         if opac_rad is None:
             opac_rad = opts["moog.opac_rad"]
         if delta_wv is None:
@@ -212,8 +209,8 @@ class MoogEngine(RadiativeTransferEngine):
             model_in=self._photosphere_fname,
             lines_in=line_name,
             outfile=out_fname,
-            min_wv=wvs[0],
-            max_wv=wvs[-1],
+            min_wv=wavelengths[0],
+            max_wv=wavelengths[-1],
             delta_wv=delta_wv,
             opac_rad=opac_rad,
             flux_int=flux_int

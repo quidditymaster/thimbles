@@ -17,6 +17,7 @@ from astropy import units
 from astropy import coordinates
 import astropy.io.fits as fits
 import scipy.optimize
+from scipy import integrate
 from functools import reduce
 try:
     import cvxopt
@@ -27,17 +28,14 @@ except ImportError:
 
 
 # Internal
-import thimbles
-import thimbles as tmb
-from thimbles.spectrum import as_wavelength_solution
-from thimbles import hydrogen
+#import thimbles as tmb
+#from thimbles import hydrogen
 from thimbles import resampling
 from . import partitioning
 from . import piecewise_polynomial
 from thimbles.profiles import voigt
-from scipy import integrate
-from thimbles.utils import piecewise_polynomial as ppol
-from thimbles.tasks import task
+from . import piecewise_polynomial as ppol
+
 
 # ########################################################################### #
 
@@ -146,33 +144,6 @@ def reduce_output_shape (arr):
     return arr.reshape(new_shape)
 
 
-#TODO: write this cross correlator in cython
-@task()
-def cross_corr(arr1, arr2, offset_number, overlap_adj=False):
-    """cross correlate two arrays of the same size.
-    correlating over a range of pixel offsets from -offset_number to 
-    +offset_number and returning a 2*offset_number+1 length asarray. 
-    To adjust for differences in the number of pixels overlapped if 
-    overlap_adj==True we divide the result by the number of pixels
-    included in the overlap of the two arrays.
-    """
-    assert len(arr1) == len(arr2)
-    npts = len(arr1)
-    offs = int(offset_number)
-    cor_out = np.zeros(2*offs+1)
-    offsets = list(range(-offs, offs+1))
-    for offset_idx in range(len(offsets)):
-        coff = offsets[offset_idx]
-        lb1, ub1 = max(0, coff), min(npts, npts+coff)
-        lb2, ub2 = max(0, -coff), min(npts, npts-coff)
-        cur_corr = np.sum(arr1[lb1:ub1]*arr2[lb2:ub2])
-        if overlap_adj:
-            n_overlap = min(ub1, ub2) - max(lb1, lb2)
-            cur_corr /= float(n_overlap)
-        cor_out[offset_idx] = cur_corr
-    return cor_out
-
-@task()
 def local_gaussian_fit(
         y_values, 
         y_variance=None,
@@ -389,7 +360,6 @@ def trough_bounds(maxima, start_idx, bad_mask=None):
 class MinimaStatistics:
     pass
 
-@task()
 def minima_statistics(values, variance, last_delta_fraction=1.0, max_sm_radius=0.5):
     #import pdb; pdb.set_trace()
     n_pts = len(values)
@@ -440,7 +410,7 @@ def minima_statistics(values, variance, last_delta_fraction=1.0, max_sm_radius=0
     ms.n_c = n_cons
     return ms
 
-@task()
+
 def detect_features(values, 
                     variance, 
                     reject_fraction=0.5,
@@ -522,7 +492,7 @@ def smoothed_mad_error(
     are representative of the level of the noise.
     """
     good_mask = np.ones(len(values), dtype=bool)
-    if isinstance(values, tmb.Spectrum):
+    if hasattr(values, "ivar") and hasattr(values, "flux"):
         if not values.ivar is None:
             good_mask *= values.ivar > 0
         good_mask *= values.flux > 0
@@ -555,21 +525,7 @@ def smoothed_mad_error(
     #var = clean_variances(var)
     return var
 
-@task(result_name="noise_estimate")
-def estimate_spectrum_noise(
-        spectrum, 
-        smoothing_scale=3.0,
-        median_scale=200,
-        apply_poisson=True,
-        post_smooth=5.0,
-        max_snr=1000.0,
-        overwrite_noise=False,
-):
-    sm_var = smoothed_mad_error(spectrum.flux, smoothing_scale=smoothing_scale, median_scale=median_scale, apply_poisson=apply_poisson, post_smooth=post_smooth, max_snr=max_snr)
-    if overwrite_noise:
-        spectrum.var = sm_var
 
-@task()
 def min_delta_bins(x, min_delta, target_n=1, forced_breaks=None):
     """return a set of x values which partition x into bins.
     each bin must be at least min_delta wide and must contain at least target_n
@@ -867,7 +823,6 @@ def pseudo_huber_cost(resids, sigma, gamma, sum_result=True):
         result =  np.sum(result)
     return result
 
-@task()
 def irls(A,
          b,
          sigma,

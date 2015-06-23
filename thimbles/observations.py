@@ -4,35 +4,34 @@ from thimbles.tasks import task
 from thimbles.sqlaimports import *
 from thimbles.modeling.associations import HasParameterContext
 
-class Observation(Base, ThimblesTable, HasParameterContext):
-    start = Column(DateTime)
+class Pointing(Base, ThimblesTable, HasParameterContext):
+    ra = Column(Float)
+    dec = Column(Float)
+    time = Column(DateTime)
     duration = Column(Float) #in seconds
     airmass = Column(Float)
+    
+    def __init__(self, ra=None, dec=None, time=None, duration=None, airmass=None):
+        HasParameterContext.__init__(self)
+        self.ra = ra
+        self.dec = dec
+        self.time = time
+        self.duration = duration
+        self.airmass = airmass
+
+
+class Observation(Base, ThimblesTable, HasParameterContext):
+    _pointing_id = Column(Integer, ForeignKey("Pointing._id"))
+    pointing = relationship("Pointing", foreign_keys=_pointing_id)
+    _source_id = Column(Integer, ForeignKey("Source._id"))
+    source = relationship("Source", foreign_keys=_source_id)
     observation_type = Column(String)
     __mapper_args__={
         "polymorphic_on":observation_type,
         "polymorphic_identity":"Observation"
     }
     
-    def __init__(self, start=None, duration=None, airmass=None):
+    def __init__(self, pointing, source):
         HasParameterContext.__init__(self)
-        self.start = start
-        self.duration = duration
-        self.airmass = airmass
-
-    
-def prefer_existing(spec, database, matches):
-    return matches[0]
-
-def obs_from_spec(spec, database):
-    Observation
-
-@task()
-def update_observations(
-        spectra, 
-        obs_matcher, 
-        on_matched, 
-        on_matchless
-):
-    pass
-    
+        self.pointing = pointing
+        self.source = source

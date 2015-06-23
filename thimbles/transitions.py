@@ -7,6 +7,9 @@ from thimbles.sqlaimports import *
 from thimbles.thimblesdb import Base, ThimblesTable
 from thimbles.modeling import Parameter, Model
 from thimbles.abundances import Ion
+from sqlalchemy.orm.collections import collection
+from sqlalchemy.orm.collections import attribute_mapped_collection
+from sqlalchemy.ext.associationproxy import association_proxy
 
 import latbin
 
@@ -96,6 +99,206 @@ class Transition(ThimblesTable, Base):
     def x(self):
         return self.pseudo_strength()
 
+
+class TransitionIndex(Base, ThimblesTable):
+    _transition_id = Column(Integer, ForeignKey("Transition._id"))
+    transition = relationship("Transition", foreign_keys=_transition_id)
+    index = Column(Integer)
+    _indexer_p_id = Column(Integer, ForeignKey("TransitionIndexerParameter._id"))
+    
+    def __init__(self, transition, index):
+        self.transition = transition
+        self.index = index
+
+
+class TransitionIndexer(object):
+    
+    def __init__(self):
+        self.transitions = []
+        self.trans_to_idx = {}
+        self._trans_idx_list = []
+    
+    def extend_transitions(self, transitions):
+        for t in transitions:
+            t_i = len(self.transitions)
+            t_index = TransitionIndex(t, t_i)
+            self._add_transition_index(t_index)
+    
+    @collection.appender
+    def _add_transition_index(self, t_index):
+        self._trans_idx_list.append(t_index)
+        t = t_index.transition
+        i = t_index.index
+        n_current = len(self.transitions)
+        if n_current < i+1:
+            self.transitions.extend([None for j in range(i+1-n_current)])
+        self.transitions[i] = t
+        self.trans_to_idx[t] = i
+    
+    @collection.remover
+    def _remove_transition_index(self, t_index):
+        t = t_index.transition
+        i = t_index.index
+        self._trans_idx_list.remove(t_index)
+        self.transitions[i] = None
+        self.trans_to_idx.pop(t)
+    
+    @collection.iterator
+    def _iter_indexes(self):
+        for t_idx in self._trans_idx_list:
+            yield t_idx
+    
+    def __getitem__(self, index):
+        if isinstance(index, Transition):
+            return self.trans_to_idx[index]
+        else:
+            return self.idx_to_trans[index]
+    
+    def __len__(self):
+        return len(self.transitions)
+
+
+class TransitionIndexerParameter(Parameter):
+    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"TransitionIndexerParameter",
+    }
+    _value = relationship(
+        "TransitionIndex", 
+        collection_class=TransitionIndexer,
+    )
+    
+    def __init__(self, transitions):
+        self._value.extend_transitions(transitions)
+    
+
+class TransitionMappedFloat(Base, ThimblesTable):
+    _transition_id = Column(Integer, ForeignKey("Transition._id"))
+    transition = relationship("Transition", foreign_keys=_transition_id)
+    _mapper_parameter_id = Column(Integer, ForeignKey("TransitionMappedParameter._id"))
+    value = Column(Float)
+    
+    def __init__(self, transition, value):
+        self.transition = transition
+        self.value = value
+
+
+class TransitionMappedParameter(Parameter):
+    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"TransitionMappedParameter",
+    }
+    _transition_map = relationship(
+        "TransitionMappedFloat",
+        collection_class=attribute_mapped_collection("transition")
+    )
+    _value = association_proxy("_transition_map", "value")
+    
+    def __init__(self, mapped_values=None):
+        if mapped_values is None:
+            mapped_values = {}
+        self._value = mapped_values
+
+class TransitionMappedVectorizerModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"TransitionMappedVectorizerModel",
+    }
+    fill_value = Column(Float)
+    
+    def __init__(
+            self, 
+            output_p, 
+            transition_mapped_p, 
+            indexer_p, 
+            fill_value=0.0
+    ):
+        self.output_p = output_p
+        self.add_input("tdict", transition_mapped_p)
+        self.add_input("indexer", indexer_p)
+        self.fill_value = fill_value
+    
+    def __call__(self, vprep=None):
+        vdict = self.get_vdict(vprep)
+        tdict = vdict[self.inputs["tdict"]]
+        indexer = vdict[self.inputs["indexer"]]
+        ntrans = len(indexer)
+        vec_vals = np.repeat(self.fill_value, ntrans)
+        for t in tdict:
+            t_idx = indexer.trans_to_idx.get(t)
+            if not t_idx is None:
+                vec_vals[t_idx] = tdict[t]
+        return vec_vals
+
+
+class ExemplarGrouping(Base, ThimblesTable):
+    _transition_id = Column(Integer, ForeignKey("Transition._id"))
+    transition = relationship("Transition", foreign_keys=_transition_id)
+    _exemplar_id = Column(Integer, ForeignKey("Transition._id"))
+    exemplar = relationship("Transition", foreign_keys=_exemplar_id)
+    _grouping_id = Column(Integer, ForeignKey("ExemplarGroupingParameter._id"))
+    
+    def __init__(self, exemplar, transition):
+        self.exemplar = exemplar
+        self.transition = transition
+
+class ExemplarMap(object):
+    
+    def __init__(self):
+        self.groups = {}
+        self._groupings = []
+    
+    def __getitem__(self, index):
+        return self.groups[index]
+    
+    def get(self, index):
+        return self.groups.get(index)
+    
+    def exemplars(self):
+        return self.groups.keys()
+    
+    def extend_groups(self, groups):
+        for exemp in groups:
+            for trans in groups[exemp]:
+                cgroup = ExemplarGrouping(exemp, trans)
+                self._add_grouping(cgroup)
+    
+    @collection.appender
+    def _add_grouping(self, grouping):
+        self._groupings.append(grouping)
+        exemp = grouping.exemplar
+        trans = grouping.transition
+        group_l = self.groups.get(exemp)
+        if group_l is None:
+            group_l = []
+        group_l.append(trans)
+        self.groups[exemp] = group_l
+    
+    @collection.remover
+    def _remove_grouping(self, grouping):
+        self._groupings.remove(grouping)
+        exemp = grouping.exemplar
+        trans = grouping.transition
+        self.groups[exemp].remove(trans)
+
+    @collection.iterator
+    def _iter_groupings(self):
+        for g in self._groupings:
+            yield g
+
+class ExemplarGroupingParameter(Parameter):
+    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"ExemplarGroupingParameter",
+    }
+    
+    _value = relationship(
+        "ExemplarGrouping",
+        collection_class=ExemplarMap,
+    )
+    
+    def __init__(self, groups):
+        self._value.extend_groups(groups)
 
 transgroup_assoc = sa.Table("transgroup_assoc", Base.metadata,
     Column("transition_id", Integer, ForeignKey("Transition._id")),
@@ -343,5 +546,4 @@ def update_linelist(
             database.add(ctrans)
         if auto_commit:
             database.commit()
-
 

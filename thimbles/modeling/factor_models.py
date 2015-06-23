@@ -16,6 +16,7 @@ PixelPolynomialModel
 IdentityMap
 IdentityMapModel
 MatrixMultiplierModel
+MultiplierModel
 """.split()
 
 class MultiplierModel(Model):
@@ -26,18 +27,22 @@ class MultiplierModel(Model):
     
     def __init__(
             self, 
-            parameters=None, 
             output_p=None, 
+            factors=None, 
     ):
-        if parameters is None:
-            parameters = []
-        self.parameters = parameters
         self.output_p = output_p
+        if factors is None:
+            factors = []
+        for param in factors:
+            self.add_input("factors", param, is_compound=True)
     
     def __call__(self, pvrep=None):
-        pvd = self.get_vdict(pvrep)
-        prod = reduce(lambda x, y: x*y, list(pvd.values()))
-        return prod
+        vdict = self.get_vdict(pvrep)
+        factors = self.inputs["factors"]
+        product = vdict[factors[0]]
+        for param in factors[1:]:
+            product = product*vdict[param]
+        return product
 
 
 class PickleParameter(Parameter):

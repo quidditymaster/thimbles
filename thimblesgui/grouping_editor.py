@@ -18,7 +18,6 @@ from thimbles.thimblesdb import Base
 from thimbles.transitions import Transition, as_transition_group
 from thimbles.transitions import TransitionGroupingStandard, TransitionGroup
 from thimbles.abundances import Ion
-from thimbles import as_wavelength_sample
 from thimbles import ptable
 from thimbles.periodictable import symbol_to_z, z_to_symbol
 import thimbles.charts as charts

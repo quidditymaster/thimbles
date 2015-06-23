@@ -13,7 +13,6 @@ import thimbles as tmb
 from thimbles.radtran import MoogEngine
 from thimbles.radtran import MarcsInterpolator
 
-#_make_plots = True
 _make_plots = False
 
 class TestRadTranEngine(unittest.TestCase):
@@ -23,11 +22,12 @@ class TestRadTranEngine(unittest.TestCase):
         self.ll = tmb.io.linelist_io.read_linelist(os.path.join(self.wdir, "test.ln"))
         #self.photosphere_engine = MarcsInterpolator(working_dir = self.wdir)
         #self.sun_spec = tmb.io.read_spec("sun.txt")
-        self.sun_params = StellarParameters(5777.0, 4.44, 0.0, 0.88)
         self.sun_mod_file = os.path.join(self.wdir, "sun.mod")
         self.engine = MoogEngine(working_dir = self.wdir)
     
     def test_model_spectrum(self):
+        if tmb.opts["moog.executable"] is None:
+            return
         spec = self.engine.spectrum(linelist=self.ll, stellar_params=self.sun_mod_file, wavelengths=np.linspace(15005, 150020, 500), normalized=True)
         if _make_plots:
             import matplotlib.pyplot as plt
@@ -50,6 +50,8 @@ class TestRadTranEngine(unittest.TestCase):
     #    import pdb; pdb.set_trace()
     
     def test_line_abundance (self):
+        if tmb.opts["moog.executable"] is None:
+            return
         llabs = self.engine.line_abundance(linelist=self.ll,stellar_params=self.sun_mod_file)
         #import pdb; pdb.set_trace()
     

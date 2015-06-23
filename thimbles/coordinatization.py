@@ -2,9 +2,10 @@ import numpy as np
 import scipy
 
 import thimbles as tmb
-from thimbles.thimblesdb import ThimblesTable, Base
-from thimbles.modeling import Parameter, FloatParameter
-from thimbles.sqlaimports import *
+from .thimblesdb import ThimblesTable, Base
+from .modeling import Parameter, FloatParameter
+from .modeling import Model
+from .sqlaimports import *
 from functools import reduce
 
 class CoordinatizationError(Exception):
@@ -84,26 +85,13 @@ def as_coordinatization(coordinates, delta_max=1e-5, force_linear=False, force_l
     
     return ArbitraryCoordinatization(coordinates)
 
-class Coordinatization(tmb.modeling.Model):
-    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
-    npts = Column(Integer)
-    __mapper_args__ = {
-        "polymorphic_identity":"Coordinatization",
-    }
+class Coordinatization(object):
     
     def get_index(self, coord):
         raise NotImplementedError("abstract class")
     
     def get_coord(self, index):
         raise NotImplementedError("abstract class")
-    
-    #def __getitem__(self, index):
-    #    if isinstance(index, slice):
-    #        return self.coordinates[index]
-    #    else:
-    #        if index < 0:
-    #            print("warning Coordinatization[-n] does not wrap around")
-    #        return self.get_coord(index)
     
     def __len__(self):
         return self.npts
@@ -144,13 +132,25 @@ class Coordinatization(tmb.modeling.Model):
         interp_mat = scipy.sparse.coo_matrix((mat_dat, (row_idxs, col_idxs)), shape=mat_shape).tocsr()
         return interp_mat
 
+class ArbitraryCoordinatizationModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"ArbitraryCoordinatizationModel",
+    }
+    
+    def __init__(self, output_p, coords_p):
+        self.output_p = output_p
+        self.add_input("coords", coords_p)
+    
+    def __call__(self, vprep=None):
+        vdict = self.get_vdict(vprep)
+        coords = vdict[self.inputs["coords"]]
+        return ArbitraryCoordinatization(coords)
+
+
 class ArbitraryCoordinatization(Coordinatization):
-    _id = Column(Integer, ForeignKey("Coordinatization._id"), primary_key=True)
     _start_dx = None
     _end_dx = None
-    __mapper_args__={
-        "polymorphic_identity":"ArbitraryCoordinatization",
-    }
     
     def __init__(self, coordinates, as_edges=False, check_ordered=False):
         """a class for representing coordinatizations of ordered arrays.
@@ -175,8 +175,6 @@ class ArbitraryCoordinatization(Coordinatization):
         coordinatization and LogLinear coordinatization and apply 
         those if appropriate.
         """
-        self.output_p = Parameter()
-        
         coordinates = np.asarray(coordinates)
         if check_ordered:
             gradient = scipy.gradient(coordinates)
@@ -187,15 +185,16 @@ class ArbitraryCoordinatization(Coordinatization):
         if as_edges:
             coordinates = edges_to_centers(coordinates)
         
-        self.add_input("coordinates", Parameter(coordinates))
+        self.coordinates = coordinates
         self.npts = len(coordinates)
     
     __doc__ = __init__.__doc__
     
-    @property
-    def coordinates(self):
-        return self.output_p.value
-    
+    def __mul__(self, other):
+        mulval = float(other)
+        coords = mulval*self.coordinates
+        return ArbitraryCoordinatization(coords)
+        
     @property
     def min(self):
         return self.coordinates[0]
@@ -215,10 +214,6 @@ class ArbitraryCoordinatization(Coordinatization):
         if self._end_dx is None:
             self._end_dx = self.coordinates[-1]-self.coordinates[-2]
         return self._end_dx
-    
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
-        return vdict[self.inputs["coordinates"]]
     
     def __len__(self):
         return len(self.coordinates)
@@ -306,12 +301,28 @@ class ArbitraryCoordinatization(Coordinatization):
             out_index = np.clip(out_index, 0, len(self)-1)
         return out_index.reshape(in_shape)
 
-class LinearCoordinatization(Coordinatization):
-    _id = Column(Integer, ForeignKey("Coordinatization._id"), primary_key=True)
-    dx = Column(Float)
+
+class LinearCoordinatizationModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__={
-        "polymorphic_identity":"LinearCoordinatization"
+        "polymorphic_identity":"LinearCoordinatizationModel",
     }
+    npts = Column(Integer)
+    
+    def __init__(self, output_p, min_p, max_p, npts):
+        self.output_p = output_p
+        self.npts = npts
+        self.add_input("min", min_p)
+        self.add_input("max", max_p)
+    
+    def __call__(self, vprep=None):
+        vdict = self.get_vdict(vprep)
+        min = vdict[self.inputs["min"]]
+        max = vdict[self.inputs["max"]]
+        return LinearCoordinatization(min=min, max=max, npts=self.npts)
+
+class LinearCoordinatization(Coordinatization):
+    _coordinates = None
     
     def __init__(self, coordinates=None, min=None, max=None, npts=None, dx=None):
         """a class representing a linear mapping between a coordinate and
@@ -334,10 +345,6 @@ class LinearCoordinatization(Coordinatization):
         to allow for an integer npts with npts >= 2.
         
         """
-        self.add_input("min", FloatParameter())
-        self.add_input("max", FloatParameter())
-        self.output_p = Parameter()
-        
         if not (coordinates is None):
             if not all([(val is None) for val in [min, max, npts, dx]]):
                 raise ValueError("if coordinates are specified min, max, npts and dx may not be")
@@ -371,42 +378,28 @@ class LinearCoordinatization(Coordinatization):
                 raise Exception("Coordinatization initialized improprerly")
     
     @property
-    def min(self):
-        return self.inputs["min"].value
-    
-    @min.setter
-    def min(self, value):
-        self.inputs["min"].value = value
-    
-    @property
-    def max(self):
-        return self.inputs["max"].value
-    
-    @max.setter
-    def max(self, value):
-        self.inputs["max"].value = value
-    
-    @property
     def dx(self):
         return (self.max-self.min)/(self.npts-1.0)
     
     def _from_coord_vec(self, coordinates):
         self.npts = len(coordinates)
-        self.inputs["min"].value = coordinates[0]
-        self.inputs["max"].value = coordinates[-1]
+        self.min = coordinates[0]
+        self.max = coordinates[-1]
+    
+    def __mul__(self, other):
+        mulval = float(other)
+        newmin = self.min*mulval
+        newmax = self.max*mulval
+        return LinearCoordinatization(min=newmin, max=newmax, npts=self.npts)
     
     def __len__(self):
         return self.npts
     
-    def __call__(self, vprep=None):
-        vdict=self.get_vdict()
-        min_val = vdict[self.inputs["min"]]
-        max_val = vdict[self.inputs["max"]]
-        return np.linspace(min_val, max_val, self.npts) 
-    
     @property
     def coordinates(self):
-        return self.output_p.value
+        if self._coordinates is None:
+            self._coordinates = np.linspace(self.min, self.max, self.npts)
+        return self._coordinates
     
     def get_index(self, coord, clip=False, snap=False):
         indexes = (np.asarray(coord) - self.min)/self.dx
@@ -424,20 +417,30 @@ class LinearCoordinatization(Coordinatization):
             coords = np.clip(coords, self.min, self.max)
         return coords
 
-class LogLinearCoordinatization(Coordinatization):
-    _id = Column(Integer, ForeignKey("Coordinatization._id"), primary_key=True)
+
+class LogLinearCoordinatizationModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__={
-        "polymorphic_identity":"loglinearcoordinatization"
+        "polymorphic_identity":"LinearCoordinatizationModel",
     }
+    npts = Column(Integer)
+    
+    def __init__(self, output_p, min_p, max_p, npts):
+        self.output_p = output_p
+        self.npts = npts
+        self.add_input("min", min_p)
+        self.add_input("max", max_p)
+    
+    def __call__(self, vprep=None):
+        vdict = self.get_vdict(vprep)
+        min = vdict[self.inputs["min"]]
+        max = vdict[self.inputs["max"]]
+        return LogLinearCoordinatization(min=min, max=max, npts=self.npts)
+
+class LogLinearCoordinatization(Coordinatization):
+    _coordinates = None
     
     def __init__(self, coordinates=None, min=None, max=None, npts=None, R=None):
-        self.add_input("min", FloatParameter())
-        self.add_input("max", FloatParameter())
-        self.output_p = Parameter()
-        
-        min_p = self.inputs["min"]
-        max_p = self.inputs["max"]
-        
         if not (coordinates is None):
             if not all([(val is None) for val in [min, max, npts, R]]):
                 raise ValueError("if coordinates are specified none of min, max, npts or R may be")
@@ -446,29 +449,22 @@ class LogLinearCoordinatization(Coordinatization):
             if max is None:
                 if any([val is None for val in [min, npts, R]]):
                     raise ValueError("three of min, max, npts, and dx must be specified")
-                raise NotImplementedError("haven't gotten to it yet")
-                min_p.value = min
-                #np.log(max/min)*R = npts
-                max_p.value = doot
-                self.npts = npts
+                raise NotImplementedError("both of min and max must be specified")
             elif min is None:
-                raise NotImplementedError("haven't gotten to it yet")
                 if any([val is None for val in [max, npts, R]]):
                     raise ValueError("three of min, max, npts, and dx must be specified")
-                max_p.value = max
-                min_p.value = max - np.abs(dx)*(npts-1)
-                self.npts = npts
+                raise NotImplementedError("both of min and max must be specified")
             elif npts is None:
                 if any([val is None for val in [min, max, R]]):
                     raise ValueError("three of min, max, npts, and dx must be specified")
-                min_p.value = min
-                max_p.value = max
-                self.npts = int(round(np.log(max/min)*R))
+                self.min = min
+                self.max = max
+                self.npts = int(round(np.log(max/min)*R))+1
             elif R is None:
                 if not all([not (val is None) for val in [min, max, npts]]):
                     raise ValueError("three of min, max, npts, and dx must be specified")        
-                min_p.value = min
-                max_p.value = max
+                self.min = min
+                self.max = max
                 self.npts = npts
     
     def _from_coord_vec(self, coord_vec):
@@ -480,32 +476,17 @@ class LogLinearCoordinatization(Coordinatization):
     def R(self):
         return (self.npts -1.0)/np.log(self.max/self.min)
     
-    @property
-    def min(self):
-        return self.inputs["min"].value
-    
-    @min.setter
-    def min(self, value):
-        self.inputs["min"].value = value
-    
-    @property
-    def max(self):
-        return self.inputs["max"].value
-    
-    @max.setter
-    def max(self, value):
-        self.inputs["max"].value = value
+    def __mul__(self, other):
+        mulval = float(other)
+        newmin = self.min*mulval
+        newmax = self.max*mulval
+        return LogLinearCoordinatization(min=newmin, max=newmax, npts=self.npts)
     
     @property
     def coordinates(self):
-        return self.output_p.value
-    
-    def __call__(self, vprep=None):
-        print("coordinates regenerated")
-        vdict = self.get_vdict(vprep)
-        min_val = vdict[self.inputs["min"]]
-        max_val = vdict[self.inputs["max"]]
-        return np.exp(np.linspace(np.log(min_val), np.log(max_val), self.npts))
+        if self._coordinates is None:
+            self._coordinates = np.exp(np.linspace(np.log(self.min), np.log(self.max), self.npts))
+        return self._coordinates
     
     def get_index(self, coord, clip=False, snap=False):
         indexes = np.log(np.asarray(coord)/self.min)*self.R
@@ -524,20 +505,27 @@ class LogLinearCoordinatization(Coordinatization):
         return coords
 
 
+class TensoredCoordinatizationModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"TensoredCoordinatizationModel",
+    }
+    
+    def __init__(self, output_p, coord_params):
+        self.output_p = output_p
+        for cp in coord_params:
+            self.add_input("coords", cp, is_compound=True)
+    
+    def __call__(self, vprep=None):
+        vdict = self.get_vdict(vprep)
+        coord_ps = [vdict[p] for p in self.inputs["coords"]]
+        return TensoredCoordinatization(coord_ps)
 
-tensored_coord_assoc = sa.Table(
-    "tensored_coord_assoc", 
-    Base.metadata,
-    Column("coordinatization_id", Integer, ForeignKey("Coordinatization._id")),
-    Column("tensored_coordinatization_id", Integer, ForeignKey("TensoredCoordinatization._id")),
-)
-
-class TensoredCoordinatization(ThimblesTable, Base):
+class TensoredCoordinatization(object):
     """A class for handling coordinatizations in multiple dimensions.
     The multidimensional coordinates are built up by tensoring together
     independent coordinatizations for each dimension. 
     """
-    coordinatizations = relationship("Coordinatization", secondary=tensored_coord_assoc)
     
     _shape = None
     
@@ -621,7 +609,6 @@ class TensoredCoordinatization(ThimblesTable, Base):
         neighbor_idxs = nearest_idxs + delta_int
         neighbor_weights = np.abs(idx_deltas)
         nearest_weight = 1.0-np.sum(neighbor_weights, axis=1)
-        #import pdb;pdb.set_trace()
         if not extrapolate:
             close_enough = np.abs(nearest_weight) < 2.0
             neighbor_weights *= close_enough.reshape((-1, 1))
@@ -642,10 +629,6 @@ class TensoredCoordinatization(ThimblesTable, Base):
         row_idxs[clb:cub] = np.arange(nrows)
         mat_entries[clb:cub] = nearest_weight
         
-        #mat_dat = np.hstack([snap_alpha, neighbor_alpha])
-        #row_idxs = np.hstack([np.arange(nrows), np.arange(nrows)])
-        #col_idxs = np.hstack([clipped_snapped_input_cols, neighbor_idxs])
-        
         for dim_idx in range(len(self.shape)):
             clb = cub
             cub = clb + nrows
@@ -655,7 +638,6 @@ class TensoredCoordinatization(ThimblesTable, Base):
             row_idxs[clb:cub] = np.arange(nrows)
             mat_entries[clb:cub] = neighbor_weights[:, dim_idx]
             
-            #interped_data += self.grid_data[neighbor_idx_tup]*neighbor_weights[:, dim_idx]
         interp_mat = scipy.sparse.coo_matrix((mat_entries, (row_idxs, col_idxs)), shape=mat_shape).tocsr()
         return interp_mat
     

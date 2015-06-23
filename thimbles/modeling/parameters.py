@@ -20,41 +20,28 @@ def flat_size(shape_tup):
 
 class ParameterGroup(object):
     
-    @property
-    def free_parameters(self):
-        return [param for param in self.parameters if not param.fixed]
-    
     def parameter_index(self, parameter):
         return self.parameters.index(parameter)
     
-    def get_pvec(self, attr=None, free_only=True):
-        if free_only:
-            parameters = self.free_parameters
-        else:
-            parameters = self.parameters
-        if attr is None:
-            pvals = [np.asarray(p.get()).reshape((-1,)) for p in parameters]
-        else:
-            pshapes = [p.shape for p in parameters]
-            pvals = [np.array(getattr(p, attr)) for p in parameters]
-            out_vec = []
-            for p_idx in range(len(parameters)):
-                pshape = pshapes[p_idx]
-                pval = pvals[p_idx]
-                if pshape == tuple() or pval.shape != tuple():
-                    out_vec.append(pval)
-                else:
-                    out_vec.append(np.repeat(pval, flat_size(pshape)))
-            pvals = out_vec
-        if len(pvals) == 0:
-            return None
+    def get_pvec(self, pdict=None):
+        """convert from a dictionary of parameter mapped values to
+        a parameter vector in this embedding space.
+        
+        """
+        parameters = self.parameters
+        if pdict is None:
+            pdict = {}
+        pvals = []
+        for p in parameters:
+            pval = pdict.get(p)
+            if pval is None:
+                pval = p.get()
+            flat_pval = np.asarray(pval).reshape((-1,))
+            pvals.append(flat_pval)
         return np.hstack(pvals)
     
-    def set_pvec(self, pvec, attr=None, free_only=True, as_delta=False):
-        if free_only:
-            parameters = self.free_parameters
-        else:
-            parameters = self.parameters
+    def set_pvec(self, pvec, attr=None, as_delta=False):
+        parameters = self.parameters
         pshapes = [p.shape for p in parameters]
         nvals = [flat_size(pshape) for pshape in pshapes]
         break_idxs = np.cumsum(nvals)[:-1]
@@ -83,7 +70,12 @@ class ParameterGroup(object):
         else:
             raise ValueError("attr must be a string if set")
     
-    def get_pdict(self, value_replacements=None, attr=None, free_only=True, name_as_key=False):
+    def get_pdict(
+            self, 
+            value_replacements=None, 
+            attr=None, 
+            name_as_key=False
+    ):
         
         if free_only:
             parameters = self.free_parameters
@@ -168,7 +160,7 @@ class Parameter(ThimblesTable, Base):
         marking them as invalid, so that subsequent calls asking
         for their value will trigger an update cascade.
         """
-        parameter_front = [self] #queue of parameters to invalidate
+        parameter_front = [mod.output_p for mod in self.models if (not mod.output_p is None) and (not mod.output_p.invalid())]
         while len(parameter_front) > 0:
             param = parameter_front.pop(0)
             param.invalidate()
@@ -206,12 +198,9 @@ class Parameter(ThimblesTable, Base):
             self.fire_upstream()
         return self._value
     
-    def set(self, value, slice_=None):
+    def set(self, value):
         self.invalidate_downstream()
-        if slice_ is None:
-            self._value = value
-        else:
-            self._value[slice_] = value
+        self._value = value
     
     @property
     def shape(self):

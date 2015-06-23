@@ -17,6 +17,14 @@ from thimbles.utils.misc import var_2_inv_var
 
 resources_path = os.path.join(os.path.dirname(thimbles.__file__),"resources/test_data")
 
+class DummyTest(unittest.TestCase):
+    
+    def setUp(self):
+        pass
+
+    def test_auto_passes(self):
+        pass
+
 # ########################################################################### #
 
 # class TestWavelengthFunctions (unittest.TestCase):
@@ -123,5 +131,6 @@ resources_path = os.path.join(os.path.dirname(thimbles.__file__),"resources/test
         
 #         self.assertEqual(len(spectra), nspec, "wrong number of output spectra")
                 
-        
-        
+
+if __name__ == "__main__":
+    unittest.main()

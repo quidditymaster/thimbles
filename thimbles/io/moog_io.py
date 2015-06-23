@@ -7,7 +7,8 @@ import numpy as np
 
 import thimbles as tmb
 from thimbles import ptable, atomic_number, atomic_symbol
-from thimbles.linelists import LineList
+from thimbles.transitions import Transition, Damping
+
 
 def float_or_nan(val):
     try:
@@ -34,8 +35,8 @@ def read_moog_linelist(fname):
         wv, species, ep, loggf = moog_cols[:4]
         damp=None
         if len(moog_cols) >= 6:
-            damp = tmb.transitions.Damping(empirical = moog_cols[6])
-        trans = tmb.Transition(wv, species, ep, loggf, damp=damp)
+            damp = Damping(empirical = moog_cols[6])
+        trans = Transition(wv, species, ep, loggf, damp=damp)
         ldat.append(trans)
         #ldat["moog_damp"].append(moog_cols[4])
         #ldat["D0"].append(moog_cols[5])

@@ -20,39 +20,38 @@ except ImportError:
 
 import os
 resource_dir = os.path.join(os.path.dirname(__file__), "resources")
-
 speed_of_light = 299792.458 #speed of light in km/s
 
-from thimbles import pseudonorms
-from thimbles import thimblesdb
-from thimbles import modeling
-from thimbles.periodictable import ptable, atomic_number, atomic_symbol
-from thimbles import io
-from thimbles.io import *
-from thimbles import sources
-from thimbles import photometry
-from thimbles import spectrographs
-from thimbles import observations
-from thimbles import flags
-from thimbles import hydrogen
-from thimbles import profiles
-from thimbles import coordinatization
-from thimbles.spectrum import \
-    Spectrum, as_wavelength_sample, as_wavelength_solution
-from thimbles import features
-#from thimbles import velocity
-from thimbles import continuum
-from thimbles import coadd
-from thimbles import noise
-from thimbles import radtran
-from thimbles import resampling
-from thimbles import transitions
-from thimbles import charts
-from thimbles import velocity
-from thimbles.radtran import mooger
+from . import pseudonorms
+from . import thimblesdb
+from . import modeling
+from .periodictable import ptable, atomic_number, atomic_symbol
+from . import io
+from . import sources
+from . import photometry
+from . import spectrographs
+from . import observations
+from . import flags
+from . import hydrogen
+from . import profiles
+from . import coordinatization
+from .spectrum import Spectrum
+from . import features
+from . import continuum
+from . import coadd
+from . import noise
+from . import radtran
+from . import resampling
+from . import transitions
+from . import charts
+from . import velocity
+from .radtran import mooger
+from . import rotation
+from . import tellurics
 
-from thimbles.thimblesdb import ThimblesDB
-from thimbles.star import Star
+from .thimblesdb import ThimblesDB
+from .star import Star
+from . import analysis
 
 from thimbles import workingdataspace as wds
 
@@ -65,4 +64,3 @@ opts.run_config()
 if not "db" in wds.__dict__:
     wds.db = ThimblesDB(opts["db_path"])
 wds.__dict__.update(dict(thimblesdb.Base._decl_class_registry))
-

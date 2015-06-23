@@ -9,309 +9,26 @@ import matplotlib.pyplot as plt
 
 # internal
 import thimbles as tmb
-from thimbles import resampling
-from thimbles.flags import SpectrumFlags
-from scipy.interpolate import interp1d
-from thimbles.thimblesdb import ThimblesTable, Base
-from thimbles.modeling import Model, Parameter
-from thimbles.modeling.factor_models import PickleParameter, FloatParameter, PixelPolynomialModel
-from thimbles.modeling.factor_models import IdentityMap
-from thimbles.modeling.distributions import VectorNormalDistribution
-from thimbles.coordinatization import Coordinatization, as_coordinatization
-from thimbles.sqlaimports import *
-from thimbles.modeling.associations import HasParameterContext
+from . import resampling
+from .flags import SpectrumFlags
+from .thimblesdb import ThimblesTable, Base
+from .modeling import Model, Parameter
+from .modeling.factor_models import PickleParameter, FloatParameter, PixelPolynomialModel
+from .modeling.factor_models import IdentityMap
+from .modeling.distributions import NormalDistribution
+from .coordinatization import \
+    Coordinatization, as_coordinatization, \
+    ArbitraryCoordinatizationModel, LinearCoordinatizationModel, \
+    LogLinearCoordinatizationModel, ArbitraryCoordinatization, \
+    LinearCoordinatization, LogLinearCoordinatization
+from .sqlaimports import *
+from .modeling.associations import HasParameterContext
 from sqlalchemy.orm.collections import attribute_mapped_collection
 
-from thimbles import speed_of_light
+from . import speed_of_light
+from .velocity import RVShiftModel
 
-
-__all__ = ["WavelengthSolution","Spectrum"]
-
-
-class DeltaHelioParameter(Parameter):
-    """velocity correction for motion around the sun"""
-    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
-    __mapper_args__={
-        "polymorphic_identity":"DeltaHelioParameter"
-    }
-    _value = Column(Float)  #helio centric velocity in km/s
-    
-    def __init__(self, value):
-        self._value = value
-
-
-class RadialVelocityParameter(Parameter):
-    """ Radial Velocity Parameter"""
-    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
-    __mapper_args__={
-        "polymorphic_identity":"RadialVelocityParameter"
-    }
-    _value = Column(Float)  #helio centric velocity in km/s
-    
-    def __init__(self, value):
-        self._value = value
-
-class RVShiftModel(Model):
-    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
-    __mapper_args__={
-        "polymorphic_identity":"RVShiftModel",
-    }
-    
-    def __init__(self, output_p, wvs_p, rv_p, delta_helio_p):
-        self.output_p = output_p
-        self.add_input("wvs", wvs_p)
-        self.add_input("rv_params", rv_p, is_compound=True)
-        self.add_input("rv_params", delta_helio_p, is_compound=True)
-    
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
-        wvs = vdict[self.inputs["wvs"]]
-        rv_tot = sum([vdict[p] for p in self.inputs["rv_params"]])
-        return wvs*(1.0-rv_tot/tmb.speed_of_light)
-
-
-class WavelengthSolution(ThimblesTable, Base):
-    _indexer_id = Column(Integer, ForeignKey("Coordinatization._id"))
-    indexer = relationship("Coordinatization", foreign_keys=_indexer_id)
-    
-    #the parameters
-    _rv_id = Column(Integer, ForeignKey("Parameter._id"))
-    rv_p = relationship("RadialVelocityParameter", foreign_keys=_rv_id)
-    _delta_helio_id = Column(Integer, ForeignKey("Parameter._id"))
-    delta_helio_p = relationship("DeltaHelioParameter", foreign_keys=_delta_helio_id)
-    
-    _lsf_id = Column(Integer, ForeignKey("Parameter._id"))
-    lsf_p = relationship("Parameter", foreign_keys=_lsf_id)
-    
-    def __init__(
-            self, 
-            wavelengths, 
-            rv=None, 
-            rv_shifted=True, 
-            delta_helio=None, 
-            helio_shifted=True, 
-            lsf=None, 
-            lsf_degree=2
-    ):
-        """a class that encapsulates the manner in which a spectrum is sampled
-        
-        wavelengths: np.ndarray
-          the central wavelengths of each pixel, the radial velocity
-          and heliocentric velocity shifts are assumed to have already
-          been applied unless shifted==False.
-        rv: float
-          the projected velocity of the object along the line of 
-          sight relative to the sun. [km/s]
-        delta_helio: float
-          the velocity of the earth around the sun projected onto the
-          line of sight. [km/s]
-        helio_shifted: bool
-          whether or not delta_helio has already been applied.
-          if False then delta_helio will be applied via
-          wavelengths = wavelengths*(1-vhelio/c)
-        rv_shifted: bool
-          whether or not the radial velocity has already been applied.
-          if False then the rv will be applied 
-          wavelengths = wavlengths*(1-rv/c)
-        lsf: ndarray
-          the line spread function in units of pixel width.
-        lsf_degree: int or 'max'
-          the degree of the polynomial to use to model the variation in line spread function width.
-          'max' store the passed array as a PickleParameter
-        """       
-        
-        #set up rv
-        if rv is None:
-            rv = 0.0
-        if not isinstance(rv, Parameter):
-            rv = RadialVelocityParameter(rv)
-        self.rv_p = rv
-        del rv
-        
-        #set up delta helio
-        if delta_helio is None:
-            delta_helio = 0.0
-        if not isinstance(delta_helio, Parameter):
-            delta_helio = DeltaHelioParameter(delta_helio)
-        self.delta_helio_p = delta_helio
-        del delta_helio
-        
-        applied_vel = 0.0
-        to_apply = self.rv_p.value + self.delta_helio_p.value
-        if rv_shifted:
-            applied_vel += self.rv_p.value
-        if helio_shifted:
-            applied_vel += self.delta_helio_p.value
-        
-        is_coord = isinstance(wavelengths, tmb.coordinatization.Coordinatization)
-        if is_coord:
-            print("Warning: implicit coordinatization recasting")
-            wavelengths = wavelengths.coordinates
-        wavelengths = np.asarray(wavelengths)
-        obs_wvs = wavelengths/(1.0-applied_vel/tmb.speed_of_light)
-        rest_wvs = obs_wvs*(1.0-to_apply/tmb.speed_of_light)
-        indexer = as_coordinatization(rest_wvs)
-        self.indexer = indexer
-        
-        coo_mod = tmb.coordinatization
-        if isinstance(indexer, coo_mod.ArbitraryCoordinatization):
-            obs_wvs_p = PickleParameter(obs_wvs)
-            shift_mod = RVShiftModel(
-                output_p=indexer.inputs["coordinates"],
-                wvs_p=obs_wvs_p,
-                rv_p = self.rv_p,
-                delta_helio_p=self.delta_helio_p
-            )
-        elif isinstance(indexer, (coo_mod.LinearCoordinatization, coo_mod.LogLinearCoordinatization)):
-            min_shift_mod = RVShiftModel(
-                output_p=indexer.inputs["min"],
-                wvs_p=FloatParameter(obs_wvs[0]),
-                rv_p = self.rv_p,
-                delta_helio_p = self.delta_helio_p,
-            )
-            max_shift_mod = RVShiftModel(
-                output_p=indexer.inputs["max"],
-                wvs_p=FloatParameter(obs_wvs[-1]),
-                rv_p = self.rv_p,
-                delta_helio_p = self.delta_helio_p,
-            )
-        
-        
-        if lsf is None:
-            lsf = np.ones(len(self))
-        if lsf_degree == "max":
-            lsf_p = PickleParameter(lsf)
-        elif isinstance(lsf_degree, int):
-            lsf_p = Parameter(lsf)
-            lsf_mod = PixelPolynomialModel(output_p=lsf_p, autofit=True, degree=lsf_degree)
-        else:
-            raise ValueError("lsf_degree of {} not understood".format(lsf_degree))
-        self.lsf_p = lsf_p
-    
-    def __len__(self):
-        return len(self.indexer)
-    
-    @property
-    def lsf(self):
-        return self.lsf_p.value
-    
-    @lsf.setter
-    def lsf(self, value):
-        self.lsf_p.set(value)
-    
-    @property
-    def rv(self):
-        return self.rv_p.value
-    
-    @rv.setter
-    def rv(self, value):
-        self.rv_p.value = value
-    
-    def set_rv(self, rv):
-        self.rv = rv
-    
-    def get_rv(self):
-        return self.rv
-    
-    @property
-    def delta_helio(self):
-        return self.delta_helio_p.value
-    
-    @delta_helio.setter
-    def delta_helio(self, value):
-        self.delta_helio_p = value
-    
-    def get_wvs(self, pixels=None, clip=False, snap=False):
-        """get object restframe wavelengths from pixel number"""
-        if pixels is None:
-            pixels = np.arange(len(self.indexer))
-        return self.indexer.get_coord(pixels, clip=clip, snap=snap)
-    
-    def get_index(self, wvs=None, clip=False, snap=False):
-        """get pixel number from object rest frame wavelengths"""
-        if wvs is None:
-            return np.arange(len(self.indexer))
-        return self.indexer.get_index(wvs, clip=clip, snap=snap)
-    
-    def interpolant_sampling_matrix(self, wvs):
-        """generate an interpolation matrix which will transform from
-        an input wavelength solution to this wavelength solution.
-        """
-        wvs = as_wavelength_sample(wvs)
-        return self.indexer.interpolant_sampling_matrix(wvs.wvs)
-
-
-def as_wavelength_solution(wavelengths):
-    if isinstance(wavelengths, WavelengthSolution):
-        return wavelengths
-    elif isinstance(wavelengths, WavelengthSample):
-        return wavelengths.wv_soln
-    else:
-        return WavelengthSolution(wavelengths)
-
-
-class WavelengthSample(ThimblesTable, Base):
-    _wv_soln_id = Column(Integer, ForeignKey("WavelengthSolution._id"))
-    wv_soln = relationship("WavelengthSolution")
-    start = Column(Integer)
-    end = Column(Integer)
-    
-    def __init__(self, wv_soln, start=None, end=None):
-        wv_soln = as_wavelength_solution(wv_soln)
-        self.wv_soln = wv_soln
-        if start is None:
-            start = 0
-        if end is None:
-            end = len(wv_soln)
-        self.start = int(start)
-        self.end = int(end)
-    
-    def __len__(self):
-        return self.end-self.start
-    
-    @property
-    def pixels(self):
-        return np.arange(self.start, self.end)
-    
-    @property
-    def lsf(self):
-        return self.wv_soln.lsf_p.value[self.start:self.end]
-    
-    @property
-    def wvs(self):
-        return self.wv_soln.indexer.output_p.value[self.start:self.end]
-    
-    def interpolant_sampling_matrix(self, wavelengths):
-        """calculate the sparse matrix which linearly interpolates"""
-        full_mat = self.wv_soln.interpolant_sampling_matrix(wavelengths)
-        part_mat = full_mat.tocsc()[:, self.start:self.end].copy()
-        return part_mat
-
-def as_wavelength_sample(wvs):
-    if isinstance(wvs, WavelengthSample):
-        return wvs
-    else:
-        return WavelengthSample(wvs)
-
-
-class FluxParameter(Parameter):
-    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
-    __mapper_args__={
-        "polymorphic_identity":"FluxParameter",
-    }
-    _wv_sample_id = Column(Integer, ForeignKey("WavelengthSample._id"))
-    wv_sample = relationship("WavelengthSample")
-    
-    def __init__(self, wvs, flux=None):
-        self.wv_sample = as_wavelength_sample(wvs)
-        self._value = flux
-    
-    def __len__(self):
-        return len(self.wv_sample)
-    
-    @property
-    def pixels(self):
-        return self.wv_sample.pixels
+__all__ = ["Spectrum"]
 
 class Spectrum(ThimblesTable, Base, HasParameterContext):
     """A representation of a collection of relative flux measurements
@@ -322,8 +39,6 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
     info = Column(PickleType)
     _flag_id = Column(Integer, ForeignKey("SpectrumFlags._id"))
     flags = relationship("SpectrumFlags")
-    _source_id = Column(Integer, ForeignKey("Source._id"))
-    source = relationship("Source", backref="spectroscopy")
     _observation_id = Column(Integer, ForeignKey("Observation._id"))
     observation = relationship("Observation", foreign_keys=_observation_id)
     
@@ -344,18 +59,14 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
             lsf_degree=2,
             flags=None,
             info=None,
-            source=None,
             observation=None,
     ):
         """a representation of a spectrum object
         
         parameters
         
-        wavelengths: ndarray or WavelengthSolution
-          the wavelengths at each pixel, if more specific information
-          is required (e.g. specifying the lsf or the heliocentric vel
-          create a WavelengthSolution object outside with the info and
-          pass that in instead of an ndarray.
+        wavelengths: ndarray
+          the wavelengths at each pixel.
         flux: ndarray
           the measured flux in each pixel
         ivar: ndarray
@@ -363,8 +74,21 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
         var: ndarray
           the variance of the noise in each pixel
           one of ivar and var must be None.
+        rv: float
+          The instantaneous radial velocity of the source object
+        rv_shifted: bool
+          whether or not a correction for the rv shift has already
+          been applied.
+        delta_helio: float
+          The line of sight velocity correction due to the motion
+          of the observer around the sun.
+        delta_helio_shifted:
+          whether the helio centric velocity correction due to 
+          delta_helio has already been applied.
         lsf: ndarray
           line spread function
+        lsf_degree:
+          the degree of the polynomial to fit to the lsf.
         flags: an optional SpectrumFlags object
           see thimbles.flags.SpectrumFlags for info
         info: dict
@@ -375,6 +99,7 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
           the observation which resulted in this spectrum
         """
         HasParameterContext.__init__(self)
+        wavelengths = as_coordinatization(wavelengths)
         if (not (var is None)) and (not (ivar is None)):
             raise ValueError("redundant specification: got a value for both ivar and var!")
         elif ivar is None:
@@ -383,15 +108,77 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
         else: #ivar is specified
             var = tmb.utils.misc.inv_var_2_var(ivar)
         var = tmb.utils.misc.clean_variances(var)
+        ivar = tmb.utils.misc.var_2_inv_var(var)
         
-        if not isinstance(wavelengths, (WavelengthSolution, WavelengthSample)):
-            wv_soln = WavelengthSolution(wavelengths, rv=rv, delta_helio=delta_helio, rv_shifted=rv_shifted, helio_shifted=helio_shifted, lsf=lsf, lsf_degree=lsf_degree)
-        else:
-            wv_soln = wavelengths
-        flux_p = FluxParameter(wv_soln)
+        if not (wavelengths.coordinates[-1] > wavelengths.coordinates[0]):
+            raise ValueError("wavelengths must increase with increasing pixel index")
+        
+        #set up rv
+        if rv is None:
+            rv = 0.0
+        if not isinstance(rv, Parameter):
+            rv = FloatParameter(rv)
+        rv_p = rv
+        del rv
+        self.add_parameter("rv", rv_p)
+        
+        #set up delta helio
+        if delta_helio is None:
+            delta_helio = 0.0
+        if not isinstance(delta_helio, Parameter):
+            delta_helio = FloatParameter(delta_helio)
+        delta_helio_p = delta_helio
+        del delta_helio
+        self.add_parameter("delta_helio", delta_helio_p)
+        
+        applied_vel = 0.0
+        if rv_shifted:
+            applied_vel += rv_p.value
+        if helio_shifted:
+            applied_vel += delta_helio_p.value
+        
+        obs_correction = 1.0/(1.0-applied_vel/speed_of_light)
+        obs_wvs = wavelengths*obs_correction
+        obs_wvs_indexer = as_coordinatization(obs_wvs)
+        
+        obs_wvs_p = Parameter(obs_wvs_indexer)
+        self.add_parameter("obs_wvs", obs_wvs_p)
+        if isinstance(obs_wvs_indexer, ArbitraryCoordinatization):
+            coord_param = PickleParameter(obs_wvs.coordinates)
+            ArbitraryCoordinatizationModel(
+                output_p=obs_wvs_p, 
+                coords_p=coord_param,
+            )
+        elif isinstance(obs_wvs_indexer, (LinearCoordinatization, LogLinearCoordinatization)):
+            min_p = FloatParameter(obs_wvs_indexer.min)
+            max_p = FloatParameter(obs_wvs_indexer.max)
+            LinearCoordinatizationModel(
+                output_p=obs_wvs_p, 
+                min_p=min_p, 
+                max_p=max_p, 
+                npts=obs_wvs_indexer.npts
+            )
+        
+        rest_wvs_p = Parameter()        
+        rv_shift_mod = RVShiftModel(
+            output_p=rest_wvs_p, 
+            wvs_p=obs_wvs_p,
+            rv_params=[rv_p, delta_helio_p])
+        self.add_parameter("rest_wvs", rest_wvs_p)
+        
+        flux_p = Parameter()
         flux = np.asarray(flux)
         #treat the observed flux as a prior on the flux parameter values
-        self.obs_flux = VectorNormalDistribution(flux, var, parameters={"obs_flux":flux_p})
+        self.obs_flux = NormalDistribution(mean=flux, ivar=ivar, parameters={"obs_flux":flux_p})
+        
+        if lsf is None:
+            lsf = np.ones(len(self))
+        if lsf_degree == "exact":
+            lsf_p = PickleParameter(lsf)
+        elif isinstance(lsf_degree, int):
+            lsf_p = Parameter(lsf)
+            lsf_mod = PixelPolynomialModel(output_p=lsf_p, autofit=True, degree=lsf_degree)
+        self.add_parameter("lsf", lsf_p)
         
         if flags is None:
             flags = SpectrumFlags()
@@ -405,20 +192,27 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
             info = {}
         self.info = info
         
-        self.source = source
         self.observation = observation
     
     @property
-    def flux_p(self):
-        return self.obs_flux.parameters["obs_flux"]
+    def source(self):
+        return self.observation.source
+    
+    @source.setter
+    def source(self, value):
+        self.observation.source = source
     
     @property
-    def wv_sample(self):
-        return self.flux_p.wv_sample
-
+    def flux_p(self):
+        return self.obs_flux.context["obs_flux"]
+    
+    @property
+    def lsf_p(self):
+        return self.context["lsf"]
+    
     @property
     def lsf(self):
-        return self.flux_p.wv_sample.lsf
+        return self.lsf_p.value
     
     @property
     def flux(self):
@@ -438,22 +232,22 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
     
     @property
     def ivar(self):
-        return tmb.utils.misc.var_2_inv_var(self.var)
+        return self.obs_flux.ivar
     
     @ivar.setter
     def ivar(self, value):
-        self.var = tmb.utils.misc.inv_var_2_var(value)
+        self.obs_flux.ivar = value
     
     def sample(self,
             wavelengths,
             mode="rebin", 
-            return_matrix=None,
+            return_matrix=False,
     ):
         """generate a spectrum subsampled from this one.
         
         parameters
         
-        wavelengths: ndarray or WavelengthSolution 
+        wavelengths: ndarray 
           the wavelengths to sample at
         
         mode: string
@@ -476,13 +270,17 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
             l_idx, u_idx = self.get_index(bounds, snap=True, clip=True)
             if u_idx-l_idx < 1:
                 return None
-            out_flux = self.flux[l_idx:u_idx+1]
-            wv_sample = WavelengthSample(self.wv_sample.wv_soln, l_idx, u_idx+1)
-            out_ivar = self.ivar[l_idx:u_idx+1]
-            sampling_matrix = scipy.sparse.identity(len(out_flux))
-            sampled_spec = Spectrum(wv_sample, out_flux, out_ivar)
+            out_wvs = self.wvs[l_idx:u_idx+1].copy()
+            out_flux = self.flux[l_idx:u_idx+1].copy()
+            out_ivar = self.ivar[l_idx:u_idx+1].copy()
+            if return_matrix:
+                npts = len(self)
+                nz_vals = np.zeros(npts, dtype=float)
+                nz_vals[l_idx:u_idx+1] = 1.0
+                sampling_matrix = scipy.sparse.dia_matrix((nz_vals, 0), shape=(npts, npts))
+            sampled_spec = Spectrum(out_wvs, out_flux, out_ivar)
         elif mode == "interpolate":
-            tmat = self.wv_sample.interpolant_sampling_matrix(wavelengths)
+            tmat = self.wv_soln.interpolant_sampling_matrix(wavelengths)
             out_flux = tmat*self.flux
             out_var = tmat.transpose()*tmat*self.var
             out_ivar = tmb.utils.misc.var_2_inv_var(out_var)
@@ -490,9 +288,7 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
             sampling_matrix = tmat
         elif mode =="rebin":
             in_wvs = self.wvs
-            wavelengths = as_wavelength_sample(wavelengths)
-            out_wvs = wavelengths.wvs
-            np.median(scipy.gradient(out_wvs)/out_wvs)
+            out_wvs = np.asarray(wavelengths)
             transform = resampling.resampling_matrix(
                 in_wvs,
                 out_wvs, 
@@ -552,45 +348,47 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
     
     @property
     def rv(self):
-        return self.wv_sample.wv_soln.rv
+        self.get_rv()
+    
+    @rv.setter
+    def rv(self, value):
+        self.set_rv(value)
     
     @property
     def pixels(self):
         return self.wv_sample.pixels
     
     @property
+    def wv_soln(self):
+        return self.context["rest_wvs"].value
+    
+    @property
     def wvs(self):
-        return self.wv_sample.wvs
+        return self.context["rest_wvs"].value.coordinates
     
     @property
     def wv(self):
-        return self.wv_sample.wvs
+        return self.context["rest_wvs"].value.coordinates
     
     def set_rv(self, rv):
-        self.wv_sample.wv_soln.set_rv(rv)
+        self.context["rv"].value = rv
     
     def get_rv(self):
-        return self.wv_sample.wv_soln.get_rv()
+        return self.context["rv"].value
     
-    def get_wvs(self, pixels=None, clip=False, snap=False):
-        if pixels is None:
-            pixels = self.wv_sample.pixels
-        return self.wv_sample.wv_soln.get_wvs(pixels, clip=clip, snap=snap)
+    def get_wvs(self, pixels, clip=False, snap=False):
+        return self.wv_soln.get_coord(pixels, clip=clip, snap=snap)
     
     def get_index(self, wvs, clip=False, snap=False, local=False):
-        global_indexes = self.wv_sample.wv_soln.get_index(wvs, clip=clip, snap=snap)
-        if local:
-            return global_indexes - self.wv_sample.start
-        else:
-            return global_indexes
+        return self.wv_soln.get_index(wvs, clip=clip, snap=snap)
     
-    def normalized(self, norm=None, force_pseudonorm=False, **kwargs):
+    def normalized(self, norm=None, **kwargs):
         if norm is None:
             if not self.flags["normalized"]:
                 norm = self.pseudonorm(**kwargs)
             else:
                 norm = np.ones(len(self))
-        nspec = Spectrum(self.wv_sample, self.flux/norm, self.ivar*norm**2)
+        nspec = Spectrum(self.wv_soln, self.flux/norm, self.ivar*norm**2)
         flux_p_val = nspec.flux_p.value
         if not flux_p_val is None:
             nspec.flux_p.value = self.flux_p.value/norm
@@ -608,9 +406,7 @@ def add_spectra(
         sampling_mode="interpolate",
 ):
     if target_wvs is None:
-        target_wvs = spectrum1.wv_sample
-    else:
-        target_wvs = as_wavelength_sample(target_wvs)
+        target_wvs = spectrum1.wvs
     spec1_samp = spectrum1.sample(target_wvs, mode=sampling_mode)
     spec2_samp = spectrum2.sample(target_wvs, mode=sampling_mode)
     
@@ -626,9 +422,7 @@ def subtract_spectra(
         sampling_mode="interpolate",
 ):
     if target_wvs is None:
-        target_wvs = spectrum1.wv_sample
-    else:
-        target_wvs = as_wavelength_sample(target_wvs)
+        target_wvs = spectrum1.wvs
     spec1_samp = spectrum1.sample(target_wvs, mode=sampling_mode)
     spec2_samp = spectrum2.sample(target_wvs, mode=sampling_mode)
     
@@ -644,9 +438,7 @@ def multiply_spectra(
         sampling_mode="interpolate",
 ):
     if target_wvs is None:
-        target_wvs = spectrum1.wv_sample
-    else:
-        target_wvs = as_wavelength_sample(target_wvs)
+        target_wvs = spectrum1.wvs
     spec1_samp = spectrum1.sample(target_wvs, mode=sampling_mode)
     spec2_samp = spectrum2.sample(target_wvs, mode=sampling_mode)
     
@@ -663,9 +455,7 @@ def divide_spectra(
         sampling_mode="interpolate",
 ):
     if target_wvs is None:
-        target_wvs = spectrum1.wv_sample
-    else:
-        target_wvs = as_wavelength_sample(target_wvs)
+        target_wvs = spectrum1.wvs
     spec1_samp = spectrum1.sample(target_wvs, mode=sampling_mode)
     spec2_samp = spectrum2.sample(target_wvs, mode=sampling_mode)
     

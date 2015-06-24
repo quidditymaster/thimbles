@@ -7,7 +7,7 @@ from thimbles.charts import MatplotlibCanvas
 from thimbles.options import Option, opts
 
 spectra_mpl_kwargs=Option("spectra_mpl_kwargs", option_style="parent_dict", parent="charts")
-spec_color = "#6EF057"
+spec_color = "#7EA057"
 Option("color", default=spec_color, parent=spectra_mpl_kwargs)
 Option("linewidth", default=2.0, parent=spectra_mpl_kwargs)
 #Option("linestyle", default="steps-mid", parent=spectra_mpl_kwargs)
@@ -99,6 +99,7 @@ class SpectrumChart(object):
             self.ax.set_xlim(min_x, max_x)
             self.ax.set_ylim(min_y-0.01, max_y+(max_y-min_y)*0.15)
         self.spec_line.set_data(bspec.wvs, bspec.flux)
+        self.spec_line.figure._tmb_redraw=True
 
 
 if __name__ == "__main__":

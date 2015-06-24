@@ -51,6 +51,7 @@ class MatplotlibCanvas(FigureCanvas):
         for k in kws:
            subplot_kws.setdefault(k,kws[k])
         self.fig = Figure()
+        self.fig._tmb_redraw = False
         self.fig.subplotpars.update(**subplot_kws)
         super(MatplotlibCanvas,self).__init__(self.fig)
         assert nrows >= 1
@@ -102,19 +103,6 @@ class MatplotlibCanvas(FigureCanvas):
         #set the current axis to the first axis
         self.ax = self.axes[0]
         self._lock = threading.RLock()
-
-
-
-        #import pdb; pdb.set_trace()
-        #self.fig.add_subplot(111)
-        #self.ax.plot([0, 20], [0, 20])
-        
-        # we define the widget as expandable
-        #FigureCanvas.setSizePolicy(self,
-        # QtGui.QSizePolicy.Expanding,
-        # QtGui.QSizePolicy.Expanding)
-        # notify the system of updated policy
-        #self.updateGeometry()
     
     def axis(self, row_idx, col_idx):
         ax_num = self.ncols*row_idx + col_idx
@@ -125,13 +113,9 @@ class MatplotlibCanvas(FigureCanvas):
         self.ax = self.axis(row_idx, col_idx)
     
     def draw(self):
-        #print "in draw"
         self.lock()
-        #print "in lock"
         super(MatplotlibCanvas, self).draw()
-        #print "unlocking"
         self.unlock()
-        #print "unlocked"
     
     def blit(self, bbox=None):
         self.lock()

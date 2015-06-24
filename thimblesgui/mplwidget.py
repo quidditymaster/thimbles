@@ -40,6 +40,7 @@ class MatplotlibWidget(QtGui.QWidget):
             sharey="none", 
             parent=None,
             fig_kws=None,
+            redraw_framerate=10,
     ):
         #self.parent = parent
         # initialization of Qt MainWindow widget
@@ -63,12 +64,22 @@ class MatplotlibWidget(QtGui.QWidget):
         
         self._mpl_qt_connect()
         
+        self.redraw_timer = QtCore.QTimer()
+        self.redraw_timer.timeout.connect(self.check_redraw)
+        n_msec = max(int(1000/redraw_framerate), 20)
+        self.redraw_timer.start(n_msec)
+    
     def _mpl_qt_connect(self):
         #print "mpl connect called"
         #import pdb; pdb.set_trace()
         self.canvas.callbacks.connect("button_press_event", self.emit_button_pressed)
         self.canvas.callbacks.connect("button_release_event", self.emit_button_released)
         self.canvas.callbacks.connect("pick_event", self.emit_pick_event)
+    
+    def check_redraw(self):
+        if self.canvas.figure._tmb_redraw:
+            self.canvas.draw()
+            self.canvas.figure._tmb_redraw=False
     
     def emit_button_pressed(self, event):
         self.buttonPressed.emit([event])

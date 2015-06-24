@@ -48,7 +48,6 @@ class ForkDiagram(object):
         self._plots_initialized = True
     
     def _init_handles(self):
-        
         xvec = self.handle_x
         bot, top = self.handle_bottom, self.handle_top
         self.handle = mpl.lines.Line2D([x, x], [bot, top])

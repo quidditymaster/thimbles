@@ -689,7 +689,7 @@ class TransitionGroupBurstPlot(XYExpressionResolver):
             self.centers.set_visible(True)
             mdat = dict(kind="groups", groups=nz_groups, xvals=x_centers, yvals=y_centers)
             self.centers._md = mdat
-            self.ax._tmb_redraw=True
+            self.ax.figure._tmb_redraw=True
 
 
 class TransitionScatterPlot(XYExpressionResolver):
@@ -757,7 +757,7 @@ class TransitionScatterPlot(XYExpressionResolver):
             self.scatter.set_visible(True)
             if self.auto_zoom:
                 self.zoom_to_data()
-        self.ax._tmb_redraw = True
+        self.ax.figure._tmb_redraw = True
     
     def zoom_to_data(self, x_pad=0.1, y_pad=0.1):
         xpts, ypts = self.scatter.get_data()
@@ -1343,20 +1343,6 @@ class GroupingStandardEditor(QtGui.QMainWindow):
         
         #zoom on select
         self.selection.transitions.foreground.focusChanged.connect(self.transition_zoom)
-        
-        self.draw_timer = QtCore.QTimer(self)
-        self.draw_timer.start(1000.0/mplframerate.value)
-        self.draw_timer.timeout.connect(self.on_draw_timeout)
-    
-    def trigger_redraw(self):
-        self._redraw_all = True
-    
-    def on_draw_timeout(self):
-        for display in self.mpl_displays:
-            if self._redraw_all or display.ax._tmb_redraw:
-                display.ax._tmb_redraw = False
-                display.ax.figure.canvas.draw()
-        self._redraw_all = False
     
     def make_actions(self):
         self.save_act = QtGui.QAction("Save changes to database", self)
@@ -1443,7 +1429,7 @@ class GroupingStandardEditor(QtGui.QMainWindow):
         self.wv_span_widget.step_back()
 
 
-@tmb.task(
+@tmb.tasks.task(
     result_name="grouping_standard",
 )
 def edit_grouping_standard(standard_name, tdb, spectra):

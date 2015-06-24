@@ -139,3 +139,18 @@ def sparse_banded_approximate_inverse(A, extract_bands=True, band_width=None):
     cur_inv_approx = rescale_factor*cur_inv_approx
     
     return cur_inv_approx
+
+
+#@task(result_name="noise_estimate")
+def estimate_spectrum_noise(
+        spectrum, 
+        smoothing_scale=3.0,
+        median_scale=200,
+        apply_poisson=True,
+        post_smooth=5.0,
+        max_snr=1000.0,
+        overwrite_noise=False,
+):
+    sm_var = smoothed_mad_error(spectrum.flux, smoothing_scale=smoothing_scale, median_scale=median_scale, apply_poisson=apply_poisson, post_smooth=post_smooth, max_snr=max_snr)
+    if overwrite_noise:
+        spectrum.var = sm_var

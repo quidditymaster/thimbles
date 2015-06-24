@@ -10,6 +10,11 @@ class Pointing(Base, ThimblesTable, HasParameterContext):
     tai = Column(Float) #seconds
     duration = Column(Float) #seconds
     airmass = Column(Float)
+    pointing_type = Column(String)
+    __mapper_args__={
+        "polymorphic_on":pointing_type,
+        "polymorphic_identity":"Pointing"
+    }
     
     def __init__(
             self, 

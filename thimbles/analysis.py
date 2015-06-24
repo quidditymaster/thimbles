@@ -296,14 +296,17 @@ def spectrum_modeler(spectrum, database, shared_parameters):
 
 
 def make_all_models(
-        spectra, 
+        spectra,
         database, 
         shared_parameters,
-        source_modeler,
-        pointing_modeler,
-        observation_modeler,
-        spectrum_modeler,
+        source_modeler=None,
+        pointing_modeler=None,
+        observation_modeler=None,
+        spectrum_modeler=None,
+        estimator_builder=None,
 ):
+    database.add(shared_parameters)
+    
     source_set = set()
     pointing_set = set()
     obs_set = set()
@@ -331,3 +334,4 @@ def make_all_models(
         spectrum_modeler(spec, database, shared_parameters)
     
     database.commit()
+

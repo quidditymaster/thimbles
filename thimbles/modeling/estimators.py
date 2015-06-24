@@ -1,5 +1,3 @@
-import numpy as np
-import scipy
 from thimbles.sqlaimports import *
 from thimbles.thimblesdb import ThimblesTable, Base
 from thimbles.modeling.associations import HasParameterContext
@@ -18,6 +16,7 @@ class Estimator(ThimblesTable, Base, ):
     def __init__(self, informants, informed):
         HasParameterContext.__init__(self, context_dict=informants)
         dist = NormalDistribution(parameters=informed)
+        self.target_distribution = dist
     
     def __call__(self, set_current=True):
         pass

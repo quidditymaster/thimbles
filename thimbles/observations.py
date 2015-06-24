@@ -7,15 +7,22 @@ from thimbles.modeling.associations import HasParameterContext
 class Pointing(Base, ThimblesTable, HasParameterContext):
     ra = Column(Float)
     dec = Column(Float)
-    time = Column(DateTime)
-    duration = Column(Float) #in seconds
+    tai = Column(Float) #seconds
+    duration = Column(Float) #seconds
     airmass = Column(Float)
     
-    def __init__(self, ra=None, dec=None, time=None, duration=None, airmass=None):
+    def __init__(
+            self, 
+            ra=None, 
+            dec=None, 
+            tai=None, 
+            duration=None, 
+            airmass=None
+    ):
         HasParameterContext.__init__(self)
         self.ra = ra
         self.dec = dec
-        self.time = time
+        self.tai = tai
         self.duration = duration
         self.airmass = airmass
 

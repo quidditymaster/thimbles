@@ -37,7 +37,7 @@ __all__ = ["read_spec","read_ascii","read_fits",
            "write_spec",
 ]
 
-def read_hdf5(filepath, source=None):
+def read_hdf5(filepath):
     hf = h5py.File(filepath, "r")
     spectra = []
     spec_keys = list(hf.keys())
@@ -53,7 +53,7 @@ def read_hdf5(filepath, source=None):
         flux = np.array(hf[quant_path+"/flux/values"])
         ivar = np.array(hf[quant_path+"/flux/ivar"])
         
-        new_spec = Spectrum(wvs, flux, ivar, source=source)
+        new_spec = Spectrum(wvs, flux, ivar)
         spectra.append(new_spec)
     return spectra
 
@@ -125,10 +125,10 @@ def read_ascii(
     flux = []
     ivar = []
     lsf = []
+    comment_pat = re.compile(comment)
+    spec_sep_pat = re.compile(spectrum_separator)
     for line in open(fname):
-        if line.match(comment):
-            continue
-        elif line.match(spectrum_separator):
+        if spec_sep_pat.match(line):
             if len(ivar)==0:
                 ivar = None
             if len(lsf) == 0:
@@ -138,8 +138,12 @@ def read_ascii(
             flux = []
             ivar = []
             lsf = []
+        if comment_pat.match(line):
+            continue
         else:
             lspl = line.split()
+            if len(lspl) == 0:
+                continue
             wvs.append(float(lspl[wv_col]))
             flux.append(float(lspl[flux_col]))
             if not ivar_col is None:
@@ -151,8 +155,8 @@ def read_ascii(
             ivar = None
         if len(lsf) == 0:
             lsf=None
-        spectra.append(Spectrum(wvs, flux, ivar=ivar, lsf=lsf))
-    
+        spec = Spectrum(wvs, flux, ivar=ivar, lsf=lsf)
+        spectra.append(spec)
     return spectra
 
 

@@ -26,8 +26,6 @@ from thimbles.utils.misc import var_2_inv_var
 from thimbles.spectrum import Spectrum
 from . import wavelength_extractors
 
-# ########################################################################### #
-
 
 __all__ = ["read_spec","read_ascii","read_fits",
            "read_fits","read_fits_hdu","read_bintablehdu",
@@ -74,7 +72,6 @@ def write_hdf5(filepath, spectra):
         hf[quant_path+"/flux/ivar"] = cspec.inv_var
     hf.close()
 
-# ########################################################################### #
 
 _spectrum_separator = "#new_spectrum"
 
@@ -172,7 +169,7 @@ def write_ascii(
     if spectrum_separator is None:
         spectrum_separator = _spectrum_separator
     if spectrum_separator[-1] != "\n":
-        spectrum_separator[-1] = "\n"
+        spectrum_separator = spectrum_separator + "\n"
     f = open(fpath, "w")
     fmt_str = "{wv: 11.4f} {flux: 15.5f} {ivar: 15.5f} {lsf: 15.5f}\n"
     for spec_idx, spec in enumerate(spectra):

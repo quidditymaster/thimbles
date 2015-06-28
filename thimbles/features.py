@@ -92,8 +92,7 @@ class FeatureMatrixModel(Model):
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
-        mod_wv_param = self.inputs["model_wvs"]
-        wv_indexer = mod_wv_param
+        wv_indexer = vdict[self.inputs["model_wvs"]]
         mod_wvs = wv_indexer.coordinates
         centers = vdict[self.inputs["centers"]]
         gammas  = vdict[self.inputs["gammas"]]

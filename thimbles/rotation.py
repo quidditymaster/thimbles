@@ -30,19 +30,18 @@ class BroadeningMatrixModel(Model):
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
-        model_wv_p = self.inputs["model_wvs"]
-        wv_indexer = model_wv_p.mapped_models[0]
-        wvs = vdict[model_wv_p]
+        model_wv_indexer = vdict[self.inputs["model_wvs"]]
         vsini = vdict[self.inputs["vsini"]]
         vmacro = vdict[self.inputs["vmacro"]]
         ldark = vdict[self.inputs["ldark"]]
         
+        wvs = model_wv_indexer.coordinates
         center_wv = wvs[len(wvs)//2]
         veff = np.sqrt(vmacro**2 + vsini**2)
         n_w = 8.0
         low_wv = center_wv*(1.0 - n_w*veff/speed_of_light)
         high_wv = center_wv*(1.0 + n_w*veff/speed_of_light)
-        idx_bnds = wv_indexer.get_index([low_wv, high_wv], snap=True)
+        idx_bnds = model_wv_indexer.get_index([low_wv, high_wv], snap=True)
         lbi, ubi = idx_bnds
         sample_wvs = wvs[lbi:ubi+1]
         center_wv = sample_wvs[len(sample_wvs)//2]

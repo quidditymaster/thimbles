@@ -47,11 +47,13 @@ def cross_corr(arr1, arr2, offset_number, overlap_adj=False):
         cor_out[offset_idx] = cur_corr
     return cor_out
 
+_rv_standard = None
+
 @task()
 def template_cc_rv(
         spectra, 
         template=None, 
-        max_velocity=500, 
+        max_velocity=500,
         avg_width=20, 
         normalize_diff=True, 
         pix_poly_width=2
@@ -67,8 +69,11 @@ def template_cc_rv(
     
     """
     if template is None:
-        template = rv_standard
-    log_delta = np.log10(template.wv[-1]/template.wv[0])/len(template)
+        global _rv_standard
+        if _rv_standard is None:
+            _rv_standard = try_load_template()
+        template = _rv_standard
+    log_delta = np.log10(template.wv[-1]/template.wv[0])/(len(template)-1)
     ccors = []
     for spec in spectra:
         wv_bnds = spec.wv[0], spec.wv[-1]
@@ -92,10 +97,13 @@ def template_cc_rv(
     ccor_maxes = np.max(ccors, axis=1)
     normed_ccors = ccors/ccor_maxes.reshape((-1, 1))
     ccor_med = np.median(normed_ccors, axis=0)
-    max_idx = np.argmax(ccor_med)
     frac_delta = np.power(10.0, (np.arange(len(ccor_med)) - len(ccor_med)/2.0)*log_delta)
     ccor_vels = (frac_delta-1.0)*speed_of_light
-    rv, ccor_sig, ccor_peak = local_gaussian_fit(ccor_med, max_idx, pix_poly_width, xvalues=ccor_vels)
+    rv, ccor_sig, ccor_peak = local_gaussian_fit(
+        ccor_med, 
+        fit_width=pix_poly_width, 
+        xvalues=ccor_vels
+    )
     return rv
 
 
@@ -150,13 +158,11 @@ def try_load_template():
         hf = h5py.File(os.path.join(resource_dir, "g2_mp_giant.h5"), "r")
         rv_standard = tmb.spectrum.Spectrum(np.asarray(hf["wv"]), np.asarray(hf["flux"]))
         hf.close()
+        if tmb.opts["wavelength_medium"] == "vacuum":
+            vac_wvs = tmb.utils.misc.air_to_vac(rv_standard.wvs)
+            vac_spec = tmb.spectrum.Spectrum(vac_wvs, rv_standard.flux)
+            log_lin_wvs = np.exp(np.linspace(np.log(vac_wvs[0]), np.log(vac_wvs[-1]), len(vac_spec)))
+            rv_standard = vac_spec.sample(log_lin_wvs)
     except Exception as e:
-        warnings.warn(str(e)+"\nthere was an exception loading the template file, trying again")
+        warnings.warn(str(e)+"\nthere was an exception loading the template file")
     return rv_standard
-
-for i in range(3): #number of times to retry if load fails
-    rv_standard = try_load_template()
-    if rv_standard is None:
-        time.sleep(0.01+0.05*np.random.random())
-    else:
-        break

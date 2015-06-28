@@ -100,6 +100,7 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
         """
         HasParameterContext.__init__(self)
         wavelengths = as_coordinatization(wavelengths)
+        flux = np.asarray(flux)
         if (not (var is None)) and (not (ivar is None)):
             raise ValueError("redundant specification: got a value for both ivar and var!")
         elif ivar is None:
@@ -167,7 +168,6 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
         self.add_parameter("rest_wvs", rest_wvs_p)
         
         flux_p = Parameter()
-        flux = np.asarray(flux)
         #treat the observed flux as a prior on the flux parameter values
         self.obs_flux = NormalDistribution(mean=flux, ivar=ivar, parameters={"obs_flux":flux_p})
         
@@ -348,15 +348,11 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
     
     @property
     def rv(self):
-        self.get_rv()
+        return self.get_rv()
     
     @rv.setter
     def rv(self, value):
         self.set_rv(value)
-    
-    @property
-    def pixels(self):
-        return self.wv_sample.pixels
     
     @property
     def wv_soln(self):

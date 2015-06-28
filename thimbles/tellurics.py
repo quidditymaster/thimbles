@@ -29,15 +29,14 @@ class TelluricShiftMatrixModel(Model):
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
-        model_wvs_p = self.inputs["model_wvs"]
-        model_wvs = model_wvs_p.value
-        model_wv_indexer = model_wvs_p.mapped_models[0]
+        model_wvs_indexer = vdict[self.inputs["model_wvs"]]
+        model_wvs = model_wvs_indexer.coordinates
         rv = vdict[self.inputs["rv"]]
         delta_helio = vdict[self.inputs["delta_helio"]]
         
         #find the wavelengs the tellurics overlay in the star
         overlay_wvs = model_wvs*(1.0+(rv+delta_helio)/speed_of_light)
-        smat = model_wv_indexer.interpolant_sampling_matrix(overlay_wvs)
+        smat = model_wvs_indexer.interpolant_sampling_matrix(overlay_wvs)
         return smat
 
 class TransmissionModel(Model):

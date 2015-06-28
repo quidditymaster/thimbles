@@ -125,14 +125,16 @@ class ParameterContext(ThimblesTable, Base):
 class HasParameterContext(object):
     
     @declared_attr
-    def _context_id(self):
+    def _context_id(cls):
         return Column(Integer, ForeignKey("ParameterContext._id"))
     
     @declared_attr
-    def context(self):
-        return relationship("ParameterContext")
+    def context(cls):
+        return relationship("ParameterContext", foreign_keys=lambda : cls._context_id)
     
     def __init__(self, context_dict=None):
+        #assert hasattr(self, "_context_id")
+        #assert hasattr(self, "context")
         self.context = ParameterContext()
         if context_dict is None:
             context_dict = {}

@@ -5,6 +5,7 @@ import thimbles as tmb
 from thimbles.sqlaimports import *
 from thimbles.thimblesdb import ThimblesTable, Base
 from thimbles.modeling.associations import HasParameterContext
+from thimbles.modeling import FloatParameter, Parameter
 
 class SharedParameterSpace(ThimblesTable, Base, HasParameterContext):
     name = Column(String, unique=True)
@@ -27,10 +28,10 @@ def make_shared_parameters(
     n_model_pts = int(np.log(max_wv/min_wv)*model_resolution)+1
     model_wvs = np.exp(np.linspace(np.log(min_wv), np.log(max_wv), n_model_pts))
     model_wv_indexer_p = tmb.modeling.Parameter()
-    model_wv_indexer_mod = tmb.LogLinearCoordinatizationModel(
+    model_wv_indexer_mod = tmb.coordinatization.LogLinearCoordinatizationModel(
         output_p=model_wv_indexer_p,
-        min=min_wv,
-        max=max_wv,
+        min_p=FloatParameter(min_wv),
+        max_p=FloatParameter(max_wv),
         npts=n_model_pts
     )
     sps.add_parameter("model_wvs", model_wv_indexer_p)
@@ -91,7 +92,6 @@ def star_modeler(
     model_wvs_p = shared_parameters.context["model_wvs"]
     transition_wvs_p = shared_parameters.context["transition_wvs"]
     ion_weights_p = shared_parameters.context["ion_weights"]
-    
     
     #sigma model
     sigma_vec_p = tmb.modeling.Parameter()
@@ -253,6 +253,7 @@ def spectrum_modeler(spectrum, database, shared_parameters):
         matrix_p = telluric_shift_matrix_p,
         vector_p = telluric_transmission_p,
     )
+    spectrum.add_parameter("shifted_telluric", shifted_telluric_p)
     
     post_atmosphere_p = tmb.modeling.Parameter()
     post_atmosphere_mod = tmb.modeling.MultiplierModel(
@@ -262,6 +263,7 @@ def spectrum_modeler(spectrum, database, shared_parameters):
             shifted_telluric_p,
         ]
     )
+    spectrum.add_parameter("post_atmosphere_flux", post_atmosphere_p)
     
     resampling_matrix_p = tmb.modeling.Parameter()
     model_wv_lsf_p = tmb.modeling.FloatParameter(1.0)
@@ -272,6 +274,7 @@ def spectrum_modeler(spectrum, database, shared_parameters):
         output_wvs_p=spectrum.context["rest_wvs"],
         output_lsf_p=spectrum.context["lsf"],
     )
+    spectrum.add_parameter("sampling_matrix", resampling_matrix_p)
     
     resampled_flux_p = tmb.modeling.Parameter()
     tmb.modeling.MatrixMultiplierModel(
@@ -279,12 +282,14 @@ def spectrum_modeler(spectrum, database, shared_parameters):
         matrix_p=resampling_matrix_p,
         vector_p=post_atmosphere_p,
     )
+    spectrum.add_parameter("sampled_flux", resampled_flux_p)
     
     pseudo_norm = tmb.pseudonorms.sorting_norm(spectrum)
     final_norm_p = tmb.modeling.Parameter(pseudo_norm)
     final_norm_model = tmb.modeling.PixelPolynomialModel(
         output_p=final_norm_p,
     )
+    spectrum.add_parameter("norm", final_norm_p)
     
     comparison_mod = tmb.modeling.MultiplierModel(
         output_p = spectrum.flux_p,
@@ -293,6 +298,7 @@ def spectrum_modeler(spectrum, database, shared_parameters):
             final_norm_p,
         ]
     )
+    spectrum.add_parameter("obs_flux", spectrum.flux_p)
 
 
 def make_all_models(

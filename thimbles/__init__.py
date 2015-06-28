@@ -3,8 +3,8 @@ thimbles_header_str =\
 THIMBLES:
   Tools for            ##########       |  
   Handling            ############      |  
-  Intricate          ##############     |  
-  Measurements on  _ ##############     |  
+  Integrated         ##############     |  
+  Modeling of      _ ##############     |  
   Breathtakingly _/ \############## __  |   
   Large         /    ##############/   \|  
   Ensembles of /    ################   (\)  ____
@@ -21,6 +21,9 @@ except ImportError:
 import os
 resource_dir = os.path.join(os.path.dirname(__file__), "resources")
 speed_of_light = 299792.458 #speed of light in km/s
+from . import options 
+
+options.Option("wavelength_medium", default="vacuum")
 
 from . import pseudonorms
 from . import thimblesdb

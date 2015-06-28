@@ -14,52 +14,197 @@ def mean_norm(spectrum):
 def median_norm(spectrum):
     return np.repeat(np.median(spectrum.flux), len(spectrum))
 
-def sorting_norm(spectrum, min_frac=0.75, max_frac=0.97, n_samples=15, fit_plot=False):
-    npts = len(spectrum)
-    assert n_samples >= 2
-    assert min_frac > 0.0
-    assert max_frac < 1.0
-    sortflux = np.sort(spectrum.flux)
+
+def adjusted_median(
+        values,
+        min_frac=0.6,
+        max_frac=0.95,
+        min_val=None,
+        max_val=None,
+        mask=None,
+        n_samples=15,
+        contaminant_sign=-1,
+        return_fit_dict=False,
+    ):
+    """
+    Estimate the median of a set of values which may suffer from 
+    contaminants which push values systematically high or low.
+    
+    Instead of estimating the median from only the central values
+    we fit for the median using the sorted values between any 
+    specified minimum fraction and maximum fraction. Crucially
+    These values do not have to include the median value but can
+    use only the high or only low ends of the distribution to 
+    estimate thus cutting out a majority of contaminants.
+    
+    The shape of the sorted values as a function of fraction is 
+    assumed to be gaussian in shape.
+    
+    a quadratic tail of contaminants is fit for and removed if
+    the sense of the deviation it corrects for matches the 
+    expected sign of the contaminants and if not this correction
+    term is neglected.
+    """
+    if mask is None:
+        mask = np.ones(len(values), dtype=bool)
+    mask = np.asarray(mask, dtype=bool)
+    
+    if not min_val is None:
+        mask *= values < min_val
+    if not max_val is None:
+        mask *= values > max_val
+    
+    sort_vals = np.sort(values[mask])
+    npts = len(sort_vals)
+    if npts < 2:
+        if npts == 1:
+            return sort_vals[0]
+        else:
+            return np.nan
+    
     fractions = np.linspace(min_frac, max_frac, n_samples)
-    sample_fluxes = np.zeros(n_samples)
+    
+    sample_vals = np.zeros(n_samples)
     float_idxes = (npts-1)*fractions
     upper_idxes = np.ceil(float_idxes).astype(int)
     lower_idxes = np.floor(float_idxes).astype(int)
     alphas = float_idxes % 1.0
-    vals = sortflux[upper_idxes]*alphas + sortflux[lower_idxes]*(1.0-alphas)
+    vals = sort_vals[upper_idxes]*alphas + sort_vals[lower_idxes]*(1.0-alphas)
+    
     fit_mat = np.ones((n_samples, 3))
     fit_mat[:, 1] = erfinv(2.0*(fractions-0.5))
     fit_mat[:, 2] = (1.0-fractions)**2
-    res = np.linalg.lstsq(fit_mat, vals)[0]
-    if res[2] > 0:
-        fit_mat = fit_mat[:, :2]
-        res = np.linalg.lstsq(fit_mat, vals)[0]
-    if fit_plot:
-        import matplotlib.pyplot as plt
-        fig, axes = plt.subplots(2)
-        axes[0].plot(fractions, vals, label="flux[quantile]")
-        mod = np.dot(fit_mat, res)
-        axes[0].plot(fractions, mod, label="best fit model")
-        axes[0].set_xlabel("quantile") 
-        axes[1].set_ylabel("flux")
-        axes[1].plot(fractions, vals-mod)
-        axes[1].set_xlabel("quantile")
-        axes[1].set_ylabel("residuals")
-        plt.show()
-    #import pdb; pdb.set_trace()
-    return np.repeat(res[0], npts)
+    
+    res = np.linalg.lstsq(fit_mat, vals)
+    coeffs = res[0]
+    #check if the contaminant term has the expected sign
+    if coeffs[2]*contaminant_sign < 0:
+        #leave out the quadratic contaminant term and refit
+        res = np.linalg.lstsq(fit_mat[:, :2], vals)
+        coeffs = res[0]
+    
+    if return_fit_dict:
+        fd = dict(
+            fractions=fractions,
+            vals=vals,
+            fit_mat=fit_mat,
+            coefficients = coeffs,
+            lstsq_info = res[1],
+        )
+        return coeffs[0], fd
+    else:
+        return coeffs[0]
 
 
-def iterative_sorting_norm(
+def sorting_norm(
         spectrum, 
-        init_min=0.1, 
-        init_max=0.98, 
-        degree=4,
-        n_iter=4,
+        min_frac=0.75, 
+        max_frac=0.97,
+        degree=None,
+        n_split=None,
+        n_samples=15, 
+        mask = None,
+        h_mask_radius=-3.5,
 ):
-    x = spectrum.wv/spectrum.wv[-1]
-    y = spectrum.flux
-    pfit = np.polyfit(x, y, degree=degree)
+    npts = len(spectrum)
+    assert n_samples >= 2
+    assert min_frac > 0.0
+    assert max_frac < 1.0
+    
+    if mask is None:
+        if hasattr(spectrum, "ivar"):
+            mask = spectrum.ivar > 0
+        else:
+            mask = np.ones(npts, dtype=bool)
+    
+    if hasattr(spectrum, "wvs"):
+        wavelengths = spectrum.wvs
+        mask*= tmb.hydrogen.get_H_mask(wavelengths, h_mask_radius)
+    
+    npts_eff = int(np.sum(mask))
+    if n_split is None:
+        n_split = max(1, int(np.sqrt(npts)//4))
+    
+    if hasattr(spectrum, "flux"):
+        flux = spectrum.flux
+    else:
+        flux = spectrum
+    
+    pts_per = int(npts/(n_split+1))
+    split_idxs = np.arange(pts_per, npts, pts_per)[:-1]
+    
+    split_fluxes = np.split(flux, split_idxs)
+    split_masks = np.split(mask, split_idxs)
+    
+    split_medians = np.zeros(len(split_fluxes))
+    n_regions = len(split_medians)
+    
+    for split_idx, split_flux in enumerate(split_fluxes):
+        split_medians[split_idx] = adjusted_median(
+            split_flux, 
+            min_frac=min_frac, 
+            max_frac=max_frac, 
+            mask=split_masks[split_idx], 
+            n_samples=n_samples, 
+            contaminant_sign=-1
+        )
+    
+    valid_med_mask = np.logical_not(np.isnan(split_medians))
+    n_regions = int(np.sum(valid_med_mask))
+    
+    if degree is None:
+        degree = int(np.sqrt(n_regions))
+        degree = min(degree, 8)
+    
+    if degree > 0:
+        full_x = np.linspace(-1, 1, npts)
+        split_x = np.split(full_x, split_idxs)
+        x_avgs = np.array([np.mean(x[m]) for x, m in zip(split_x, split_masks)])
+        
+        x_avgs = x_avgs[valid_med_mask]
+        split_medians = split_medians[valid_med_mask]
+        coeffs = np.polyfit(x_avgs, y=split_medians, deg=degree)
+        pval = np.polyval(coeffs, full_x)
+        return pval
+    else:
+        return np.repeat(np.mean(split_medians[valid_med_mask]), npts)
+
+
+def median_bootstrap_norm(
+        spectrum,
+        degree=6,
+        n_bootstrap=100,
+        fraction=0.2,
+        mask=None,
+        reduce_func=None,
+        return_realizations=False,
+):
+    npts = len(spectrum)
+    if mask is None:
+        if hasattr(spectrum, "ivar"):
+            mask = spectrum.ivar > 0
+        else:
+            mask = np.ones(npts, dtype=bool)
+    x = np.linspace(-1, 1, npts)
+    if hasattr(spectrum, "flux"):
+        flux = spectrum.flux
+    else:
+        flux = spectrum
+    
+    fits = np.zeros((n_bootstrap, npts))
+    for idx in range(n_bootstrap):
+        cmask = mask*(np.random.random(npts) < fraction)
+        pc = np.polyfit(x[cmask], flux[cmask], deg=degree)
+        fits[idx] = np.polyval(pc, x)
+    
+    if reduce_func is None:
+        reduce_func = lambda x: np.median(x, axis=0)
+    
+    norm = reduce_func(fits)
+    if return_realizations:
+        return norm, fits
+    else:
+        return norm
 
 
 def feature_masked_partitioned_lad_norm(
@@ -107,7 +252,7 @@ def feature_masked_partitioned_lad_norm(
         if the minima statistics have already been you can pass them in here.
     
     returns
-    ApproximateNorm object
+    norm: numpy.ndarray
     """
     #import matplotlib.pyplot as plt
     #import pdb; pdb.set_trace()

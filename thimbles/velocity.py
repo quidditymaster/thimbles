@@ -53,7 +53,7 @@ _rv_standard = None
 def template_cc_rv(
         spectra, 
         template=None, 
-        max_velocity=500,
+        max_velocity=250,
         avg_width=20, 
         normalize_diff=True, 
         pix_poly_width=2
@@ -145,7 +145,6 @@ class CrossCorrelationRelativeVelocityEstimator(Estimator):
             wvs_p = spec.context["obs_wvs"] = None
             wvs_params.append()
         
-
         Estimator.__init__(self)    
     
     def __call__(self):

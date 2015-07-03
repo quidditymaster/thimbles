@@ -6,6 +6,10 @@ from sqlalchemy import Enum
 from thimbles.thimblesdb import Base, ThimblesTable
 from thimbles.modeling import Parameter
 
+from sqlalchemy.orm.collections import collection
+from sqlalchemy.orm.collections import attribute_mapped_collection
+from sqlalchemy.ext.associationproxy import association_proxy
+
 class Ion(ThimblesTable, Base):
     """representation of an Ion of either a single atom or a diatomic molecule.
     
@@ -71,6 +75,104 @@ class Ion(ThimblesTable, Base):
                 symbol = "{}{}".format(*ptable.ix[[k1, k2], "symbol"])
             self._symbol = symbol
         return self._symbol
+
+
+class IonIndex(Base, ThimblesTable):
+    _ion_id = Column(Integer, ForeignKey("Ion._id"))
+    ion = relationship("Ion", foreign_keys=_ion_id)
+    index = Column(Integer)
+    _indexer_p_id = Column(Integer, ForeignKey("IonIndexerParameter._id"))
+    
+    def __init__(self, ion, index):
+        self.ion = ion
+        self.index = index
+
+class IonIndexer(object):
+    
+    def __init__(self):
+        self.ions = []
+        self.ion_to_idx = {}
+        self._ion_idx_list = []
+    
+    def extend_transitions(self, ions):
+        for i in ions:
+            i_i = len(self.ions)
+            i_index = TransitionIndex(i, i_i)
+            self._add_index(i_index)
+    
+    @collection.appender
+    def _add_index(self, i_index):
+        self._ion_idx_list.append(i_index)
+        ion = i_index.ion
+        idx = i_index.index
+        n_current = len(self.ions)
+        if n_current < idx+1:
+            self.ions.extend([None for j in range(idx+1-n_current)])
+        self.ions[idx] = ion
+        self.ion_to_idx[ion] = idx
+    
+    @collection.remover
+    def _remove_index(self, t_index):
+        ion = t_index.ion
+        idx = t_index.index
+        self._ion_idx_list.remove(t_index)
+        self.ions[i] = None
+        self.ion_to_idx.pop(t)
+    
+    @collection.iterator
+    def _iter_indexes(self):
+        for t_idx in self._ion_idx_list:
+            yield t_idx
+    
+    def __getitem__(self, index):
+        if isinstance(index, Ion):
+            return self.ion_to_idx[index]
+        else:
+            return self.idx_to_ion[index]
+    
+    def __len__(self):
+        return len(self.ions)
+
+
+class IonIndexerParameter(Parameter):
+    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"IonIndexerParameter",
+    }
+    _value = relationship(
+        "IonIndex", 
+        collection_class=IonIndexer,
+    )
+    
+    def __init__(self, ions):
+        self._value.extend_ions(ions)
+
+class IonMappedFloat(Base, ThimblesTable):
+    _ion_id = Column(Integer, ForeignKey("Ion._id"))
+    ion = relationship("Ion", foreign_keys=_ion_id)
+    _mapper_parameter_id = Column(Integer, ForeignKey("IonMappedParameter._id"))
+    value = Column(Float)
+    
+    def __init__(self, ion, value):
+        self.ion = ion
+        self.value = value
+
+
+class IonMappedParameter(Parameter):
+    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"IonMappedParameter",
+    }
+    _ion_map = relationship(
+        "IonMappedFloat",
+        collection_class=attribute_mapped_collection("ion")
+    )
+    _value = association_proxy("_ion_map", "value")
+    
+    def __init__(self, mapped_values=None):
+        if mapped_values is None:
+            mapped_values = {}
+        self._value = mapped_values
 
 
 class Abundance(Parameter):

@@ -16,11 +16,22 @@ def float_or_nan(val):
     except ValueError:
         return np.nan
 
-def read_vald_linelist(fname):
+def read_vald_linelist(fname, list_medium="air", target_medium=None):
     file = open(fname)
     lines = file.readlines()
     file.close()
     input_re = re.compile(r"'([A-Z][a-z]{0,1})([A-Z][a-z]{0,1}){0,1} {1,4}([12])'")
+    if target_medium == None:
+        target_medium = tmb.opts["wavelength_medium"]
+    if list_medium == target_medium:
+        medium_converter = lambda x : x
+    elif (list_medium == "air") and (target_medium == "vacuum"):
+        medium_converter = tmb.utils.misc.air_to_vac
+    elif (list_medum == "vacuum") and (target_medium == "air"):
+        medium_converter = tmb.utils.misc.vac_to_air
+    else:
+        raise ValueError("can only convert between air and vacuum wvs")
+    
     ldat = []
     for line in lines:
         m = input_re.match(line)
@@ -37,7 +48,7 @@ def read_vald_linelist(fname):
         wv, loggf, elow, jlo, eup, jup = list(map(float, spl[1:7]))
         l_lande, u_lande, m_lande = list(map(float_or_nan, spl[8:11]))
         rad_damp, stark_damp, waals_damp = list(map(float_or_nan, spl[12:15]))
-        
+        wv = medium_converter(wv)
         trans = Transition(
             wv=wv, 
             ion=(proton_number, charge),

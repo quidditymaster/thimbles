@@ -1,11 +1,13 @@
 import numpy as np
 import scipy
-from thimbles.tasks import task
-from thimbles.profiles import voigt
 import scipy.integrate as integrate
-from thimbles.utils import piecewise_polynomial as ppol
 
-@task()
+from thimbles.profiles import voigt
+from thimbles.utils import piecewise_polynomial as ppol
+from thimbles.sqlaimports import *
+
+from thimbles.modeling import Model, Parameter
+
 def voigt_saturation_curve(
         gamma_ratio=0.1,
         min_saturation=-1.5, 
@@ -66,6 +68,80 @@ def voigt_saturation_curve(
         
     cog= ppol.InvertiblePiecewiseQuadratic(fit_quad.coefficients, fit_quad.control_points, centers=fit_quad.centers, scales=fit_quad.scales)
     return cog
+
+class PseudoStrengthModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"PseudoStrengthModel"
+    }
+    
+    def __init__(
+            self,
+            output_p,
+            transition_indexer_p,
+            ion_correction_p,
+            teff_p,
+    ):
+        self.output_p=output_p
+        self.add_input("transition_indexer", transition_indexer_p)
+        self.add_input("ion_correction", ion_correction_p)
+        self.add_input("teff", teff_p)
+    
+    def __call__(self, vprep=None):
+        vdict = self.get_vdict(vprep)
+        transition_indexer = vdict[self.inputs["transition_indexer"]]
+        transitions = transition_indexer.transitions
+        ion_correction = vdict[self.inputs["ion_correction"]]
+        teff = vdict[self.inputs["teff"]]
+        adj_pst = []
+        for t in transitions:
+            uncor_pst = t.pseudo_strength(teff=teff)
+            ion_cor = ion_correction.get(t.ion, 8.0)
+            adj_pst.append(uncor_pst-ion_cor)
+        return np.array(adj_pst)
+
+
+class SaturationModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"SaturationModel"
+    }
+    
+    def __init__(
+            self,
+            output_p,
+            pseudostrength_p,
+            offset_p,
+    ):
+        self.output_p = output_p
+        self.add_input("pseudostrength", pseudostrength_p)
+        self.add_input("offset", offset_p)
+    
+    def __call__(self, vprep=None):
+        vdict = self.get_vdict(vprep)
+        pseudostrengths = vdict[self.inputs["pseudostrength"]]
+        offset = vdict[self.inputs["offset"]]
+        max_pst = np.max(pseudostrengths)
+        return np.exp(-(max_pst-pseudostrengths+offset))
+
+
+class SaturationCurveModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"SaturationCurveModel",
+    }
+    
+    def __init__(output_p, sigma_p, gamma_p):
+        self.output_p = output_p
+        self.add_input("sigma", sigma_p)
+        self.add_input("gamma", gamma_p)
+    
+    def __call__(self, vprep=None):
+        vdict = self.get_vdict(vprep)
+        sigmas = vdict[self.inputs["sigma"]]
+        gammas = vdict[self.inputs["gamma"]]
+        mean_gamma_ratio = np.ean(gammas/sigmas)
+        return voigt_saturation_curve(mean_gamma_ratio)
 
 
 def fit_offset(

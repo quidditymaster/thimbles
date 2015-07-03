@@ -51,6 +51,7 @@ from . import velocity
 from .radtran import mooger
 from . import rotation
 from . import tellurics
+from . import cog
 
 from .thimblesdb import ThimblesDB
 from .star import Star

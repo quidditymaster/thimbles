@@ -77,14 +77,9 @@ class Transition(ThimblesTable, Base):
     def charge(self):
         return self.ion.charge
     
-    def pseudo_strength(self, stellar_parameters=None, ion_delta=1.5):
+    def pseudo_strength(self, teff=5000.0, metalicity=0.0, ion_delta=1.5):
         solar_ab = self.ion.solar_ab
-        if stellar_parameters is None:
-            theta = 1.0
-            metalicity = 0.0
-        else:
-            theta = stellar_parameters.theta
-            metalicity = stellar_parameters.metalicity
+        theta = 5040.0/teff
         ion_ratio = np.power(10.0, ion_delta)
         ion_frac = ion_ratio/(ion_ratio + 1.0)
         #ion_correction = np.log10(ion_frac)

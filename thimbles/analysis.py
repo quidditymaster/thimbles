@@ -115,16 +115,28 @@ def star_modeler(
     star.add_parameter("transition_gamma", vec_gamma_p)
     star.add_parameter("reference_gamma", ref_gamma_p)
     
+    ion_correction_p = tmb.abundances.IonMappedParameter()
+    star.add_parameter("ion_correction", ion_correction_p)
+    
+    pseudostrength_p = tmb.modeling.Parameter()
+    tmb.cog.PseudoStrengthModel(
+        output_p=pseudostrength_p,
+        transition_indexer_p=transition_indexer_p,
+        ion_correction_p=ion_correction_p,
+        teff_p=teff_p,
+    )
+    star.add_parameter("pseudostrength", pseudostrength_p)
+    
     #saturation model
     saturation_vec_p = tmb.modeling.Parameter()
-    saturation_dict_p = tmb.transitions.TransitionMappedParameter()
-    tmb.transitions.TransitionMappedVectorizerModel(
+    saturation_offset_p = tmb.modeling.FloatParameter(0.5)
+    tmb.cog.SaturationModel(
         output_p=saturation_vec_p,
-        transition_mapped_p=saturation_dict_p,
-        indexer_p=transition_indexer_p,
-        fill_value=0.0,
+        pseudostrength_p=pseudostrength_p,
+        offset_p=saturation_offset_p
     )
     star.add_parameter("transition_saturation", saturation_vec_p)
+    star.add_parameter("saturation_offset", saturation_offset_p)
     
     #feature matrix model
     feature_mat_p = tmb.modeling.Parameter()
@@ -145,7 +157,7 @@ def star_modeler(
         grouping_p = grouping_p,
         transition_indexer_p = transition_indexer_p,
         exemplar_indexer_p = exemplar_indexer_p,
-        teff_p = teff_p,
+        pseudostrength_p=pseudostrength_p,
     )
     star.add_parameter("grouping_matrix", grouping_matrix_p)
     

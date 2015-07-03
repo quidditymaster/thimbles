@@ -167,6 +167,84 @@ def compound_profile(wvs, center, sigma, gamma, vsini, limb_dark, vmacro, convol
     return prof
 
 
+def compound_profile_derivatives(
+        wvs,
+        center,
+        sigma,
+        gamma,
+        vsini,
+        limb_dark,
+        vmacro,
+        eps_frac=0.1
+):
+    kw_dict = dict(sigma=sigma, gamma=gamma, vsini=vsini, limb_dark=limb_dark, vmacro=vmacro)
+    
+    #central_prof = compound_profile(wvs, center, **kw_dict)
+    
+    deriv_dict = {}
+    for pname in kw_dict:
+        kw_val = kw_dict[pname]
+        if kw_val == 0.0:
+            deriv_dict[pname] = np.zeros(len(wvs))
+            continue
+        minus_kw = {}
+        minus_kw.update(kw_dict)
+        minus_kw[pname] = kw_dict[pname]*(1.0-eps_frac)
+        minus_prof = compound_profile(wvs, center, **minus_kw)
+        plus_kw = {}
+        plus_kw.update(kw_dict)
+        plus_kw[pname] = kw_dict[pname]*(1.0+eps_frac)
+        plus_prof = compound_profile(wvs, center, **plus_kw)
+        
+        eps_val = kw_dict[pname]*2*eps_frac
+        deriv_dict[pname] = (plus_prof-minus_prof)/eps_val
+    return deriv_dict
+
+def make_derivative_decoupling_kernel(
+        target_parameter,
+        wvs,
+        sigma,
+        gamma,
+        vsini,
+        limb_dark,
+        vmacro,
+        snr=50.0,
+):
+    assert (len(wvs) % 2) == 1
+    center_wv = wvs[len(wvs)//2]
+    dvecs = compound_profile_derivatives(wvs, center_wv, sigma, gamma, vsini, limb_dark, vmacro)
+    
+    #normalize the derivatives to have sum of squares == 1
+    for pname in dvecs:
+        cur_d_vec = dvecs[pname]
+        norm_sum = np.sqrt(np.sum(cur_d_vec**2))
+        if norm_sum > 0:
+            cur_d_vec /= norm_sum
+            dvecs[pname] = cur_d_vec
+    
+    #build the covariance matrix
+    npts = len(wvs)
+    covar = np.diag(np.repeat(snr/np.sqrt(npts), npts))
+    
+    #add in the derivative 'noise'
+    for pname in dvecs:
+        if not pname == target_parameter:
+            covar += np.outer(dvecs[pname], dvecs[pname])
+    
+    inv_var = np.linalg.pinv(covar)
+    kernel_vec = np.dot(inv_var, dvecs[target_parameter])
+    
+    info_dict = dict(
+        derivatives=dvecs,
+        covar=covar,
+        icovar=inv_var,
+        kernel=kernel_vec,
+        snr=snr,
+    )
+    
+    return kernel_vec, info_dict
+    
+
 def uniformly_sampled_profile_matrix(
         wvs, 
         sigma_min, 
@@ -194,17 +272,3 @@ def uniformly_sampled_profile_matrix(
         out_mat[i] = compound_profile(wvs, center_wv, sig, gam, vsini, limb_dark, vmacro)
     return out_mat, params
 
-def pca_matched_feature_filter(k, **kwargs):
-    prof_mat, params = uniformly_sampled_profile_matrix(**kwargs)
-    junk, wvgrad = scipy.gradient(prof_mat)
-    junk, wvgrad = scipy.gradient(wvgrad)
-    #wvgrad /= np.sqrt(np.sum(wvgrad**2, axis=1)).reshape((-1, 1))
-    #wvgrad /= np.sum(np.abs(wvgrad), axis=1).reshape((-1, 1))
-    wvgrad /= np.max(np.abs(wvgrad), axis=1).reshape((-1, 1))
-    u, s, v = np.linalg.svd(wvgrad, full_matrices=False)
-    import pdb; pdb.set_trace()
-    return u, s, v
-
-        
-
-    

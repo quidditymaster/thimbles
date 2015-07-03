@@ -42,8 +42,10 @@ def voigt_feature_matrix(
         saturations = np.zeros(n_features, dtype=float)
     assert len(sigmas) == n_features
     assert len(gammas) == n_features
-    gmax = n_gamma*gammas
+    gamma_eff = np.where(saturations > 1.0, gammas*saturations, gammas)
+    gmax = n_gamma*gamma_eff #take into account saturation effects
     smax = n_sigma*sigmas
+    wvs_grad = scipy.gradient(wavelengths)
     window_deltas = np.where(gmax > smax, gmax, smax)
     if wv_indexer is None:
         wv_indexer = tmb.coordinatization.as_coordinatization(wavelengths)
@@ -54,12 +56,13 @@ def voigt_feature_matrix(
         cdelt = window_deltas[col_idx]
         lb, ub = wv_indexer.get_index([ccent-cdelt, ccent+cdelt], clip=True, snap=True)
         local_wvs = wavelengths[lb:ub+1]
+        local_wv_grad = wvs_grad[lb:ub+1]
         prof = voigt(local_wvs, ccent, csig, cgam)
         if saturations[col_idx] > 0:
             #generate the saturated profile
             prof = np.exp(-saturations[col_idx]*prof)-1.0
             #and normalize to have equivalent width == 1 angstrom
-            prof /= np.sum(prof*scipy.gradient(local_wvs))
+            prof /= np.sum(prof*local_wv_grad)
         indexes.append(np.array([np.arange(lb, ub+1), np.repeat(col_idx, len(prof))]))
         profiles.append(prof)
     indexes = np.hstack(indexes)
@@ -191,6 +194,7 @@ class GammaModel(Model):
         gammas = gamma*(t_wvs/self.ref_gamma_wv)**2
         return gammas
 
+
 class RelativeStrengthMatrixModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__={
@@ -203,27 +207,27 @@ class RelativeStrengthMatrixModel(Model):
             grouping_p,
             transition_indexer_p,
             exemplar_indexer_p,
-            teff_p,
+            pseudostrength_p,
     ):
         self.output_p = output_p
         self.add_input("groups", grouping_p)
         self.add_input("transition_indexer", transition_indexer_p)
         self.add_input("exemplar_indexer", exemplar_indexer_p)
-        self.add_input("teff", teff_p)
-        
+        self.add_input("pseudostrength", pseudostrength_p)
+    
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
-        teff = vdict[self.inputs["teff"]]
         row_idxs = [] #transition indexes
         col_idxs = [] #exemplar indexes
         rel_strengths = []
-        theta = 5040.0/teff
         groups = vdict[self.inputs["groups"]]
         exemplar_indexer = vdict[self.inputs["exemplar_indexer"]]
         transition_indexer = vdict[self.inputs["transition_indexer"]]
+        pseudostrengths = vdict[self.inputs["pseudostrength"]]
         exemplars = exemplar_indexer.transitions
         for exemplar_idx, exemplar in enumerate(exemplars):
-            exemplar_strength = np.log10(exemplar.wv) + exemplar.loggf - theta*exemplar.ep
+            exemp_idx_as_trans = transition_indexer[exemplar]
+            exemplar_strength = pseudostrengths[exemp_idx_as_trans]
             grouped_transitions = groups.get(exemplar)
             if grouped_transitions is None:
                 continue
@@ -231,11 +235,10 @@ class RelativeStrengthMatrixModel(Model):
                 ctrans_idx = transition_indexer.trans_to_idx.get(trans)
                 if ctrans_idx is None:
                     continue
-                trans_strength = np.log10(trans.wv) + trans.loggf - theta*trans.ep
+                trans_strength = pseudostrengths[ctrans_idx]
                 delt_log_strength = trans_strength-exemplar_strength
                 rel_strengths.append(np.power(10.0, delt_log_strength))
                 col_idxs.append(exemplar_idx)
-                
                 row_idxs.append(ctrans_idx)
         out_shape = (len(transition_indexer), len(exemplars))
         return scipy.sparse.csr_matrix((rel_strengths, (row_idxs, col_idxs)), shape=out_shape)

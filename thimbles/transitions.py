@@ -147,7 +147,7 @@ class TransitionIndexer(object):
         if isinstance(index, Transition):
             return self.trans_to_idx[index]
         else:
-            return self.idx_to_trans[index]
+            return self.transitions[index]
     
     def __len__(self):
         return len(self.transitions)

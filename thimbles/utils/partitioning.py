@@ -45,18 +45,20 @@ def optimal_partition(data, cost_fn, minimize=True):
     partition.append(npts)
     return partition
 
-def partitioned_polynomial_model(xvec, 
-                                yvec, 
-                                y_inv_var, 
-                                poly_order,
-                                grouping_column = 0, 
-                                min_delta = 0,
-                                max_delta = np.inf,
-                                alpha=2.0, 
-                                beta=2.0, 
-                                beta_epsilon=0.01, 
-                                gamma=2.5, 
-                                y_mult=None):
+def partitioned_polynomial_model(
+        xvec, 
+        yvec, 
+        y_inv_var, 
+        poly_order,
+        grouping_column = 0, 
+        min_delta = 0,
+        max_delta = np.inf,
+        alpha=2.0, 
+        beta=2.0, 
+        beta_epsilon=0.01, 
+        gamma=2.5, 
+        y_mult=None
+):
     """
     fits optimal multivariate piecewise polynomials to the data with 
     dynamically chosen break points between the polynomials.
@@ -216,110 +218,110 @@ def partitioned_polynomial_model(xvec,
 
     
 def matrix_partition(
-                     model_matrix, 
-                     y,
-                     y_weight, 
-                     partitioning_ordinal=None,
-                     min_delta = None,
-                     max_delta = np.inf,
-                     alpha=2.0, 
-                     beta=2.0, 
-                     beta_epsilon=0.01, 
-                     gamma=2.5, 
-                     ):
-        npts = len(y)
-        assert len(y_weight) == npts
-        assert len(model_matrix)== npts
-        #is_sorted = np.all(np.sort(partitioning_ordinal) == partitioning_ordinal)
-        #if not is_sorted:
-        #    raise ValueError("partitioning_ordinal must be sorted")
+        model_matrix, 
+        y,
+        y_weight, 
+        partitioning_ordinal=None,
+        min_delta = None,
+        max_delta = np.inf,
+        alpha=2.0, 
+        beta=2.0, 
+        beta_epsilon=0.01, 
+        gamma=2.5, 
+):
+    npts = len(y)
+    assert len(y_weight) == npts
+    assert len(model_matrix)== npts
+    #is_sorted = np.all(np.sort(partitioning_ordinal) == partitioning_ordinal)
+    #if not is_sorted:
+    #    raise ValueError("partitioning_ordinal must be sorted")
+    
+    if partitioning_ordinal is None:
+        partitioning_ordinal = np.arange(npts)
         
-        if partitioning_ordinal is None:
-            partitioning_ordinal = np.arange(npts)
+    if min_delta is None:
+        med_ord = np.median(partitioning_ordinal)
+        min_delta = np.median(np.abs(partitioning_ordinal-med_ord))
+    if min_delta == 0:
+        min_delta = np.std(partitioning_ordinal)
+        min_delta /= 10.0
         
-        if min_delta is None:
-            med_ord = np.median(partitioning_ordinal)
-            min_delta = np.median(np.abs(partitioning_ordinal-med_ord))
-            if min_delta == 0:
-                min_delta = np.std(partitioning_ordinal)
-            min_delta /= 10.0
+    #create the elementary blocks        
+    grouping_idxs = [0]
+    last_g_val = partitioning_ordinal[0]
+    for x_idx in range(1, npts):
+        if np.abs(partitioning_ordinal[x_idx]-last_g_val) > min_delta:
+            grouping_idxs.append(x_idx)
+            last_g_val = partitioning_ordinal[x_idx]
+    grouping_idxs.append(npts)
         
-        #create the elementary blocks        
-        grouping_idxs = [0]
-        last_g_val = partitioning_ordinal[0]
-        for x_idx in range(1, npts):
-            if np.abs(partitioning_ordinal[x_idx]-last_g_val) > min_delta:
-                grouping_idxs.append(x_idx)
-                last_g_val = partitioning_ordinal[x_idx]
-        grouping_idxs.append(npts)
-        
-        n_cols = model_matrix.shape[1]     
-        #carry out the optimal partitioning algorithm.
-        n_blocks = len(grouping_idxs)-1
-        opt_val = np.zeros(n_blocks+1)
-        break_idxs = np.zeros(n_blocks+1, dtype = int)
-        opt_fit_params = np.zeros((n_blocks+1, n_cols))
-        sigma_vec = 1.0/np.sqrt(np.where(y_weight == 0, 1e-20, y_weight))
-        gamma_vec = gamma*sigma_vec
-        for i in range(1, n_blocks+1):
-            print("optimizing block {} of {}".format(i, n_blocks))
-            cmin = float("inf")
-            cidx = None
-            last_opt_params = None
-            for j in range(i):
-                lb = grouping_idxs[j] #j is the index of the lower block
-                ub = grouping_idxs[i] #i is the index of the upper block
-                if np.abs(partitioning_ordinal[ub-1]-partitioning_ordinal[lb]) > max_delta:
-                    continue
-                chop_sig=sigma_vec[lb:ub]
-                chop_gam=gamma_vec[lb:ub]
-                opt_params = tmb.utils.misc.pseudo_huber_irls(model_matrix[lb:ub], y[lb:ub], chop_sig, chop_gam)
-                opt_fit_y = np.dot(model_matrix[lb:ub], opt_params)
-                resids = opt_fit_y-y[lb:ub]
-                #chi_sq = np.sum((opt_fit_y-yvec[lb:ub])**2*y_inv_var[lb:ub])
-                ph_cost = tmb.utils.misc.pseudo_huber_cost(resids, chop_sig, chop_gam)
-                n_local = ub-lb
-                param_cost = alpha*n_cols
-                param_cost += beta*n_cols*(n_cols+1)/max(beta_epsilon, n_local-n_cols-1)
-                tot_cost = ph_cost + param_cost + opt_val[j]
-                if tot_cost < cmin:
-                    cmin = tot_cost
-                    cidx = j
-                    last_opt_params = opt_params
-            opt_val[i] = cmin
-            break_idxs[i] = cidx
-            opt_fit_params[i] = last_opt_params
-        first_break = break_idxs[-1]
-        partition = [first_break]
-        while partition[-1] > 0:
-            cbreak = break_idxs[partition[-1]-1]
-            partition.append(cbreak)
-        partition.insert(0, n_blocks)
-        partition_coeffs = []
-        for pidx in range(len(partition)-1):
-            coeffs = opt_fit_params[partition[pidx]]
-            partition_coeffs.append(coeffs)
-        partition_coeffs.reverse()
-        orig_space_partition = []
-        for part_idx in partition:
-            orig_space_partition.append(grouping_idxs[part_idx])
-        orig_space_partition.reverse()
-        orig_space_partition = np.array(orig_space_partition)
-        partition_coeffs = np.array(partition_coeffs)
-        return orig_space_partition, partition_coeffs, opt_val
+    n_cols = model_matrix.shape[1]     
+    #carry out the optimal partitioning algorithm.
+    n_blocks = len(grouping_idxs)-1
+    opt_val = np.zeros(n_blocks+1)
+    break_idxs = np.zeros(n_blocks+1, dtype = int)
+    opt_fit_params = np.zeros((n_blocks+1, n_cols))
+    sigma_vec = 1.0/np.sqrt(np.where(y_weight == 0, 1e-20, y_weight))
+    gamma_vec = gamma*sigma_vec
+    for i in range(1, n_blocks+1):
+        print("optimizing block {} of {}".format(i, n_blocks))
+        cmin = float("inf")
+        cidx = None
+        last_opt_params = None
+        for j in range(i):
+            lb = grouping_idxs[j] #j is the index of the lower block
+            ub = grouping_idxs[i] #i is the index of the upper block
+            if np.abs(partitioning_ordinal[ub-1]-partitioning_ordinal[lb]) > max_delta:
+                continue
+            chop_sig=sigma_vec[lb:ub]
+            chop_gam=gamma_vec[lb:ub]
+            opt_params = tmb.utils.misc.pseudo_huber_irls(model_matrix[lb:ub], y[lb:ub], chop_sig, chop_gam)
+            opt_fit_y = np.dot(model_matrix[lb:ub], opt_params)
+            resids = opt_fit_y-y[lb:ub]
+            #chi_sq = np.sum((opt_fit_y-yvec[lb:ub])**2*y_inv_var[lb:ub])
+            ph_cost = tmb.utils.misc.pseudo_huber_cost(resids, chop_sig, chop_gam)
+            n_local = ub-lb
+            param_cost = alpha*n_cols
+            param_cost += beta*n_cols*(n_cols+1)/max(beta_epsilon, n_local-n_cols-1)
+            tot_cost = ph_cost + param_cost + opt_val[j]
+            if tot_cost < cmin:
+                cmin = tot_cost
+                cidx = j
+                last_opt_params = opt_params
+        opt_val[i] = cmin
+        break_idxs[i] = cidx
+        opt_fit_params[i] = last_opt_params
+    first_break = break_idxs[-1]
+    partition = [first_break]
+    while partition[-1] > 0:
+        cbreak = break_idxs[partition[-1]-1]
+        partition.append(cbreak)
+    partition.insert(0, n_blocks)
+    partition_coeffs = []
+    for pidx in range(len(partition)-1):
+        coeffs = opt_fit_params[partition[pidx]]
+        partition_coeffs.append(coeffs)
+    partition_coeffs.reverse()
+    orig_space_partition = []
+    for part_idx in partition:
+        orig_space_partition.append(grouping_idxs[part_idx])
+    orig_space_partition.reverse()
+    orig_space_partition = np.array(orig_space_partition)
+    partition_coeffs = np.array(partition_coeffs)
+    return orig_space_partition, partition_coeffs, opt_val
 
 
 def block_constant_partition( 
-                     y,
-                     y_weight, 
-                     partitioning_ordinal=None,
-                     transform_matrix=None, 
-                     min_delta = None,
-                     max_delta = np.inf,
-                     alpha=2.0, 
-                     beta=2.0, 
-                     gamma=2.5, 
-                     ):
+        y,
+        y_weight, 
+        partitioning_ordinal=None,
+        transform_matrix=None, 
+        min_delta = None,
+        max_delta = np.inf,
+        alpha=2.0, 
+        beta=2.0, 
+        gamma=2.5, 
+):
         npts = len(y)
         assert len(y_weight) == npts
         if transform_matrix is None:

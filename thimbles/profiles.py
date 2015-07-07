@@ -175,9 +175,11 @@ def compound_profile_derivatives(
         vsini,
         limb_dark,
         vmacro,
-        eps_frac=0.1
+        eps_frac=None,
 ):
     kw_dict = dict(sigma=sigma, gamma=gamma, vsini=vsini, limb_dark=limb_dark, vmacro=vmacro)
+    if eps_frac is None:
+        eps_frac = 0.05
     
     #central_prof = compound_profile(wvs, center, **kw_dict)
     
@@ -209,10 +211,20 @@ def make_derivative_decoupling_kernel(
         limb_dark,
         vmacro,
         snr=50.0,
+        eps_frac=None,
 ):
     assert (len(wvs) % 2) == 1
     center_wv = wvs[len(wvs)//2]
-    dvecs = compound_profile_derivatives(wvs, center_wv, sigma, gamma, vsini, limb_dark, vmacro)
+    dvecs = compound_profile_derivatives(
+        wvs=wvs, 
+        center=center_wv, 
+        sigma=sigma, 
+        gamma=gamma, 
+        vsini=vsini, 
+        limb_dark=limb_dark, 
+        vmacro=vmacro, 
+        eps_frac=eps_frac
+    )
     
     #normalize the derivatives to have sum of squares == 1
     for pname in dvecs:
@@ -240,6 +252,12 @@ def make_derivative_decoupling_kernel(
         icovar=inv_var,
         kernel=kernel_vec,
         snr=snr,
+        gamma=gamma,
+        sigma=sigma,
+        vsini=vsini,
+        limb_dark=limb_dark,
+        vmacro=vmacro,
+        eps_frac=eps_frac,
     )
     
     return kernel_vec, info_dict

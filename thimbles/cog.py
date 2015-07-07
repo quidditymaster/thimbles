@@ -75,6 +75,9 @@ class PseudoStrengthModel(Model):
         "polymorphic_identity":"PseudoStrengthModel"
     }
     
+    #class attributes
+    fallback_correction = 8.0
+    
     def __init__(
             self,
             output_p,
@@ -96,7 +99,7 @@ class PseudoStrengthModel(Model):
         adj_pst = []
         for t in transitions:
             uncor_pst = t.pseudo_strength(teff=teff)
-            ion_cor = ion_correction.get(t.ion, 8.0)
+            ion_cor = ion_correction.get(t.ion, self.fallback_correction)
             adj_pst.append(uncor_pst-ion_cor)
         return np.array(adj_pst)
 
@@ -122,7 +125,7 @@ class SaturationModel(Model):
         pseudostrengths = vdict[self.inputs["pseudostrength"]]
         offset = vdict[self.inputs["offset"]]
         max_pst = np.max(pseudostrengths)
-        return np.exp(-(max_pst-pseudostrengths+offset))
+        return np.power(10.0, -(max_pst-pseudostrengths+offset))
 
 
 class SaturationCurveModel(Model):

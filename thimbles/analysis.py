@@ -300,6 +300,7 @@ def spectrum_modeler(spectrum, database, shared_parameters):
     final_norm_p = tmb.modeling.Parameter(pseudo_norm)
     final_norm_model = tmb.modeling.PixelPolynomialModel(
         output_p=final_norm_p,
+        degree=5,
     )
     spectrum.add_parameter("norm", final_norm_p)
     

@@ -1031,6 +1031,7 @@ def fit_blackbody_phirls(spectrum, start_teff=5000.0, gamma_frac=3.0):
     return scipy.optimize.leastsq(get_resids, x0)
 
 def sparse_row_circulant_matrix(vec, npts, normalize=False):
+    assert len(vec) % 2 == 1 #length of vec must be odd
     n_data = len(vec)*(npts-1)+2
     n_half = len(vec)//2
     row_idxs = np.zeros(n_data)

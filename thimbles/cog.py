@@ -134,7 +134,7 @@ class SaturationCurveModel(Model):
         "polymorphic_identity":"SaturationCurveModel",
     }
     
-    def __init__(output_p, sigma_p, gamma_p):
+    def __init__(self, output_p, sigma_p, gamma_p):
         self.output_p = output_p
         self.add_input("sigma", sigma_p)
         self.add_input("gamma", gamma_p)
@@ -143,24 +143,6 @@ class SaturationCurveModel(Model):
         vdict = self.get_vdict(vprep)
         sigmas = vdict[self.inputs["sigma"]]
         gammas = vdict[self.inputs["gamma"]]
-        mean_gamma_ratio = np.ean(gammas/sigmas)
+        mean_gamma_ratio = np.mean(gammas/sigmas)
         return voigt_saturation_curve(mean_gamma_ratio)
 
-
-def fit_offset(
-        saturation_dict, 
-        abundance_proxy=None, 
-        saturation_curve=None
-):
-    if saturation_curve is None:
-        saturation_curve = voigt_saturation_curve()
-    if abundance_proxy is None:
-        abundance_proxy = lambda t: t.loggf - t.ep
-    for trans in saturation_dict:
-        sat_val = ew_dict
-        delta_rews = np.log10(exemplars.ew/exemplars.doppler_width)
-        x_deltas = exemplars.x.values - self.cog.inverse(delta_rews.values)
-        offset = np.sum(x_deltas)
-        if np.isnan(offset):
-            offset = fallback_offset
-        self.fdat.ix[groups[species_key], "x_offset"] = offset

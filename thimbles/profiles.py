@@ -69,7 +69,7 @@ def rotational(wvs, center, vsini, limb_dark = 0):
 
 profile_functions["rotational"] = rotational
 
-def _calc_prototype_rt_profile(frac_width, n_freqs=1024):
+def _calc_prototype_rt_profile(frac_width, n_freqs):
     eta_rt = frac_width * n_freqs
     fft_freqs = fftpack.fftfreq(n_freqs, 1.0)
     #replace zero frequency with very small non-zero freq
@@ -85,7 +85,7 @@ def _calc_prototype_rt_profile(frac_width, n_freqs=1024):
     return fft_freqs, full_profile[ordering_indexes].copy()
 
 
-_prototype_rt_freqs, _prototype_rt_prof = _calc_prototype_rt_profile(0.05, 1024)
+_prototype_rt_freqs, _prototype_rt_prof = _calc_prototype_rt_profile(0.05, 2048)
 _prototype_rt_interper = scipy.interpolate.interp1d(_prototype_rt_freqs, _prototype_rt_prof, fill_value=0.0, bounds_error=False)
 
 def radial_tangential_macroturbulence(wvs, center, eta_rt, n_freqs=1024):
@@ -169,19 +169,27 @@ def compound_profile(wvs, center, sigma, gamma, vsini, limb_dark, vmacro, convol
 
 def compound_profile_derivatives(
         wvs,
-        center,
         sigma,
         gamma,
         vsini,
         limb_dark,
         vmacro,
+        oversample_ratio=100.0,
         eps_frac=None,
 ):
+    min_wv = wvs[0]
+    max_wv = wvs[-1]
+    assert max_wv > min_wv
+    npts_sample = int(oversample_ratio*len(wvs))
+    npts_sample += (npts_sample % 2) - 1
+    sample_wvs = np.exp(np.linspace(np.log(min_wv), np.log(max_wv), npts_sample))
+    center = sample_wvs[npts_sample//2]
     kw_dict = dict(sigma=sigma, gamma=gamma, vsini=vsini, limb_dark=limb_dark, vmacro=vmacro)
     if eps_frac is None:
         eps_frac = 0.05
     
-    #central_prof = compound_profile(wvs, center, **kw_dict)
+    sample_spec = tmb.Spectrum(sample_wvs, np.ones(npts_sample), np.ones(npts_sample))
+    junk, rebin_mat = sample_spec.sample(wvs, mode="rebin", return_matrix=True)
     
     deriv_dict = {}
     for pname in kw_dict:
@@ -192,15 +200,17 @@ def compound_profile_derivatives(
         minus_kw = {}
         minus_kw.update(kw_dict)
         minus_kw[pname] = kw_dict[pname]*(1.0-eps_frac)
-        minus_prof = compound_profile(wvs, center, **minus_kw)
+        minus_prof = compound_profile(sample_wvs, center, **minus_kw)
         plus_kw = {}
         plus_kw.update(kw_dict)
         plus_kw[pname] = kw_dict[pname]*(1.0+eps_frac)
-        plus_prof = compound_profile(wvs, center, **plus_kw)
+        plus_prof = compound_profile(sample_wvs, center, **plus_kw)
         
         eps_val = kw_dict[pname]*2*eps_frac
-        deriv_dict[pname] = (plus_prof-minus_prof)/eps_val
+        oversampled_deriv = (plus_prof-minus_prof)/eps_val
+        deriv_dict[pname] = rebin_mat*oversampled_deriv
     return deriv_dict
+
 
 def make_derivative_decoupling_kernel(
         target_parameter,
@@ -210,58 +220,94 @@ def make_derivative_decoupling_kernel(
         vsini,
         limb_dark,
         vmacro,
-        snr=50.0,
-        eps_frac=None,
+        profile_noise=None,
+        eps_fracs=None,
+        symmetrize=True,
+        k_cutoff=0.98,
 ):
     assert (len(wvs) % 2) == 1
     center_wv = wvs[len(wvs)//2]
-    dvecs = compound_profile_derivatives(
-        wvs=wvs, 
-        center=center_wv, 
-        sigma=sigma, 
-        gamma=gamma, 
-        vsini=vsini, 
-        limb_dark=limb_dark, 
-        vmacro=vmacro, 
-        eps_frac=eps_frac
-    )
     
-    #normalize the derivatives to have sum of squares == 1
-    for pname in dvecs:
-        cur_d_vec = dvecs[pname]
-        norm_sum = np.sqrt(np.sum(cur_d_vec**2))
-        if norm_sum > 0:
-            cur_d_vec /= norm_sum
+    if profile_noise is None:
+        profile_noise = {}
+    
+    if eps_fracs is None:
+        eps_fracs = [0.05, 0.2]
+    
+    collected_dvecs = []
+    for eps_frac_idx, eps_frac in enumerate(eps_fracs):
+        dvecs = compound_profile_derivatives(
+            wvs=wvs, 
+            sigma=sigma, 
+            gamma=gamma, 
+            vsini=vsini, 
+            limb_dark=limb_dark, 
+            vmacro=vmacro, 
+            eps_frac=eps_frac
+        )
+        
+        #normalize the derivatives to have sum of squares == 1
+        for pname in dvecs:
+            cur_d_vec = dvecs[pname]
+            norm_sum = np.sqrt(np.sum(cur_d_vec**2))
+            if norm_sum > 0:
+                cur_d_vec /= norm_sum
             dvecs[pname] = cur_d_vec
+        collected_dvecs.append(dvecs)
     
     #build the covariance matrix
     npts = len(wvs)
-    covar = np.diag(np.repeat(snr/np.sqrt(npts), npts))
+    covar = np.diag(np.repeat(max(0.01, (1-k_cutoff))/np.sqrt(npts), npts))
     
     #add in the derivative 'noise'
-    for pname in dvecs:
-        if not pname == target_parameter:
-            covar += np.outer(dvecs[pname], dvecs[pname])
+    dvec_stack = []
+    for dvecs in collected_dvecs:
+        for pname in dvecs:
+            if not pname == target_parameter:
+                noise_weight = profile_noise.get(pname, 1.0)
+                dvec_stack.append(noise_weight*dvecs[pname])
+    dvec_stack = np.array(dvec_stack)
+    svd_res = np.linalg.svd(dvec_stack, full_matrices=False)
+    
+    cum_var_frac = np.cumsum(svd_res[1])
+    cum_var_frac /= cum_var_frac[-1]
+    k_keep = 0
+    for i in range(len(cum_var_frac)):
+        k_keep += 1
+        if cum_var_frac[i] > k_cutoff:
+            break
+    
+    for k in range(k_keep):
+        pnoise_vec = svd_res[2][k]
+        var_weight = svd_res[1][k]
+        covar += var_weight*np.outer(pnoise_vec, pnoise_vec)
     
     inv_var = np.linalg.pinv(covar)
     kernel_vec = np.dot(inv_var, dvecs[target_parameter])
     
+    if symmetrize:
+        #symmetrize by averaging over the kernels own mirror image
+        kernel_vec = 0.5*(kernel_vec[::-1] + kernel_vec)
+    
     info_dict = dict(
-        derivatives=dvecs,
+        profile_derivatives=dvec_stack,
+        k_keep=k_keep,
+        k_cutoff=k_cutoff,
         covar=covar,
         icovar=inv_var,
         kernel=kernel_vec,
-        snr=snr,
+        profile_noise=profile_noise,
         gamma=gamma,
         sigma=sigma,
         vsini=vsini,
         limb_dark=limb_dark,
         vmacro=vmacro,
-        eps_frac=eps_frac,
+        eps_fracs=eps_fracs,
+        wvs=wvs,
     )
     
     return kernel_vec, info_dict
-    
+
 
 def uniformly_sampled_profile_matrix(
         wvs, 

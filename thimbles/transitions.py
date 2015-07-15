@@ -82,8 +82,6 @@ class Transition(ThimblesTable, Base):
         theta = 5040.0/teff
         ion_ratio = np.power(10.0, ion_delta)
         ion_frac = ion_ratio/(ion_ratio + 1.0)
-        #ion_correction = np.log10(ion_frac)
-        #neutral_correction = np.log10(1.0-ion_frac)
         if self.ion.charge == 1:
             ion_correction = np.log10(ion_frac)
         else:

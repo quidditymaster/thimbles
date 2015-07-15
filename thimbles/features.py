@@ -60,7 +60,7 @@ def voigt_feature_matrix(
         prof = voigt(local_wvs, ccent, csig, cgam)
         if saturations[col_idx] > 0:
             #generate the saturated profile
-            prof = np.exp(-saturations[col_idx]*prof)-1.0
+            prof = np.power(10.0, -saturations[col_idx]*prof)-1.0
             #and normalize to have equivalent width == 1 angstrom
             prof /= np.sum(prof*local_wv_grad)
         indexes.append(np.array([np.arange(lb, ub+1), np.repeat(col_idx, len(prof))]))
@@ -208,13 +208,15 @@ class RelativeStrengthMatrixModel(Model):
             transition_indexer_p,
             exemplar_indexer_p,
             pseudostrength_p,
+            cog_p,
     ):
         self.output_p = output_p
         self.add_input("groups", grouping_p)
         self.add_input("transition_indexer", transition_indexer_p)
         self.add_input("exemplar_indexer", exemplar_indexer_p)
         self.add_input("pseudostrength", pseudostrength_p)
-    
+        self.add_input("cog", cog_p)
+        
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
         row_idxs = [] #transition indexes
@@ -224,10 +226,12 @@ class RelativeStrengthMatrixModel(Model):
         exemplar_indexer = vdict[self.inputs["exemplar_indexer"]]
         transition_indexer = vdict[self.inputs["transition_indexer"]]
         pseudostrengths = vdict[self.inputs["pseudostrength"]]
+        cog = vdict[self.inputs["cog"]]
         exemplars = exemplar_indexer.transitions
         for exemplar_idx, exemplar in enumerate(exemplars):
             exemp_idx_as_trans = transition_indexer[exemplar]
-            exemplar_strength = pseudostrengths[exemp_idx_as_trans]
+            exemplar_pst = pseudostrengths[exemp_idx_as_trans]
+            exemplar_mult = cog(exemplar_pst)
             grouped_transitions = groups.get(exemplar)
             if grouped_transitions is None:
                 continue
@@ -235,8 +239,10 @@ class RelativeStrengthMatrixModel(Model):
                 ctrans_idx = transition_indexer.trans_to_idx.get(trans)
                 if ctrans_idx is None:
                     continue
-                trans_strength = pseudostrengths[ctrans_idx]
-                delt_log_strength = trans_strength-exemplar_strength
+                trans_pst = pseudostrengths[ctrans_idx]
+                trans_mult = cog(trans_pst)
+                delt_log_strength = trans_mult-exemplar_mult
+                delt_log_strength = min(3.0, delt_log_strength)
                 rel_strengths.append(np.power(10.0, delt_log_strength))
                 col_idxs.append(exemplar_idx)
                 row_idxs.append(ctrans_idx)

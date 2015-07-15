@@ -150,6 +150,15 @@ def star_modeler(
     )
     star.add_parameter("feature_matrix", feature_mat_p)
     
+    #cog model
+    cog_p = tmb.modeling.Parameter()
+    cog_model = tmb.cog.SaturationCurveModel(
+        output_p = cog_p,
+        gamma_p=vec_gamma_p,
+        sigma_p=sigma_vec_p,
+    )
+    star.add_parameter("cog", cog_p)
+    
     #grouping matrix model
     grouping_matrix_p = tmb.modeling.Parameter()
     grouping_matrix_mod = tmb.features.RelativeStrengthMatrixModel(
@@ -158,6 +167,7 @@ def star_modeler(
         transition_indexer_p = transition_indexer_p,
         exemplar_indexer_p = exemplar_indexer_p,
         pseudostrength_p=pseudostrength_p,
+        cog_p=cog_p,
     )
     star.add_parameter("grouping_matrix", grouping_matrix_p)
     
@@ -300,7 +310,7 @@ def spectrum_modeler(spectrum, database, shared_parameters):
     final_norm_p = tmb.modeling.Parameter(pseudo_norm)
     final_norm_model = tmb.modeling.PixelPolynomialModel(
         output_p=final_norm_p,
-        degree=5,
+        degree=4,
     )
     spectrum.add_parameter("norm", final_norm_p)
     

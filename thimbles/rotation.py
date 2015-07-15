@@ -43,6 +43,8 @@ class BroadeningMatrixModel(Model):
         high_wv = center_wv*(1.0 + n_w*veff/speed_of_light)
         idx_bnds = model_wv_indexer.get_index([low_wv, high_wv], snap=True)
         lbi, ubi = idx_bnds
+        if (ubi-lbi) % 2 == 1:
+            ubi = ubi-1
         sample_wvs = wvs[lbi:ubi+1]
         center_wv = sample_wvs[len(sample_wvs)//2]
         prof = compound_profile(

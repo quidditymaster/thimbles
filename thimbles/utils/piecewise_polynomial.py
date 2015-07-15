@@ -208,7 +208,9 @@ class Binning:
         self.last_bin_idx = 0
     
     def get_bin_index(self, xvec):
-        xv = np.array(xvec)
+        xv = np.asarray(xvec)
+        input_shape = xv.shape
+        xv = np.atleast_1d(xv)
         out_idxs = np.zeros(len(xv.flat), dtype = int)
         for x_idx in range(len(xv.flat)):
             if np.isnan(xv[x_idx]):
@@ -229,15 +231,16 @@ class Binning:
             while True:
                 mididx = (lbi+ubi)/2
                 midbound = self.bins[mididx]
-                if midbound <= xvec[x_idx]:
+                if midbound <= xv[x_idx]:
                     lbi = mididx
                 else:
                     ubi = mididx
-                if self.bins[lbi] <= xvec[x_idx] <= self.bins[lbi+1]:
+                if self.bins[lbi] <= xv[x_idx] <= self.bins[lbi+1]:
                     self.last_bin = self.bins[lbi], self.bins[lbi+1]
                     self.last_bin_idx = lbi
                     break
             out_idxs[x_idx] = lbi
+        out_idxs = out_idxs.reshape(input_shape)
         return out_idxs
 
 class PiecewisePolynomial:

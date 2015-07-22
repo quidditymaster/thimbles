@@ -86,9 +86,9 @@ class PseudoStrengthModel(Model):
             teff_p,
     ):
         self.output_p=output_p
-        self.add_input("transition_indexer", transition_indexer_p)
-        self.add_input("ion_correction", ion_correction_p)
-        self.add_input("teff", teff_p)
+        self.add_parameter("transition_indexer", transition_indexer_p)
+        self.add_parameter("ion_correction", ion_correction_p)
+        self.add_parameter("teff", teff_p)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
@@ -117,8 +117,8 @@ class SaturationModel(Model):
             offset_p,
     ):
         self.output_p = output_p
-        self.add_input("pseudostrength", pseudostrength_p)
-        self.add_input("offset", offset_p)
+        self.add_parameter("pseudostrength", pseudostrength_p)
+        self.add_parameter("offset", offset_p)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
@@ -136,8 +136,8 @@ class SaturationCurveModel(Model):
     
     def __init__(self, output_p, sigma_p, gamma_p):
         self.output_p = output_p
-        self.add_input("sigma", sigma_p)
-        self.add_input("gamma", gamma_p)
+        self.add_parameter("sigma", sigma_p)
+        self.add_parameter("gamma", gamma_p)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)

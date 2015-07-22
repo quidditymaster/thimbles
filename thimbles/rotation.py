@@ -23,10 +23,10 @@ class BroadeningMatrixModel(Model):
             ldark_p, 
     ):
         self.output_p = output_p
-        self.add_input("model_wvs", model_wvs_p)
-        self.add_input("vsini", vsini_p)
-        self.add_input("vmacro", vmacro_p)
-        self.add_input("ldark", ldark_p)
+        self.add_parameter("model_wvs", model_wvs_p)
+        self.add_parameter("vsini", vsini_p)
+        self.add_parameter("vmacro", vmacro_p)
+        self.add_parameter("ldark", ldark_p)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)

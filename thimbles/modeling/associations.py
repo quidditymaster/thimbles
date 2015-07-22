@@ -1,17 +1,92 @@
 
 from thimbles.sqlaimports import *
 from thimbles.thimblesdb import ThimblesTable, Base
-from thimbles.modeling import ParameterGroup, Parameter
 from sqlalchemy.orm.collections import collection
 
 
-class NamedParameters(ParameterGroup):
+class NamedParameters(object):
     
     def __init__(self):
         self._aliases = []
         self.groups = {}
         self.param_to_index = {}
         self.parameters = []
+    
+    def get_pvec(self, pdict=None):
+        """convert from a dictionary of parameter mapped values to
+        a parameter vector in this embedding space.
+        
+        """
+        parameters = self.parameters
+        if pdict is None:
+            pdict = {}
+        pvals = []
+        for p in parameters:
+            pval = pdict.get(p)
+            if pval is None:
+                pval = p.get()
+            flat_pval = np.asarray(pval).reshape((-1,))
+            pvals.append(flat_pval)
+        return np.hstack(pvals)
+    
+    def set_pvec(self, pvec, attr=None, as_delta=False):
+        parameters = self.parameters
+        pshapes = [p.shape for p in parameters]
+        nvals = [flat_size(pshape) for pshape in pshapes]
+        break_idxs = np.cumsum(nvals)[:-1]
+        if as_delta:
+            pvec = pvec + self.get_pvec()
+        flat_params = np.split(pvec, break_idxs)
+        if attr is None:
+            for p_idx in range(len(parameters)):
+                param = parameters[p_idx]
+                pshape = pshapes[p_idx]
+                flat_val = flat_params[p_idx]
+                if pshape == tuple():
+                    to_set = float(flat_val)
+                else:
+                    to_set = flat_val.reshape(pshape)
+                param.set(to_set)
+        elif isinstance(attr, str):
+            for p_idx in range(len(parameters)):
+                param = parameters[p_idx]
+                pshape = pshapes[p_idx]
+                flat_val = flat_params[p_idx]
+                if pshape == tuple():
+                    setattr(param, attr, float(flat_val))
+                else:
+                    setattr(param, attr, flat_val.reshape(pshape))
+        else:
+            raise ValueError("attr must be a string if set")
+    
+    def get_pdict(
+            self, 
+            value_replacements=None, 
+            attr=None, 
+            name_as_key=False
+    ):
+        
+        if free_only:
+            parameters = self.free_parameters
+        else:
+            parameters = self.parameters
+        if name_as_key:
+            keys = [p.name for p in parameters]
+        else:
+            keys = parameters
+        if attr is None:
+            values = [p.get() for p in parameters]
+        else:
+            values = [getattr(p, attr) for p in parameters]
+        pdict = dict(list(zip(keys, values))) 
+        return pdict
+    
+    def set_pdict(self, val_dict, attr=None):
+        for p in val_dict:
+            if attr is None:
+                p.set(val_dict[p])
+            else:
+                setattr(p, attr, val_dict[p])
     
     def __getitem__(self, index):
         return self.groups[index]
@@ -73,33 +148,59 @@ class NamedParameters(ParameterGroup):
         for p in self.parameters:
             yield p
 
-class InputAlias(ThimblesTable, Base):
-    _parameter_id = Column(Integer, ForeignKey("Parameter._id"))
-    parameter = relationship("Parameter", back_populates="models")
-    _model_id = Column(Integer, ForeignKey("Model._id"))
-    model = relationship("Model", foreign_keys=_model_id, back_populates="inputs")
-    name = Column(String)
-    is_compound = Column(Boolean)
+
+class InformedContexts(object):
     
-    _param_temp = None
+    def __init__(self):
+        self.contexts = []
+        self._aliases = []
     
-    def __init__(self, name, model, parameter, is_compound=False):
-        self.name = name
-        #an assignment that does not trigger the back populate
-        #so that when we assign to model we have access to the param
-        self.is_compound=is_compound
-        self._param_temp = parameter
-        self.model = model
-        self.parameter = parameter
+    def append(self, param_alias):
+        self.contexts.append(param_alias.context)
+        self._aliases.append(param_alias)
+    
+    def remove(self, param_alias):
+        self.contexts.remove(param_alias.context)
+        self._aliases.remove(param_alias)
+    
+    def __len__(self):
+        return len(self.contexts)
+    
+    def __getitem__(self, index):
+        return self.contexts[index]
+    
+    def __iter__(self):
+        for con in self.contexts:
+            yield con
+    
+    def __repr__(self):
+        return repr(self.contexts)
+    
+    @collection.iterator
+    def _iter_aliases(self):
+        for alias in self._aliases:
+            yield alias
 
 
-class ParameterAlias(ThimblesTable, Base):
-    _parameter_id = Column(Integer, ForeignKey("Parameter._id"))
-    parameter = relationship("Parameter")
-    _context_id = Column(Integer, ForeignKey("ParameterContext._id"))
-    context = relationship("ParameterContext", foreign_keys=_context_id, back_populates="params")
-    name = Column(String)
-    is_compound = Column(Boolean)
+class ParameterAliasMixin(object):
+    
+    @declared_attr
+    def _parameter_id(cls):
+        return Column(Integer, ForeignKey("Parameter._id"))
+    
+    @declared_attr
+    def parameter(cls):
+        return relationship("Parameter")
+    #_context_id = Column(Integer, ForeignKey("Model._id"))
+    #context= relationship("Model", foreign_keys=_model_id, back_populates="inputs")
+    
+    @declared_attr
+    def name(cls):
+        return Column(String)
+
+    @declared_attr
+    def is_compound(cls):
+        return Column(Boolean)
     
     _param_temp = None
     
@@ -113,31 +214,13 @@ class ParameterAlias(ThimblesTable, Base):
         self.parameter = parameter
 
 
-class ParameterContext(ThimblesTable, Base):
-    params = relationship(
-        "ParameterAlias",
-        collection_class=NamedParameters,
-    )
-    
-    def __getitem__(self, index):
-        return self.params[index]
-
 class HasParameterContext(object):
     
-    @declared_attr
-    def _context_id(cls):
-        return Column(Integer, ForeignKey("ParameterContext._id"))
-    
-    @declared_attr
-    def context(cls):
-        return relationship("ParameterContext", foreign_keys=lambda : cls._context_id)
-    
     def __init__(self, context_dict=None):
-        #assert hasattr(self, "_context_id")
-        #assert hasattr(self, "context")
-        self.context = ParameterContext()
         if context_dict is None:
             context_dict = {}
+        if not isinstance(context_dict, dict):
+            raise ValueError("expected context dictionary")
         for pname in context_dict:
             mapped_param = context_dict[pname]
             if isinstance(mapped_param, list):
@@ -145,13 +228,10 @@ class HasParameterContext(object):
                     self.add_parameter(pname, param, is_compound=True)
             else:
                 self.add_parameter(pname, mapped_param)
-        
     
-    def add_parameter(self, name, parameter, is_compound=False):
-        p_alias = ParameterAlias(name=name, context=self.context, parameter=parameter, is_compound=is_compound)
     
     def __getitem__(self, index):
-        val = self.context.params[index]
+        val = self.context[index]
         return val
 
 

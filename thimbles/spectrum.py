@@ -22,17 +22,21 @@ from .coordinatization import \
     LogLinearCoordinatizationModel, ArbitraryCoordinatization, \
     LinearCoordinatization, LogLinearCoordinatization
 from .sqlaimports import *
-from .modeling.associations import HasParameterContext
+from .modeling.associations import HasParameterContext, NamedParameters, ParameterAliasMixin
 from sqlalchemy.orm.collections import attribute_mapped_collection
 
 from . import speed_of_light
 from .velocity import RVShiftModel
 
-__all__ = ["Spectrum"]
+
+class SpectrumAlias(ParameterAliasMixin, ThimblesTable, Base):
+    _context_id = Column(Integer, ForeignKey("Spectrum._id"))
+    context= relationship("Spectrum", foreign_keys=_context_id, back_populates="context")
 
 class Spectrum(ThimblesTable, Base, HasParameterContext):
     """A representation of a collection of relative flux measurements
     """
+    context = relationship("SpectrumAlias", collection_class=NamedParameters)
     _obs_flux_id = Column(Integer, ForeignKey("Distribution._id"))
     obs_flux = relationship("Distribution")
     
@@ -193,6 +197,9 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
         self.info = info
         
         self.observation = observation
+    
+    def add_parameter(self, name, parameter, is_compound=False):
+        SpectrumAlias(name=name, context=self, parameter=parameter, is_compound=is_compound)
     
     @property
     def source(self):

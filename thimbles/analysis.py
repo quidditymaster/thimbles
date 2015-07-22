@@ -5,14 +5,23 @@ import thimbles as tmb
 from thimbles.sqlaimports import *
 from thimbles.thimblesdb import ThimblesTable, Base
 from thimbles.modeling.associations import HasParameterContext
+from thimbles.modeling.associations import NamedParameters, ParameterAliasMixin
 from thimbles.modeling import FloatParameter, Parameter
+
+class SharedParametersAlias(ParameterAliasMixin, ThimblesTable, Base):
+    _context_id = Column(Integer, ForeignKey("SharedParameterSpace._id"))
+    context= relationship("SharedParameterSpace", foreign_keys=_context_id, back_populates="context")
 
 class SharedParameterSpace(ThimblesTable, Base, HasParameterContext):
     name = Column(String, unique=True)
+    context = relationship("SharedParametersAlias", collection_class=NamedParameters)
     
     def __init__(self, name):
         HasParameterContext.__init__(self)
         self.name = name
+
+    def add_parameter(self, name, parameter, is_compound=False):
+        SharedParametersAlias(name=name, context=self, parameter=parameter, is_compound=is_compound)
 
 def make_shared_parameters(
         space_name,
@@ -310,7 +319,7 @@ def spectrum_modeler(spectrum, database, shared_parameters):
     final_norm_p = tmb.modeling.Parameter(pseudo_norm)
     final_norm_model = tmb.modeling.PixelPolynomialModel(
         output_p=final_norm_p,
-        degree=4,
+        degree=6,
     )
     spectrum.add_parameter("norm", final_norm_p)
     

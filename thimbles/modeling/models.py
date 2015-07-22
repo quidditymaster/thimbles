@@ -7,9 +7,14 @@ from copy import copy
 
 from thimbles.sqlaimports import *
 from thimbles.thimblesdb import ThimblesTable, Base
-from thimbles.modeling import ParameterGroup, Parameter
+from thimbles.modeling import Parameter
 from thimbles.modeling.associations import NamedParameters
-from thimbles.modeling.associations import InputAlias
+from thimbles.modeling.associations import ParameterAliasMixin
+
+class InputAlias(ParameterAliasMixin, ThimblesTable, Base):
+    parameter = relationship("Parameter", back_populates="models")
+    _context_id = Column(Integer, ForeignKey("Model._id"))
+    context= relationship("Model", foreign_keys=_context_id, back_populates="inputs")
 
 class Model(ThimblesTable, Base):
     model_class = Column(String)
@@ -32,11 +37,13 @@ class Model(ThimblesTable, Base):
         backref="mapped_models", 
     )
     
-    def __init__(self):
-        pass
+    def __init__(self, output_p, **kwargs):
+        self.output_p=output_p
+        for kw in kwargs:
+            self.add_parameter(kw, kwargs[kw], is_compund=False)
     
-    def add_input(self, name, parameter, is_compound=False):
-        inp_alias = InputAlias(name=name, model=self, parameter=parameter, is_compound=is_compound)
+    def add_parameter(self, name, parameter, is_compound=False):
+        InputAlias(name=name, context=self, parameter=parameter, is_compound=is_compound)
     
     def __call__(self, vdict=None):
         raise NotImplementedError("Model is intended strictly as a parent class. you must subclass it and implement a __call__ method.")

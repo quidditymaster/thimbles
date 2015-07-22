@@ -17,6 +17,9 @@ IdentityMap
 IdentityMapModel
 MatrixMultiplierModel
 MultiplierModel
+LogisticModel
+LinearIndexerModel
+InterpolationMatrixModel
 """.split()
 
 class MultiplierModel(Model):
@@ -34,7 +37,7 @@ class MultiplierModel(Model):
         if factors is None:
             factors = []
         for param in factors:
-            self.add_input("factors", param, is_compound=True)
+            self.add_parameter("factors", param, is_compound=True)
     
     def __call__(self, pvrep=None):
         vdict = self.get_vdict(pvrep)
@@ -85,51 +88,14 @@ class MatrixMultiplierModel(Model):
     
     def __init__(self, output_p, matrix_p, vector_p):
         self.output_p = output_p
-        self.add_input("matrix", matrix_p)
-        self.add_input("vector", vector_p)
+        self.add_parameter("matrix", matrix_p)
+        self.add_parameter("vector", vector_p)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
         mat = vdict[self.inputs["matrix"]]
         vec = vdict[self.inputs["vector"]]
         return mat*vec
-
-
-class FluxSumLogic(object):
-    
-    def __call__(self, pvrep=None):
-        vdict = self.get_vdict(pvrep)
-        if len(vdict) == 0:
-            return None
-        fparams = list(vdict.keys())
-        output_sample = self.output_p.wv_sample
-        fsum = np.zeros(len(output_sample))
-        out_start = output_sample.start
-        for fp in fparams:
-            start, end = fp.wv_sample.start, fp.wv_sample.end
-            start = start-out_start
-            end = end-out_start
-            fsum[start:end] += fp.value
-        return fsum
-
-class FluxSumModel(FluxSumLogic, Model):
-    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
-    __mapper_args__={
-        "polymorphic_identity":"FluxSumModel",
-    }
-    background_level = Column(Float)
-    
-    def __init__(
-            self, 
-            parameters=None, 
-            output_p=None, 
-            name=None, 
-            substrate=None
-    ):
-        if parameters is None:
-            parameters = []
-        self.parameters = parameters
-        self.output_p = output_p
 
 
 class NegativeExponentialModel(Model):
@@ -173,7 +139,7 @@ class PixelPolynomialModel(Model):
                 coeffs = np.zeros(degree)
                 coeffs[-1] = 1.0
         coeffs_p = PickleParameter(coeffs)
-        self.add_input("coeffs", coeffs_p)
+        self.add_parameter("coeffs", coeffs_p)
     
     def get_x(self, pixels=None):
         if pixels is None:
@@ -184,6 +150,63 @@ class PixelPolynomialModel(Model):
         vdict = self.get_vdict(vprep)
         coeffs = vdict[self.inputs["coeffs"]]
         return np.polyval(coeffs, self.get_x())
+
+
+class LogisticModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__ = {
+        "polymorphic_identity":"LogisticModel",
+    }
+    
+    def __init__(self, output_p, x_p, slope_p=None):
+        self.output_p = output_p
+        self.add_parameter("x", x_p)
+        if slope_p is None:
+            slope_p = FloatParameter(1.0)
+        self.add_parameter("slope", slope_p)
+    
+    def __call__(self, vprep=None):
+        vdict = self.get_vdict(vprep)
+        x = vdict[self.inputs["x"]]
+        slope = vdict[self.inputs["slope"]]
+        return 1.0/(1.0 + np.exp(-slope*x))
+
+
+class InterpolationMatrixModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__ = {
+        "polymorphic_identity":"InterpolationMatrixModel",
+    }
+
+    def __init__(self, output_p, coord_p, indexer_p):
+        self.output_p = output_p
+        self.add_parameter("coords", coord_p)
+        self.add_parameter("indexer", indexer_p)
+    
+    def __call__(self, vprep=None):
+        vdict = self.get_vdict(vprep)
+        coords = vdict[self.inputs["coords"]]
+        indexer = vdict[self.inputs["indexer"]]
+        return indexer.interpolant_sampling_matrix(coords)
+
+class LinearIndexerModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__ = {
+        "polymorphic_identity":"LinearIndexerModel",
+    }
+    min_coord = Column(Float)
+    max_coord = Column(Float)
+    
+    def __init__(self, output_p, indexed_p, min_coord=0.0, max_coord=1.0):
+        self.output_p = output_p
+        self.add_parameter("indexed", indexed_p)
+        self.min_coord = min_coord
+        self.max_coord = max_coord
+    
+    def __call__(self, vprep=None):
+        vdict = self.get_vdict(vprep)
+        indexed = vdict[self.inputs["indexed"]]
+        return tmb.coordinatization.LinearCoordinatization(min=self.min_coord, max=self.max_coord, npts=len(indexed))
 
 
 class IdentityMap(object):

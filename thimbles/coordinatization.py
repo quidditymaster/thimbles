@@ -140,7 +140,7 @@ class ArbitraryCoordinatizationModel(Model):
     
     def __init__(self, output_p, coords_p):
         self.output_p = output_p
-        self.add_input("coords", coords_p)
+        self.add_parameter("coords", coords_p)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
@@ -312,8 +312,8 @@ class LinearCoordinatizationModel(Model):
     def __init__(self, output_p, min_p, max_p, npts):
         self.output_p = output_p
         self.npts = npts
-        self.add_input("min", min_p)
-        self.add_input("max", max_p)
+        self.add_parameter("min", min_p)
+        self.add_parameter("max", max_p)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
@@ -428,8 +428,8 @@ class LogLinearCoordinatizationModel(Model):
     def __init__(self, output_p, min_p, max_p, npts):
         self.output_p = output_p
         self.npts = npts
-        self.add_input("min", min_p)
-        self.add_input("max", max_p)
+        self.add_parameter("min", min_p)
+        self.add_parameter("max", max_p)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
@@ -514,7 +514,7 @@ class TensoredCoordinatizationModel(Model):
     def __init__(self, output_p, coord_params):
         self.output_p = output_p
         for cp in coord_params:
-            self.add_input("coords", cp, is_compound=True)
+            self.add_parameter("coords", cp, is_compound=True)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)

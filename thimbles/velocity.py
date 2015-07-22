@@ -115,9 +115,9 @@ class RVShiftModel(Model):
     
     def __init__(self, output_p, wvs_p, rv_params):
         self.output_p = output_p
-        self.add_input("wvs", wvs_p)
+        self.add_parameter("wvs", wvs_p)
         for rv_p in rv_params:
-            self.add_input("rv_params", rv_p, is_compound=True)
+            self.add_parameter("rv_params", rv_p, is_compound=True)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)

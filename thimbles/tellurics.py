@@ -23,9 +23,9 @@ class TelluricShiftMatrixModel(Model):
             delta_helio_p,
     ):
         self.output_p = output_p
-        self.add_input("model_wvs", model_wvs_p)
-        self.add_input("rv", rv_p)
-        self.add_input("delta_helio", delta_helio_p)
+        self.add_parameter("model_wvs", model_wvs_p)
+        self.add_parameter("rv", rv_p)
+        self.add_parameter("delta_helio", delta_helio_p)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
@@ -51,7 +51,7 @@ class TransmissionModel(Model):
             opacity_p
     ):
         self.output_p = output_p
-        self.add_input("opacity", opacity_p)        
+        self.add_parameter("opacity", opacity_p)        
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)

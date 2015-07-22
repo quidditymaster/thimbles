@@ -25,6 +25,7 @@ class Damping(ThimblesTable, Base):
         self.rad = rad
         self.empirical = empirical
 
+
 class Transition(ThimblesTable, Base):
     wv = Column(Float)
     _ion_id = Column(Integer, ForeignKey("Ion._id"))
@@ -137,7 +138,7 @@ class TransitionIndexer(object):
         self.trans_to_idx.pop(t)
     
     @collection.iterator
-    def _iter_indexes(self):
+    def __iter__(self):
         for t_idx in self._trans_idx_list:
             yield t_idx
     
@@ -192,6 +193,7 @@ class TransitionMappedParameter(Parameter):
             mapped_values = {}
         self._value = mapped_values
 
+
 class TransitionMappedVectorizerModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__={
@@ -207,8 +209,8 @@ class TransitionMappedVectorizerModel(Model):
             fill_value=0.0
     ):
         self.output_p = output_p
-        self.add_input("tdict", transition_mapped_p)
-        self.add_input("indexer", indexer_p)
+        self.add_parameter("tdict", transition_mapped_p)
+        self.add_parameter("indexer", indexer_p)
         self.fill_value = fill_value
     
     def __call__(self, vprep=None):
@@ -235,15 +237,13 @@ class ExemplarGrouping(Base, ThimblesTable):
         self.exemplar = exemplar
         self.transition = transition
 
+
 class ExemplarMap(object):
     
     def __init__(self):
         self.groups = {}
         self._groupings = []
-    
-    def __getitem__(self, index):
-        return self.groups[index]
-    
+        
     def get(self, index):
         return self.groups.get(index)
     
@@ -273,9 +273,9 @@ class ExemplarMap(object):
         exemp = grouping.exemplar
         trans = grouping.transition
         self.groups[exemp].remove(trans)
-
+    
     @collection.iterator
-    def _iter_groupings(self):
+    def __iter__(self):
         for g in self._groupings:
             yield g
 

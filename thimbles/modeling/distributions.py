@@ -8,10 +8,15 @@ from copy import copy
 import thimbles as tmb
 from thimbles.sqlaimports import *
 from thimbles.thimblesdb import ThimblesTable, Base
-from thimbles.modeling import ParameterGroup
-from thimbles.modeling.associations import NamedParameters
+from thimbles.modeling.associations import NamedParameters, ParameterAliasMixin
 from thimbles.modeling.associations import HasParameterContext
 from sqlalchemy.orm.collections import collection
+
+
+class DistributionAlias(ThimblesTable, Base, ParameterAliasMixin):
+    parameter = relationship("Parameter", back_populates="distributions")
+    _context_id = Column(Integer, ForeignKey("Distribution._id"))
+    context= relationship("Distribution", foreign_keys=_context_id, back_populates="context")
 
 
 class Distribution(ThimblesTable, Base, HasParameterContext):
@@ -20,13 +25,13 @@ class Distribution(ThimblesTable, Base, HasParameterContext):
         "polymorphic_identity":"Distribution",
         "polymorphic_on":distribution_class
     }
+    context = relationship("DistributionAlias", collection_class=NamedParameters)
     
     def __init__(self, parameters=None):
         HasParameterContext.__init__(self, context_dict=parameters)
     
-    def __getitem__(self, index):
-        return self.context[index]
-
+    def add_parameter(self, name, parameter, is_compound=False):
+        DistributionAlias(name=name, context=self, parameter=parameter, is_compound=is_compound)
 
 class NormalDistribution(Distribution):
     _id = Column(Integer, ForeignKey("Distribution._id"), primary_key=True)

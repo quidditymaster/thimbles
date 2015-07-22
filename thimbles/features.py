@@ -87,11 +87,11 @@ class FeatureMatrixModel(Model):
             saturation_p,
     ):
         self.output_p = output_p
-        self.add_input("model_wvs", model_wv_p)
-        self.add_input("centers", centers_p)
-        self.add_input("sigmas", sigma_p)
-        self.add_input("gammas", gamma_p)
-        self.add_input("saturations", saturation_p)
+        self.add_parameter("model_wvs", model_wv_p)
+        self.add_parameter("centers", centers_p)
+        self.add_parameter("sigmas", sigma_p)
+        self.add_parameter("gammas", gamma_p)
+        self.add_parameter("saturations", saturation_p)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
@@ -126,10 +126,10 @@ class SigmaModel(Model):
             ion_weights_p
     ):
         self.output_p = output_p
-        self.add_input("teff", teff_p)
-        self.add_input("vmicro", vmicro_p)
-        self.add_input("wvs", transition_wvs_p)
-        self.add_input("weights", ion_weights_p)
+        self.add_parameter("teff", teff_p)
+        self.add_parameter("vmicro", vmicro_p)
+        self.add_parameter("wvs", transition_wvs_p)
+        self.add_parameter("weights", ion_weights_p)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
@@ -150,7 +150,7 @@ class TransitionWavelengthVectorModel(Model):
     
     def __init__(self, output_p, indexer_p):
         self.output_p = output_p
-        self.add_input("indexer", indexer_p)
+        self.add_parameter("indexer", indexer_p)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
@@ -166,7 +166,7 @@ class IonWeightVectorModel(Model):
     
     def __init__(self, output_p, indexer_p):
         self.output_p = output_p
-        self.add_input("indexer", indexer_p)
+        self.add_parameter("indexer", indexer_p)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
@@ -183,8 +183,8 @@ class GammaModel(Model):
     
     def __init__(self, output_p, gamma_p, transition_wvs_p, ref_gamma_wv=5000.0):
         self.output_p = output_p
-        self.add_input("gamma", gamma_p)
-        self.add_input("transition_wvs", transition_wvs_p)
+        self.add_parameter("gamma", gamma_p)
+        self.add_parameter("transition_wvs", transition_wvs_p)
         self.ref_gamma_wv = ref_gamma_wv
     
     def __call__(self, vprep=None):
@@ -211,11 +211,11 @@ class RelativeStrengthMatrixModel(Model):
             cog_p,
     ):
         self.output_p = output_p
-        self.add_input("groups", grouping_p)
-        self.add_input("transition_indexer", transition_indexer_p)
-        self.add_input("exemplar_indexer", exemplar_indexer_p)
-        self.add_input("pseudostrength", pseudostrength_p)
-        self.add_input("cog", cog_p)
+        self.add_parameter("groups", grouping_p)
+        self.add_parameter("transition_indexer", transition_indexer_p)
+        self.add_parameter("exemplar_indexer", exemplar_indexer_p)
+        self.add_parameter("pseudostrength", pseudostrength_p)
+        self.add_parameter("cog", cog_p)
         
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
@@ -257,8 +257,8 @@ class CollapsedFeatureMatrixModel(Model):
     
     def __init__(self, output_p, feature_matrix_p, grouping_matrix_p):
         self.output_p = output_p
-        self.add_input("feature_matrix", feature_matrix_p)
-        self.add_input("grouping_matrix", grouping_matrix_p)
+        self.add_parameter("feature_matrix", feature_matrix_p)
+        self.add_parameter("grouping_matrix", grouping_matrix_p)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict()
@@ -274,8 +274,8 @@ class NormalizedFluxModel(Model):
     
     def __init__(self, output_p, feature_matrix_p, strengths_p):
         self.output_p = output_p
-        self.add_input("feature_matrix", feature_matrix_p)
-        self.add_input("strengths", strengths_p)
+        self.add_parameter("feature_matrix", feature_matrix_p)
+        self.add_parameter("strengths", strengths_p)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)

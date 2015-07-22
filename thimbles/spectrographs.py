@@ -25,10 +25,10 @@ class SamplingModel(Model):
             output_lsf_p,
     ):
         self.output_p = output_p
-        self.add_input("input_wvs", input_wvs_p)
-        self.add_input("input_lsf", input_lsf_p)
-        self.add_input("output_wvs", output_wvs_p)
-        self.add_input("output_lsf", output_lsf_p)  
+        self.add_parameter("input_wvs", input_wvs_p)
+        self.add_parameter("input_lsf", input_lsf_p)
+        self.add_parameter("output_wvs", output_wvs_p)
+        self.add_parameter("output_lsf", output_lsf_p)  
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)

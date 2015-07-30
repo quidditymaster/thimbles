@@ -21,6 +21,7 @@ class RadiativeTransferEngine(object):
     codes.
     """
     _photosphere_fname = "modelphoto.tmp"
+    _last_sparams = None
     
     def __init__(self, working_dir, photosphere_engine=None):
         if not isinstance(working_dir, str):
@@ -31,6 +32,9 @@ class RadiativeTransferEngine(object):
         self.photosphere_engine = photosphere_engine
     
     def _make_photo_file(self, stellar_params):
+        if self._last_sparams == stellar_params:
+            return
+        self._last_sparams = stellar_params
         photo_file = os.path.join(self.working_dir, self._photosphere_fname)
         if isinstance(stellar_params, str):
             if os.path.exists(stellar_params):

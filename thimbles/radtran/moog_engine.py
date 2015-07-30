@@ -185,11 +185,12 @@ class MoogEngine(RadiativeTransferEngine):
             linelist, 
             stellar_params, 
             wavelengths, 
-            sampling_mode="interpolate",
+            sampling_mode="rebin",
             normalized=True, 
             delta_wv=None,
             opac_rad=None,
             central_intensity=False,
+            abundances=None, #dictionary ion-->log_eps
     ):
         if not normalized:
             self._not_implemented("moog only generates normalized spectra")
@@ -217,6 +218,13 @@ class MoogEngine(RadiativeTransferEngine):
             opac_rad=opac_rad,
             flux_int=flux_int
         ))
+        
+        if not abundances is None:
+            assert len(np.unique([ion.z for ion in abundances if ion.z < 100])) == len(abundances)
+            f.write("abundances     {}    1\n".format(len(abundances)))
+            for ion in abundances:
+                nl = "          {}   {}\n".format(int(ion.z), abundances[ion]-ptable["abundance"].ix[(ion.z, 0)])
+                f.write(nl)
         f.flush()
         f.close()
         self._exec_moog()

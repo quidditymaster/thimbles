@@ -175,19 +175,3 @@ class IonMappedParameter(Parameter):
         self._value = mapped_values
 
 
-class Abundance(Parameter):
-    _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
-    __mapper_args__={
-        "polymorphic_identity":"Abundance"
-    }
-    _ion_id = Column(Integer, ForeignKey("Ion._id"))
-    ion = relationship("Ion")
-    _value = Column(Float) #log(epsilon)
-    
-    def __init__(self, ion, abund, bracket_notation=True):
-        self._value = logeps
-    
-    @property
-    def xonh(self):
-        return self.value - ptable.ix[(self.z, self.isotope)]
-

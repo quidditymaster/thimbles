@@ -235,6 +235,8 @@ class MoogEngine(RadiativeTransferEngine):
                 if not cur_ab is None:
                     #average over multiples
                     z_map[ion_id] = 0.5*(cur_ab + abundances[ion])
+                else:
+                    z_map[ion_id] = abundances[ion]
             
             for ion_z in z_map:
                 delta_ab = z_map[ion_z]-tmb.ptable["abundance"].ix[(ion_z, 0)]

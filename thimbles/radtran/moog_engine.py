@@ -220,10 +220,25 @@ class MoogEngine(RadiativeTransferEngine):
         ))
         
         if not abundances is None:
-            assert len(np.unique([ion.z for ion in abundances if ion.z < 100])) == len(abundances)
             f.write("abundances     {}    1\n".format(len(abundances)))
+            z_map = {}
             for ion in abundances:
-                nl = "          {}   {}\n".format(int(ion.z), abundances[ion]-ptable["abundance"].ix[(ion.z, 0)])
+                if isinstance(ion, int):
+                    ion_id = ion
+                else:
+                    ion_id = ion.z
+                if ion_id >= 100:
+                    continue
+                if ion_id == 1:
+                    continue
+                cur_ab = z_map.get(ion_id) 
+                if not cur_ab is None:
+                    #average over multiples
+                    z_map[ion_id] = 0.5*(cur_ab + abundances[ion])
+            
+            for ion_z in z_map:
+                delta_ab = z_map[ion_z]-tmb.ptable["abundance"].ix[(ion_z, 0)]
+                nl = "          {}   {}\n".format(ion_z, delta_ab)
                 f.write(nl)
         f.flush()
         f.close()

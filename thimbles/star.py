@@ -1,7 +1,6 @@
 from thimbles.sqlaimports import *
 from thimbles.thimblesdb import Base, ThimblesTable
 from thimbles.modeling import Parameter, FloatParameter
-from thimbles.abundances import Abundance
 from thimbles.sources import Source
 
 

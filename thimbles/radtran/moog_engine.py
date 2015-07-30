@@ -26,7 +26,9 @@ from thimbles.options import config_dir
 
 
 Option('moog',option_style="parent_dict")
-Option("executable",parent="moog",envvar="MOOGSILENT", default=None)
+ex_opt = Option("executable",parent="moog",envvar="MOOGSILENT", default=None)
+if not ex_opt.runtime_str is None:
+    ex_opt.evaluate()
 Option("opac_rad", parent="moog", default=3.0)
 Option("delta_wv", parent="moog", default=0.01)
 default_moog_wdir = os.path.join(config_dir, "working_dirs", "moog")

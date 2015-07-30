@@ -183,3 +183,23 @@ def read_moog_synth_summary(fname, effective_snr=500.0):
     #import pdb; pdb.set_trace()
     spec = tmb.Spectrum(wvs, flux, eff_ivar, flags=sflags)
     return spec
+
+
+def write_moog_marcs_file(fname, layer_data, vmicro, metalicity):
+    comment_string = "MARCS:\n"
+    outf = open(fname, "wb")
+    outf.write("WEBMARCS\n")
+    outf.write("          {}\n".format(len(layer_data)))
+    outf.write("5000\n")#reference opacity wavelength
+    for i in range(len(layer_data)):
+        laystr = "%3.0f" % i
+        cline = (8*" %10G") % tuple(layer_data[i])
+        outf.write(laystr)
+        outf.write(cline)
+        outf.write("\n")
+    outf.write(" "*5+"%6E" % vmicro + "\n")
+    outf.write("Natoms       0    %4.2f\n" % metalicity)
+    outf.write("Nmol         0 \n")
+    outf.flush()
+    outf.close()
+

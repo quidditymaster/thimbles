@@ -191,6 +191,7 @@ class MoogEngine(RadiativeTransferEngine):
             opac_rad=None,
             central_intensity=False,
             abundances=None, #dictionary ion-->log_eps
+            differential_abundances=True,
     ):
         if not normalized:
             self._not_implemented("moog only generates normalized spectra")
@@ -238,8 +239,10 @@ class MoogEngine(RadiativeTransferEngine):
                 else:
                     z_map[ion_id] = abundances[ion]
             
+            if not differential_abundances:
+                raise NotImplementedError("abundances for this function need to be specified relative to iron")
             for ion_z in z_map:
-                delta_ab = z_map[ion_z]-tmb.ptable["abundance"].ix[(ion_z, 0)]
+                delta_ab = abundances[ion]
                 nl = "          {}   {}\n".format(ion_z, delta_ab)
                 f.write(nl)
         f.flush()
@@ -248,7 +251,7 @@ class MoogEngine(RadiativeTransferEngine):
         summary_fname = os.path.join(self.working_dir, out_fname + ".sum")
         result = tmb.io.moog_io.read_moog_synth_summary(summary_fname)
         resampled = result.sample(wavelengths, mode=sampling_mode)
-        return result
+        return resampled
     
     def continuum(self, stellar_params):
         self._not_implemented()

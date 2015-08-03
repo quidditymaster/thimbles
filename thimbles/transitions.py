@@ -48,15 +48,16 @@ class Transition(ThimblesTable, Base):
                 elif len(ion) == 3:
                     speciesnum, charge, isotope = ion
                 else:
-                    raise ValueError("Ion specification {} not understood".format(ion))
+                    raise ValueError("Ion specification {} not understood\n possible formats are\n (z, charge)\n (z, charge, isotope)".format(ion))
             else:
                 speciesnum = int(ion)
-                charge = int(10*(ion%1))
+                charge = int(round(10*(ion-speciesnum)))
                 if speciesnum > 100:
                     iso_mult = 1e5
                 else:
                     iso_mult = 1e3
-                isotope = int(iso_mult*(ion%0.1))
+                species_leftover = ion-speciesnum-0.1*charge
+                isotope = int(round(iso_mult*species_leftover))
             ion = Ion(speciesnum, charge, isotope)
         self.ion = ion
         

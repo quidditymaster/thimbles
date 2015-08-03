@@ -146,3 +146,6 @@ class SaturationCurveModel(Model):
         mean_gamma_ratio = np.mean(gammas/sigmas)
         return voigt_saturation_curve(mean_gamma_ratio)
 
+
+
+    

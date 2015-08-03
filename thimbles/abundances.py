@@ -33,9 +33,9 @@ class Ion(ThimblesTable, Base):
         self.d0 = d0
     
     def __repr__(self):
-        return "Ion: {} {} {}".format(
+        return "Ion:({} {}, iso{})".format(
             self.symbol,
-            self.charge,
+            self.charge+1,
             self.isotope,
         )
     
@@ -45,20 +45,20 @@ class Ion(ThimblesTable, Base):
     
     def split_z_iso(self):
         z1 = self.z//100
-        z2 = self.z % 100
+        z2 = self.z - z1
         iso1 = self.isotope//1000
-        iso2 = self.isotope%1000
+        iso2 = self.isotope-iso1
         return (z1, iso1), (z2, iso2)
     
     @property
     def solar_ab(self):
         if self._solar_ab is None:
             if self.monatomic:
-                self._solar_ab = ptable.ix[(self.z, self.isotope), "abundance"]
+                self._solar_ab = ptable["abundance"].ix[(self.z, self.isotope)]
             else:
                 (z1, iso1), (z2, iso2) = self.split_z_iso()
-                ab1 = ptable.ix[(z1, iso1), "abundance"]
-                ab2 = ptable.ix[(z2, iso2), "abundance"]
+                ab1 = ptable["abundance"].ix[(z1, iso1)]
+                ab2 = ptable["abundance"].ix[(z2, iso2)]
                 self._solar_ab = min(ab1, ab2)
         return self._solar_ab
     
@@ -66,20 +66,20 @@ class Ion(ThimblesTable, Base):
     def weight(self):
         if self._weight is None:
             if self.monatomic:
-                self._weight = ptable.ix[(self.z, self.isotope), "weight"]
+                self._weight = ptable["weight"].ix[(self.z, self.isotope)]
             else:
                 k1, k2 = self.split_z_iso()
-                self._weight = ptable.ix[k1, "weight"] + ptable.ix[k2, "weight"]
+                self._weight = ptable["weight"].ix[k1] + ptable["weight"].ix[k2]
         return self._weight
     
     @property
     def symbol(self):
         if self._symbol is None:
             if self.monatomic:
-                symbol = ptable.ix[(self.z, self.isotope), "symbol"]
+                symbol = ptable["symbol"].ix[(self.z, 0)]
             else:
                 k1, k2 = self.split_z_iso()
-                symbol = "{}{}".format(*ptable.ix[[k1, k2], "symbol"])
+                symbol = "{}{}".format(*ptable["symbol"].ix[[k1, k2]])
             self._symbol = symbol
         return self._symbol
 

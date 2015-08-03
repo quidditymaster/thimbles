@@ -70,6 +70,14 @@ class Transition(ThimblesTable, Base):
             raise ValueError("damping of type {} is not understood".format(type(damp)))
         self.damp = damp
     
+    def __repr__(self):
+        return "Transition :{wv:7.3f}, {ion}, {ep:4.2f} {loggf:4.2f}".format(
+            wv = self.wv,
+            ion = self.ion,
+            ep=self.ep,
+            loggf=self.loggf,
+        )
+    
     @property
     def z(self):
         return self.ion.z

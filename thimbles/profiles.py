@@ -35,8 +35,8 @@ def voigt(wvs, center, g_width, l_width):
         if g_w == 0:
             g_w = 1e-10
         return gauss(wvs, center, g_w)
-    elif g_w == 0 and l_width != 0:
-        g_w = 0.0001*l_w
+    elif g_w == 0:
+        g_w = 1e-5*l_w
     z = ((wvs-center)+l_w*1j)/(g_w*sqrt2)
     cplxv = scipy.special.wofz(z)/(g_w*sqrt2pi)
     return cplxv.real

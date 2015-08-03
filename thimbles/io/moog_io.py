@@ -60,7 +60,7 @@ def write_moog_linelist(fname, linelist, equivalent_widths=None, comment=None):
         species = cline.ion.z + cline.ion.charge*0.1
         out_str = fmt_string % (wv, species, ep, loggf)
         empirical_damp = cline.damp.empirical
-        if not empirical_damp is None:
+        if not (empirical_damp is None or np.isnan(empirical_damp)):
             out_str +="{: 10.4f}".format(empirical_damp)
         else:
             out_str += 10*" "

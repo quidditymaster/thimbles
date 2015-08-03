@@ -32,6 +32,13 @@ class Ion(ThimblesTable, Base):
         self.isotope = isotope
         self.d0 = d0
     
+    def __repr__(self):
+        return "Ion: {} {} {}".format(
+            self.symbol,
+            self.charge,
+            self.isotope,
+        )
+    
     @property
     def monatomic(self):
         return self.z < 100

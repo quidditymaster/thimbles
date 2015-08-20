@@ -491,10 +491,10 @@ def _wcs_dispersion_format (pixels,*args):
         return NoSolution(pixels,rv=rv)
     elif dcflag == 0:
         coords = pixels*c1+c0
-        return tmb.as_wavelength_solution(coords)
+        return coords
     elif dcflag == 1:        
         coords = np.power(10.0, c1*pixels+c0)
-        return tmb.as_wavelength_solution(coords)
+        return coords
     elif dcflag != 2:
         raise IncompatibleWavelengthSolution("value for WCS dcflag={} not implemented".format(dcflag))
     # dcflag = 2 # non-linear

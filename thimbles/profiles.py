@@ -14,7 +14,7 @@ sqrt2 = np.sqrt(2)
 profile_functions = {}
 
 def gauss(wvs, center, g_width):
-    return 1.0/np.abs(sqrt2pi*g_width)*np.exp(-0.5*((wvs-center)/g_width)**2)
+    return np.exp(-0.5*((wvs-center)/g_width)**2)/np.abs(sqrt2pi*g_width)
 
 profile_functions["gaussian"] = gauss
 

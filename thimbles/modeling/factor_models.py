@@ -20,6 +20,7 @@ MultiplierModel
 LogisticModel
 LinearIndexerModel
 InterpolationMatrixModel
+KernelWeightedMatchingInterpolatorModel
 """.split()
 
 class MultiplierModel(Model):
@@ -207,6 +208,39 @@ class LinearIndexerModel(Model):
         vdict = self.get_vdict(vprep)
         indexed = vdict[self.inputs["indexed"]]
         return tmb.coordinatization.LinearCoordinatization(min=self.min_coord, max=self.max_coord, npts=len(indexed))
+
+
+class KernelWeightedMatchingInterpolatorModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__ = {
+        "polymorphic_identity":"MatchingInterpolatorModel",
+    }
+    kernel_gamma = Column(Float)
+    kernel_sigma = Column(Float)
+    matching_tolerance = Column(Float)
+    
+    def __init__(
+            self, 
+            output_p, 
+            x_p, 
+            y_p, 
+            kernel_sigma=1.0, 
+            kernel_gamma=0.1, 
+            matching_tolerance=6.0
+    ):
+        self.output_p = output_p
+        self.add_parameter("x", x_p)
+        self.add_parameter("y", y_p)
+        self.kernel_gamma = kernel_gamma
+        self.kernel_sigma = kernel_sigma
+        self.matching_tolerance = matching_tolerance
+    
+    def __call__(self, vprep):
+        vdict = self.get_vdict(vprep)
+        x = vdict[self.inputs["x"]]
+        y = vdict[self.inputs["y"]]
+        kernel = lambda x:np.exp(-0.5*(x/kernel_sigma)**2)/(1.0+(x/kernel_gamma)**2)
+        return latbin.interpolation.KernelWeightedMatchingInterpolator(x=x, y=y, weighting_kernel=kernel, matching_tolerance=matching_tolerance)
 
 
 class IdentityMap(object):

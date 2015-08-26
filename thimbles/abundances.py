@@ -45,9 +45,9 @@ class Ion(ThimblesTable, Base):
     
     def split_z_iso(self):
         z1 = self.z//100
-        z2 = self.z - z1
-        iso1 = self.isotope//1000
-        iso2 = self.isotope-iso1
+        z2 = self.z - z1*100
+        iso1 = self.isotope//100
+        iso2 = self.isotope-iso1*100
         return (z1, iso1), (z2, iso2)
     
     @property
@@ -78,8 +78,8 @@ class Ion(ThimblesTable, Base):
             if self.monatomic:
                 symbol = ptable["symbol"].ix[(self.z, 0)]
             else:
-                k1, k2 = self.split_z_iso()
-                symbol = "{}{}".format(*ptable["symbol"].ix[[k1, k2]])
+                (z1, i1), (z2, i2) = self.split_z_iso()
+                symbol = "{}{}".format(*ptable["symbol"].ix[[(z1, 0), (z2, 0)]])
             self._symbol = symbol
         return self._symbol
 

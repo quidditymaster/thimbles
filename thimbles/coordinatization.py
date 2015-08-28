@@ -421,7 +421,7 @@ class LinearCoordinatization(Coordinatization):
 class LogLinearCoordinatizationModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__={
-        "polymorphic_identity":"LinearCoordinatizationModel",
+        "polymorphic_identity":"LogLinearCoordinatizationModel",
     }
     npts = Column(Integer)
     

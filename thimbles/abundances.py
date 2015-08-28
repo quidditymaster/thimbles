@@ -94,6 +94,7 @@ class IonIndex(Base, ThimblesTable):
         self.ion = ion
         self.index = index
 
+
 class IonIndexer(object):
     
     def __init__(self):

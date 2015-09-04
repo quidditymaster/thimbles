@@ -117,9 +117,9 @@ def sorting_norm(
         else:
             mask = np.ones(npts, dtype=bool)
     
-    if hasattr(spectrum, "wvs"):
-        wavelengths = spectrum.wvs
-        mask*= tmb.hydrogen.get_H_mask(wavelengths, h_mask_radius)
+        if hasattr(spectrum, "wvs"):
+            wavelengths = spectrum.wvs
+            mask*= tmb.hydrogen.get_H_mask(wavelengths, h_mask_radius)
     
     npts_eff = int(np.sum(mask))
     if n_split is None:
@@ -153,10 +153,10 @@ def sorting_norm(
     n_regions = int(np.sum(valid_med_mask))
     
     if degree is None:
-        degree = int(np.sqrt(n_regions))
+        degree = int(np.sqrt(n_regions+1))-1
         degree = min(degree, 8)
     
-    if degree > 0:
+    if degree > 1:
         full_x = np.linspace(-1, 1, npts)
         split_x = np.split(full_x, split_idxs)
         x_avgs = np.array([np.mean(x[m]) for x, m in zip(split_x, split_masks)])

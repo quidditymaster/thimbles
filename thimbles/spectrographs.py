@@ -37,5 +37,47 @@ class SamplingModel(Model):
         lsf_in = vdict[self.inputs["input_lsf"]]
         lsf_out = vdict[self.inputs["output_lsf"]]
         return tmb.resampling.resampling_matrix(x_in, x_out, lsf_in, lsf_out)
-    
 
+
+class Slit(ThimblesTable, Base):
+    name = Column(String)
+    info = Column(PickleType)
+    
+    def __init__(self, name, info=None):
+        self.name = name
+        if info is None:
+            info = {}
+        self.info = info
+
+
+class Order(ThimblesTable, Base):
+    number = Column(Integer)
+    
+    def __init__(self, number):
+        self.number = number
+
+
+class Chip(ThimblesTable, Base):
+    name = Column(String)
+    info = Column(PickleType)
+    
+    def __init__(self, name, info=None):
+        self.name = name
+        if info is None:
+            info = {}
+        self.info = info
+
+
+class Slice(ThimblesTable, Base):
+    _chip_id = Column(Integer, ForeignKey("Chip._id"))
+    chip = relationship("Chip")
+    _order_id = Column(Integer, ForeignKey("Order._id"))
+    order = relationship("Order")
+    _slit_id = Column(Integer, ForeignKey("Slit._id"))
+    slit = relationship("Slit")
+    
+    def __init__(self, chip, order, slit):
+        self.chip = chip
+        self.order = order
+        self.slit = slit
+    

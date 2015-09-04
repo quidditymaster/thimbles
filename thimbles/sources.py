@@ -19,11 +19,12 @@ class Source(Base, ThimblesTable, HasParameterContext):
     ra = Column(Float)
     dec = Column(Float)
     info = Column(PickleType)
-    spectroscopy = relationship(
-        "Spectrum", 
-        primaryjoin="and_(Source._id==remote(Observation._source_id), foreign(Spectrum._observation_id)==Observation._id)",
-        viewonly=True,
-    )
+    spectroscopy = relationship("Spectrum")
+#    spectroscopy = relationship(
+#        "Spectrum", 
+#        primaryjoin="and_(Source._id==remote(Observation._source_id), foreign(Spectrum._observation_id)==Observation._id)",
+#        viewonly=True,
+#    )
     photometry = relationship(
         "Photom",
     )

@@ -4,6 +4,8 @@ from thimbles.pseudonorms import *
 import numpy as np
 import matplotlib.pyplot as plt
 
+show_diagnostics = False
+
 class DummySpectrum(object):
     
     def __init__(self, flux):
@@ -13,7 +15,8 @@ class DummySpectrum(object):
         return len(self.flux)
 
 class TestSortNorm(unittest.TestCase):
-    
+    bias_tolerance = 0.05
+
     def setUp(self):
         pass
     
@@ -21,15 +24,25 @@ class TestSortNorm(unittest.TestCase):
         npts = 50
         y_mean = 1.0
         psnorm_vals = []
+        y_accum = []
+        snorm_accum = []
         for i in range(200):
             y = np.random.normal(size=(npts,))*0.1+y_mean
+            y_accum.append(y)
             spec = DummySpectrum(y)
             snorm = sorting_norm(spec)
-            psnorm_vals.append(snorm[0])
-        #import matplotlib.pyplot as plt
-        #plt.hist(psnorm_vals, 71)
-        #plt.show()
-        self.assertTrue(y_mean - 0.1 < np.mean(psnorm_vals) < y_mean + 0.1)
+            snorm_accum.append(snorm)
+            psnorm_vals.append(np.mean(snorm))
+        if show_diagnostics:
+            fig, ax = plt.subplots()
+            for i in range(len(y_accum)):
+                plt.plot(y_accum[i], c="blue", alpha=0.3)
+                plt.plot(snorm_accum[i], c="orange", alpha=0.5)
+            fig, ax = plt.subplots()
+            plt.hist(np.array(psnorm_vals)-y_mean, 21)
+            plt.xlabel("norm bias")
+            plt.show()
+        self.assertTrue(y_mean - self.bias_tolerance < np.mean(psnorm_vals) < y_mean + self.bias_tolerance)
 
 if __name__ == "__main__":
     unittest.main()

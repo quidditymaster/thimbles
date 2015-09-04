@@ -131,7 +131,7 @@ class NamedParameters(object):
             if len(pgroup) == 0:
                 self.groups.pop(pname)
         else:
-            self.groups[pname].pop(pname)
+            self.groups.pop(pname)
         rem_pidx = self.param_to_index.pop(param)
         self.parameters.pop(rem_pidx)
         for param in self.parameters[rem_pidx:]:
@@ -150,31 +150,87 @@ class NamedParameters(object):
 
 
 class InformedContexts(object):
+    _contexts = None
     
     def __init__(self):
-        self.contexts = []
         self._aliases = []
     
+    @property
+    def contexts(self):
+        if self._contexts is None:
+            self._contexts = [alias.context for alias in self._aliases]
+        return self._contexts
+    
     def append(self, param_alias):
-        self.contexts.append(param_alias.context)
+        self._contexts = None
         self._aliases.append(param_alias)
     
     def remove(self, param_alias):
-        self.contexts.remove(param_alias.context)
+        self._contexts = None
         self._aliases.remove(param_alias)
     
     def __len__(self):
-        return len(self.contexts)
+        return len(self._aliases)
     
     def __getitem__(self, index):
         return self.contexts[index]
     
-    def __iter__(self):
-        for con in self.contexts:
-            yield con
-    
     def __repr__(self):
-        return repr(self.contexts)
+        return "<InformedContexts: {}>".format(self.contexts)
+    
+    @collection.iterator
+    def _iter_aliases(self):
+        for alias in self._aliases:
+            yield alias
+
+
+class NamedContexts(object):
+    _groups = None
+    
+    def __init__(self):
+        self._aliases = []
+    
+    def __getitem__(self, index):
+        return self.groups[index]
+    
+    def __len__(self):
+        return len(self.contexts)
+    
+    @property
+    def contexts(self):
+        return [alias.context for alias in self._aliases]
+    
+    @property
+    def groups(self):
+        if self._groups is None:
+            groups = {}
+            for alias in self._aliases:
+                pname = alias.name
+                context = alias.context
+                pgroup = groups.get(pname)
+                if pgroup is None:
+                    if alias.is_compound:
+                        pgroup = [alias.context]
+                    else:
+                        pgroup = alias.context
+                else:
+                    if alias.is_compound:
+                        pgroup.append(alias.context)
+                    else:
+                        print("Warning redundant non-compound context alias ignored")
+                groups[pname] = pgroup
+            self._groups = groups
+        return self._groups
+    
+    @collection.appender
+    def append(self, param_alias):
+        self._groups = None
+        self._aliases.append(param_alias)
+    
+    @collection.remover
+    def remove(self, param_alias):
+        self._groups = None
+        self._aliases.remove(param_alias)
     
     @collection.iterator
     def _iter_aliases(self):
@@ -191,13 +247,11 @@ class ParameterAliasMixin(object):
     @declared_attr
     def parameter(cls):
         return relationship("Parameter")
-    #_context_id = Column(Integer, ForeignKey("Model._id"))
-    #context= relationship("Model", foreign_keys=_model_id, back_populates="inputs")
     
     @declared_attr
     def name(cls):
         return Column(String)
-
+    
     @declared_attr
     def is_compound(cls):
         return Column(Boolean)
@@ -206,6 +260,7 @@ class ParameterAliasMixin(object):
     
     def __init__(self, name, context, parameter, is_compound=False):
         self.name = name
+        #print(name)
         #an assignment that does not trigger the back populate
         #so that when we assign to model we have access to the param
         self.is_compound=is_compound

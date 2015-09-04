@@ -10,7 +10,7 @@ from thimbles.thimblesdb import ThimblesTable, Base
 from sqlalchemy.orm.collections import attribute_mapped_collection
 from sqlalchemy.orm.collections import collection
 from functools import reduce
-from .associations import InformedContexts
+from .associations import InformedContexts, NamedContexts
 
 mult_func = lambda x, y: x*y
 def flat_size(shape_tup):
@@ -28,11 +28,11 @@ class Parameter(ThimblesTable, Base):
     _value = None
     models = relationship(
         "InputAlias",
-        collection_class = InformedContexts
+        collection_class = InformedContexts,
     )
     distributions = relationship(
         "DistributionAlias",
-        collection_class = InformedContexts,
+        collection_class = NamedContexts,
     )   
     
     _setting_callbacks = None
@@ -43,8 +43,7 @@ class Parameter(ThimblesTable, Base):
     
     def add_callback(self, cb_name, cb_function, cb_type="set"):
         """add a function to be called whenever this parameters value
-        is set. Note that the function will not be called 
-        when the parameter value is simply invalidated. 
+        is set or invalidated depending on cb_type argument.
         """
         if cb_type == "set":
             if self._setting_callbacks is None:
@@ -74,7 +73,7 @@ class Parameter(ThimblesTable, Base):
         marking them as invalid, so that subsequent calls asking
         for their value will trigger an update cascade.
         """
-        parameter_front = [mod.output_p for mod in self.models if (not mod.output_p is None) and (not mod.output_p.invalid())]
+        parameter_front = [mod.output_p for mod in self.models if (not mod.output_p is None)]
         while len(parameter_front) > 0:
             param = parameter_front.pop(0)
             param.invalidate()
@@ -106,7 +105,7 @@ class Parameter(ThimblesTable, Base):
             cb_func()
     
     def invalidate(self,):
-        if not self.invalid:
+        if not self.invalid():
             self._value = None
             self.execute_invalidation_callbacks()
     

@@ -37,14 +37,18 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
     """A representation of a collection of relative flux measurements
     """
     context = relationship("SpectrumAlias", collection_class=NamedParameters)
-    _obs_flux_id = Column(Integer, ForeignKey("Distribution._id"))
-    obs_flux = relationship("Distribution")
+    
+    _slice_id = Column(Integer, ForeignKey("Slice._id"))
+    slice = relationship("Slice", foreign_keys=_slice_id)
+    _exposure_id = Column(Integer, ForeignKey("Exposure._id"))
+    exposure = relationship("Exposure", foreign_keys=_exposure_id)
+    _source_id = Column(Integer, ForeignKey("Source._id"))
+    source = relationship("Source", foreign_keys=_source_id)
     
     info = Column(PickleType)
     _flag_id = Column(Integer, ForeignKey("SpectrumFlags._id"))
     flags = relationship("SpectrumFlags")
-    _observation_id = Column(Integer, ForeignKey("Observation._id"))
-    observation = relationship("Observation", foreign_keys=_observation_id)
+    
     
     #class attributes
     pseudonorm = tmb.pseudonorms.sorting_norm
@@ -63,7 +67,9 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
             lsf_degree=2,
             flags=None,
             info=None,
-            observation=None,
+            slice=None,
+            exposure=None,
+            source=None,
     ):
         """a representation of a spectrum object
         
@@ -173,10 +179,14 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
         
         flux_p = Parameter()
         #treat the observed flux as a prior on the flux parameter values
-        self.obs_flux = NormalDistribution(mean=flux, ivar=ivar, parameters={"obs_flux":flux_p})
+        obs_flux = NormalDistribution(mean=flux, ivar=ivar)#, parameters={"obs_flux":flux_p})
+        #import pdb; pdb.set_trace()
+        obs_flux.add_parameter("obs", flux_p) 
+        self.add_parameter("obs_flux", flux_p)
         
+        npts = len(flux)
         if lsf is None:
-            lsf = np.ones(len(self))
+            lsf = np.ones(npts)
         if lsf_degree == "exact":
             lsf_p = PickleParameter(lsf)
         elif isinstance(lsf_degree, int):
@@ -196,22 +206,16 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
             info = {}
         self.info = info
         
-        self.observation = observation
+        self.slice = slice
+        self.exposure = exposure
+        self.source = source
     
     def add_parameter(self, name, parameter, is_compound=False):
         SpectrumAlias(name=name, context=self, parameter=parameter, is_compound=is_compound)
     
     @property
-    def source(self):
-        return self.observation.source
-    
-    @source.setter
-    def source(self, value):
-        self.observation.source = source
-    
-    @property
     def flux_p(self):
-        return self.obs_flux.context["obs_flux"]
+        return self.context["obs_flux"]
     
     @property
     def lsf_p(self):
@@ -220,6 +224,10 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
     @property
     def lsf(self):
         return self.lsf_p.value
+    
+    @property
+    def obs_flux(self):
+        return self.flux_p.distributions["obs"]
     
     @property
     def flux(self):

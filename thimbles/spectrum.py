@@ -92,7 +92,7 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
         delta_helio: float
           The line of sight velocity correction due to the motion
           of the observer around the sun.
-        delta_helio_shifted:
+        helio_shifted:
           whether the helio centric velocity correction due to 
           delta_helio has already been applied.
         lsf: ndarray

@@ -35,8 +35,8 @@ class Exposure(Base, ThimblesTable, HasParameterContext):
             info = {}
         self.info = info
     
-    def add_parameter(name, parameter, is_compound=False):
-        PointingAlias(name=name, context=self, parameter=parameter, is_compound=is_compound)
+    def add_parameter(self, name, parameter, is_compound=False):
+        ExposureAlias(name=name, context=self, parameter=parameter, is_compound=is_compound)
 
 
 

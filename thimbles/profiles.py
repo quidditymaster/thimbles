@@ -107,7 +107,7 @@ def convolved_stark(wvs, center, g_width, l_width, stark_width):
     return scipy.ndimage.filters.convolve(centered_stark, voigt_prof)
 
 
-def compound_profile(wvs, center, sigma, gamma, vsini, limb_dark, vmacro, convolution_mode="fft", normalize=True):
+def compound_profile(wvs, center, sigma, gamma, vsini, limb_dark, vmacro, convolution_mode="discrete", normalize=True):
     """a helper function for convolving together the voigt, rotational, 
     and radial tangential macroturbulent profiles.
     
@@ -156,9 +156,10 @@ def compound_profile(wvs, center, sigma, gamma, vsini, limb_dark, vmacro, convol
     if convolution_mode == "fft":
         ffts = [fftpack.fft(prof) for prof in all_profs]
         fft_prod = reduce(lambda x, y: x*y, ffts)
+        print("WARNING compound profile computed via fft has bugs!")
         prof = fftpack.ifft(fft_prod).real.copy()
     elif convolution_mode == "discrete":
-        prof = reduce(lambda x, y: np.convolve(x, y), all_profs)
+        prof = reduce(lambda x, y: np.convolve(x, y, mode="same"), all_profs)
     else:
         raise ValueError("convolution mode {} is not recognized".format(convolution_mode))
     if normalize:

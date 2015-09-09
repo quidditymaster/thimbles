@@ -1,12 +1,13 @@
 import numpy as np
 import scipy.sparse
 
-from thimbles.utils.partitioning import partitioned_polynomial_model
-from thimbles.utils import piecewise_polynomial as ppol 
-from thimbles.thimblesdb import Base, ThimblesTable
-from thimbles.modeling import Model, Parameter
-from thimbles.sqlaimports import *
-from thimbles.modeling import PixelPolynomialModel
+from .modeling.associations import HasParameterContext, NamedParameters, ParameterAliasMixin
+from .utils.partitioning import partitioned_polynomial_model
+from .utils import piecewise_polynomial as ppol 
+from .thimblesdb import Base, ThimblesTable
+from .modeling import Model, Parameter
+from .sqlaimports import *
+from .modeling import PixelPolynomialModel
 import thimbles as tmb
 
 
@@ -67,8 +68,13 @@ class Chip(ThimblesTable, Base):
             info = {}
         self.info = info
 
+class SliceAlias(ParameterAliasMixin, ThimblesTable, Base):
+    _context_id = Column(Integer, ForeignKey("Slice._id"))
+    context = relationship("Slice", foreign_keys=_context_id, back_populates="context")
 
-class Slice(ThimblesTable, Base):
+
+class Slice(Base, ThimblesTable, HasParameterContext):
+    context = relationship("SliceAlias", collection_class=NamedParameters)
     _chip_id = Column(Integer, ForeignKey("Chip._id"))
     chip = relationship("Chip")
     _order_id = Column(Integer, ForeignKey("Order._id"))
@@ -77,7 +83,10 @@ class Slice(ThimblesTable, Base):
     slit = relationship("Slit")
     
     def __init__(self, chip, order, slit):
+        HasParameterContext.__init__(self)
         self.chip = chip
         self.order = order
         self.slit = slit
     
+    def add_parameter(self, name, parameter, is_compound=False):
+        SliceAlias(name=name, context=self, parameter=parameter, is_compound=is_compound)

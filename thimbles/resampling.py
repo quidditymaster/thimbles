@@ -13,6 +13,23 @@ import matplotlib.pyplot as plt
 def uniform_cdf(z):
     return np.clip(z+0.5, 0.0, 1.0)
 
+
+def gaussian_cdf(z):
+    return 0.5*(1.0+scipy.special.erf(z/np.sqrt(2)))
+
+
+def box_convolved_cdf_factory(box_width):
+    def box_convolved_gaussian_cdf(z):
+        t = z/np.sqrt(2)
+        bw = box_width/np.sqrt(2)
+        tpbw = t+bw
+        tmbw = t-bw
+        d1 = tpbw*scipy.special.erf(tpbw) - tmbw*scipy.special.erf(tmbw)
+        d2 = np.exp(-tpbw**2)-np.exp(-tmbw**2)
+        return 0.25*(d1 + d2/np.sqrt(np.pi) + 2.0)
+    return box_convolved_gaussian_cdf
+
+
 def pixel_integrated_lsf(
         x_in, 
         x_out, 

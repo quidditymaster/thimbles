@@ -45,12 +45,20 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
     _source_id = Column(Integer, ForeignKey("Source._id"))
     source = relationship("Source", foreign_keys=_source_id)
     
+    
     info = Column(PickleType)
     _flag_id = Column(Integer, ForeignKey("SpectrumFlags._id"))
     flags = relationship("SpectrumFlags")
     
+    lsf_cdf_type = Column(Integer)
+    cdf_kwargs = Column(PickleType)
+    cdf_factories = {
+        0: lambda : resampling.gaussian_cdf,
+        1: lambda : resampling.uniform_cdf,
+        2: resampling.box_convolved_cdf_factory,
+    }
+    _cdf = None
     
-    #class attributes
     pseudonorm = tmb.pseudonorms.sorting_norm
     
     def __init__(
@@ -65,6 +73,8 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
             helio_shifted=True,
             lsf=None,
             lsf_degree=2,
+            cdf_type=None,
+            cdf_kwargs=None,
             flags=None,
             info=None,
             slice=None,
@@ -97,8 +107,18 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
           delta_helio has already been applied.
         lsf: ndarray
           line spread function
-        lsf_degree:
+        lsf_degree: integer
           the degree of the polynomial to fit to the lsf.
+        cdf_type: integer
+          determines the function to use as the cumulative distribution
+          function (CDF) of the line spread function. defaults to 
+          the cdf of the normal distribution.
+             0: gaussian
+             1: uniform box
+             2: box convolved gaussian
+        cdf_kwargs: dict
+          optional arguments to pass to the CDF generating factory 
+          function. e.g. the box width for the box convolved gaussian
         flags: an optional SpectrumFlags object
           see thimbles.flags.SpectrumFlags for info
         info: dict
@@ -194,6 +214,13 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
             lsf_mod = PixelPolynomialModel(output_p=lsf_p, autofit=True, degree=lsf_degree)
         self.add_parameter("lsf", lsf_p)
         
+        if cdf_type is None:
+            cdf_type = 0 #gaussian
+        self.cdf_type=cdf_type
+        if cdf_kwargs is None:
+            cdf_kwargs = {}
+        self.cdf_kwargs = cdf_kwargs
+        
         if flags is None:
             flags = SpectrumFlags()
         elif isinstance(flags, SpectrumFlags):
@@ -224,6 +251,13 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
     @property
     def lsf(self):
         return self.lsf_p.value
+    
+    @property
+    def cdf(self):
+        if self._cdf is None:
+            cdf_factory = self.cdf_factories[self.cdf_type]
+            self._cdf = cdf_factory(**self.cdf_kwargs)
+        return self._cdf
     
     @property
     def obs_flux(self):
@@ -270,9 +304,9 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
          
          choices
           "interpolate"  linearly interpolate onto the given wv
-          "bounded"      ignore all but the first and last wavelengths 
-                           given and sample in between in a manner 
-                           identical to the current spectrum.
+          "bounded"      ignore all but the first and last wavelengths
+                         given and return the current spectrum between
+                         those wavelength bounds.
           "rebin"        apply a flux preserving rebinning procedure.
         
         return_matrix: bool
@@ -321,6 +355,27 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
             covar_shape = covar.shape
             #marginalize over the covariance
             out_inv_var  = 1.0/(covar*np.ones(covar_shape[0]))
+            sampled_spec = Spectrum(wavelengths, out_flux, out_inv_var)
+            sampling_matrix = transform
+        elif mode == "lsf-convolved":
+            in_wvs = self.wvs
+            out_wvs = np.asarray(wavelengths)
+            transform = resampling.resampling_matrix(
+                in_wvs,
+                out_wvs,
+                lsf_in = 0.0,
+                lsf_out = self.lsf,
+                lsf_cdf = self.cdf,
+                lsf_cut = 5.0,
+                normalize="rows",
+                lsf_units="pixel",
+            )
+            out_flux = transform*self.flux
+            var = self.var
+            covar = resampling.\
+                    get_transformed_covariances(transform, var)
+            covar_shape = covar.shape
+            out_inv_var = 1.0/(covar*np.ones(covar_shape[0]))
             sampled_spec = Spectrum(wavelengths, out_flux, out_inv_var)
             sampling_matrix = transform
         else:

@@ -10,6 +10,7 @@ from thimbles.coordinatization import as_coordinatization
 from thimbles.numba_support import double, jit
 import matplotlib.pyplot as plt
 
+
 def uniform_cdf(z):
     return np.clip(z+0.5, 0.0, 1.0)
 
@@ -18,7 +19,7 @@ def gaussian_cdf(z):
     return 0.5*(1.0+scipy.special.erf(z/np.sqrt(2)))
 
 
-def box_convolved_cdf_factory(box_width):
+def box_convolved_cdf_factory(box_width=1.0):
     def box_convolved_gaussian_cdf(z):
         t = z/np.sqrt(2)
         bw = box_width/np.sqrt(2)

@@ -142,7 +142,8 @@ def resampling_matrix(
         lsf_cut=5.0,
         lsf_units="pixel",
         normalize="rows",
-        min_rel_width=0.144
+        reverse_broadening=False,
+        min_rel_width=0.1, 
 ):
     """generate a resampling matrix R which when multiplied against a vector 
     y[x_in] will yield an estimate of y[x_out],  y[x_out] ~ R*y[x_in]. 
@@ -183,14 +184,14 @@ def resampling_matrix(
       but positive width. The default is 0.144 which is the rms width of a uniform
       function of half width 0.5.  
     """
-    x_in = as_coordinatization(x_in)
-    x_out = as_coordinatization(x_out)
+    x_col = as_coordinatization(x_in)
+    x_row = as_coordinatization(x_out)
     
-    in_coords = x_in.coordinates
-    out_coords = x_out.coordinates
+    col_coords = x_col.coordinates
+    row_coords = x_row.coordinates
     
     if lsf_cdf is None:
-        lsf_cdf = scipy.stats.norm.cdf
+        lsf_cdf = gaussian_cdf
     
     if not hasattr(lsf_in, "shape"):
         lsf_in = np.repeat(lsf_in, len(x_in))
@@ -200,17 +201,21 @@ def resampling_matrix(
     if not lsf_units in "pixel coordinate".split():
         raise ValueError("lsf_units option {} not recognized".format(lsf_units))
     
-    dx_in = scipy.gradient(in_coords)
+    #convert lsf from pixel units to coordinate units if necessary
     if lsf_units == "pixel":
-        lsf_in *= dx_in
-        dx_out = scipy.gradient(out_coords)
-        lsf_out *= dx_out
+        dx_col = scipy.gradient(col_coords)
+        lsf_in *= dx_col
+        dx_row = scipy.gradient(row_coords)
+        lsf_out *= dx_row
     
-    out_to_in = x_out.interpolant_sampling_matrix(x_in.coordinates)
-    iterped_lsf_out = out_to_in*lsf_out
+    #convert row lsf to column space
+    row_to_col_space = x_row.interpolant_sampling_matrix(col_coords)
+    row_lsf_at_col_coords = row_to_col_space*lsf_out
     
-    diff_lsf_sq = lsf_in**2 - iterped_lsf_out**2
-    min_sq_widths = dx_in**2*min_rel_width**2
+    diff_lsf_sq = row_lsf_at_col_coords**2 - lsf_in**2
+    if reverse_broadening:
+        diff_lsf_sq *= -1.0
+    min_sq_widths = dx_col**2*min_rel_width**2
     lsf = np.sqrt(np.where(diff_lsf_sq > min_sq_widths, diff_lsf_sq, min_sq_widths))
     
     return pixel_integrated_lsf(x_in, x_out, lsf=lsf, lsf_cdf=lsf_cdf, lsf_cut=lsf_cut, normalize=normalize)

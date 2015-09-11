@@ -363,10 +363,11 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
             transform = resampling.resampling_matrix(
                 in_wvs,
                 out_wvs,
-                lsf_in = 0.0,
-                lsf_out = self.lsf,
+                lsf_in = self.lsf,
+                lsf_out = 0.0,
                 lsf_cdf = self.cdf,
                 lsf_cut = 5.0,
+                reverse_broadening=True,
                 normalize="rows",
                 lsf_units="pixel",
             )

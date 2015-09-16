@@ -34,14 +34,15 @@ def read_moog_linelist(fname):
             continue
         wv, species, ep, loggf = moog_cols[:4]
         damp=None
-        if len(moog_cols) >= 6:
-            damp = Damping(empirical = moog_cols[6])
+        if len(moog_cols) >= 5:
+            damp = Damping(empirical = moog_cols[4])
         trans = Transition(wv, species, ep, loggf, damp=damp)
         ldat.append(trans)
         #ldat["moog_damp"].append(moog_cols[4])
         #ldat["D0"].append(moog_cols[5])
         #ldat["ew"].append(moog_cols[6])
     return ldat
+
 
 def write_moog_linelist(fname, linelist, equivalent_widths=None, comment=None):
     out_file = open(fname,'w')
@@ -132,14 +133,14 @@ def read_moog_abfind_summary(fname):
             continue
     
     infile.close()
-    out_ldat = dict(wv=[],
-                    species=[],
-                    ep=[],
-                    loggf=[],
-                    ew=[],
-                    abund=[],
-                    )
-    #batom = Batom()
+    out_ldat = dict(
+        wv=[],
+        species=[],
+        ep=[],
+        loggf=[],
+        ew=[],
+        abund=[],
+    )
     for cspecies in list(linedata.keys()):
         species_parts = cspecies.split()
         species_pnum = atomic_number[species_parts[0]]
@@ -153,13 +154,37 @@ def read_moog_abfind_summary(fname):
             out_ldat["loggf"].append(ldm[2])
             out_ldat["ew"].append(ldm[3])
             out_ldat["abund"].append(ldm[5])
-    out_ldat = LineList(pd.DataFrame(data=out_ldat))
+    out_ldat = pd.DataFrame(data=out_ldat)
     
     return out_ldat
 
+def read_moog_synth_summary(
+        fname, 
+        effective_snr=1000.0,
+        parse_break=r"ALL abundances NOT listed below"
+):
+    f = open(fname)
+    lines = f.readlines()
+    f.close()
+    break_pat = re.compile(parse_break)
+    sub_summaries = []
+    for line in lines:
+        if break_pat.match(line):
+            sub_summaries.append([])
+            continue
+        sub_summaries[-1].append(line)
+    spectra = []
+    for sub_sum in sub_summaries:
+        spectra.append(
+            parse_moog_synth_summary(
+                sub_sum, 
+                effective_snr=effective_snr
+            )
+        )
+    return spectra
 
-def read_moog_synth_summary(fname, effective_snr=500.0):
-    lines = open(fname).readlines()[1:]
+
+def parse_moog_synth_summary(lines, effective_snr):
     data = []
     for lidx in range(len(lines)):
         try:

@@ -10,25 +10,26 @@ from thimbles.coordinatization import as_coordinatization
 from thimbles.numba_support import double, jit
 import matplotlib.pyplot as plt
 
-
-def uniform_cdf(z):
+def uniform_cdf(delta, full_width):
+    z = delta/full_width
     return np.clip(z+0.5, 0.0, 1.0)
 
 
-def gaussian_cdf(z):
+def gaussian_cdf(delta, sigma):
+    z = delta/sigma
     return 0.5*(1.0+scipy.special.erf(z/np.sqrt(2)))
 
 
-def box_convolved_cdf_factory(box_width=1.0):
-    def box_convolved_gaussian_cdf(z):
-        t = z/np.sqrt(2)
-        bw = box_width/np.sqrt(2)
-        tpbw = t+bw
-        tmbw = t-bw
-        d1 = tpbw*scipy.special.erf(tpbw) - tmbw*scipy.special.erf(tmbw)
-        d2 = np.exp(-tpbw**2)-np.exp(-tmbw**2)
-        return 0.25*(d1 + d2/np.sqrt(np.pi) + 2.0)
-    return box_convolved_gaussian_cdf
+def box_convolved_gaussian_cdf(delta, sigma, box_width):
+    rescale_f = np.sqrt(2)*sigma
+    t = delta/rescale_f
+    bw = box_width/rescale_f
+    tpbw = t+bw
+    tmbw = t-bw
+    
+    d1 = tpbw*scipy.special.erf(tpbw) - tmbw*scipy.special.erf(tmbw)
+    d2 = (np.exp(-tpbw**2)-np.exp(-tmbw**2))/np.sqrt(np.pi)
+    return (d1 + d2 + 2.0*bw)/(4.0*bw)
 
 
 def pixel_integrated_lsf(
@@ -36,8 +37,9 @@ def pixel_integrated_lsf(
         x_out, 
         lsf, 
         lsf_cdf=None, 
+        cdf_kwargs=None,
         lsf_cut=4.0, 
-        normalize="rows", 
+        normalize="rows",
 ):
     """generate a sparse matrix the columns of which correspond to the pixels of
     x_in and the rows to x_out. The entries of each column j represent the 
@@ -68,7 +70,9 @@ def pixel_integrated_lsf(
     x_out = as_coordinatization(x_out)
     
     if lsf_cdf is None:
-        lsf_cdf = scipy.stats.norm.cdf
+        lsf_cdf = gaussian_cdf
+    if cdf_kwargs is None:
+        cdf_kwargs = {}
     
     valid_norms = "rows columns none".split()
     if not normalize.lower() in valid_norms:
@@ -99,9 +103,9 @@ def pixel_integrated_lsf(
     edge_idxs = np.clip(nearest_out_idx.reshape((1, -1))+row_offsets.reshape((-1, 1)), 0, len(x_out))
     edge_coordinates = out_pixel_edges[edge_idxs]
     #lsf centers == in_coords
-    delta_lsf = (edge_coordinates - in_coords)/lsf_in #lsf width normalized coord offsets
+    coord_deltas = edge_coordinates - in_coords
     #evaluate the integral at each delta
-    indef_integs = lsf_cdf(delta_lsf)
+    indef_integs = lsf_cdf(coord_deltas, lsf_in, **cdf_kwargs)
     #convert the edge integral values to definite integrals accross the pixels
     definite_integrals = np.diff(indef_integs, axis=0)
     #plt.imshow(definite_integrals, interpolation="nearest")
@@ -139,6 +143,7 @@ def resampling_matrix(
         lsf_in=0.0,
         lsf_out=1.0,
         lsf_cdf=None,
+        cdf_kwargs=None,
         lsf_cut=5.0,
         lsf_units="pixel",
         normalize="rows",
@@ -192,6 +197,8 @@ def resampling_matrix(
     
     if lsf_cdf is None:
         lsf_cdf = gaussian_cdf
+    if cdf_kwargs is None:
+        cdf_kwargs = {}
     
     if not hasattr(lsf_in, "shape"):
         lsf_in = np.repeat(lsf_in, len(x_in))
@@ -204,9 +211,9 @@ def resampling_matrix(
     #convert lsf from pixel units to coordinate units if necessary
     if lsf_units == "pixel":
         dx_col = scipy.gradient(col_coords)
-        lsf_in *= dx_col
+        lsf_in = lsf_in*dx_col
         dx_row = scipy.gradient(row_coords)
-        lsf_out *= dx_row
+        lsf_out = lsf_out*dx_row
     
     #convert row lsf to column space
     row_to_col_space = x_row.interpolant_sampling_matrix(col_coords)

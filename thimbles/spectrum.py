@@ -45,19 +45,17 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
     _source_id = Column(Integer, ForeignKey("Source._id"))
     source = relationship("Source", foreign_keys=_source_id)
     
-    
     info = Column(PickleType)
     _flag_id = Column(Integer, ForeignKey("SpectrumFlags._id"))
     flags = relationship("SpectrumFlags")
     
-    lsf_cdf_type = Column(Integer)
+    cdf_type = Column(Integer)
     cdf_kwargs = Column(PickleType)
-    cdf_factories = {
-        0: lambda : resampling.gaussian_cdf,
-        1: lambda : resampling.uniform_cdf,
-        2: resampling.box_convolved_cdf_factory,
+    cdf_options = {
+        0: resampling.gaussian_cdf,
+        1: resampling.uniform_cdf,
+        2: resampling.box_convolved_gaussian_cdf,
     }
-    _cdf = None
     
     pseudonorm = tmb.pseudonorms.sorting_norm
     
@@ -254,10 +252,7 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
     
     @property
     def cdf(self):
-        if self._cdf is None:
-            cdf_factory = self.cdf_factories[self.cdf_type]
-            self._cdf = cdf_factory(**self.cdf_kwargs)
-        return self._cdf
+        return self.cdf_options[self.cdf_type]
     
     @property
     def obs_flux(self):

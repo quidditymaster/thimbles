@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import thimbles as tmb
 from thimbles.tasks import task
-from thimbles.linelists import LineList
 from thimbles.io.moog_io import read_moog_linelist
 from thimbles.io.moog_io import write_moog_linelist
 from thimbles.transitions import Transition

@@ -283,16 +283,18 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
         self.obs_flux.ivar = value
     
     def sample(self,
-            wavelengths,
+            sampling,
             mode="rebin", 
+            trim_edges=False,
             return_matrix=False,
     ):
         """generate a spectrum subsampled from this one.
         
         parameters
         
-        wavelengths: ndarray 
-          the wavelengths to sample at
+        sampling: ndarry or Spectrum 
+          the wavelengths to sample at or the spectrum to sample
+          similarly to.
         
         mode: string
          the type of sampling to carry out.
@@ -304,11 +306,26 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
                          those wavelength bounds.
           "rebin"        apply a flux preserving rebinning procedure.
         
+        trim_edges: bool
+          if True instead of returning the flux at the wavelengths
+          specified in the sampling argument instead only return
+          the overlap of those wavelengths this spectrum.
+        
         return_matrix: bool
           if true return both a sampled version of the spectrum and the
           matrix used to generate it via multiplication into this spectrum's
           flux attribute.
         """
+        if isinstance(sampling, Spectrum):
+            wavelengths = sampling.wvs
+        else:
+            wavelengths = np.asarray(sampling)
+        
+        if trim_edges:
+            l_wv, u_wv = self.wvs[0], self.wvs[-1]
+            wmask = (l_wv <= wavelengths)*(u_wv >= wavelengths)
+            wavelengths = wavelengths[wmask]
+        
         if mode=="bounded":
             bounds = sorted([wavelengths[0], wavelengths[-1]])
             l_idx, u_idx = self.get_index(bounds, snap=True, clip=True)
@@ -353,16 +370,23 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
             sampled_spec = Spectrum(wavelengths, out_flux, out_inv_var)
             sampling_matrix = transform
         elif mode == "lsf-convolved":
+            if not isinstance(sampling, Spectrum):
+                raise ValueError("lsf-convolved sampling mode requires a Spectrum object as first argument.")
             in_wvs = self.wvs
-            out_wvs = np.asarray(wavelengths)
+            out_wvs = sampling.wvs
+            out_lsf = sampling.lsf
+            lsf_cdf = sampling.cdf
+            cdf_type = sampling.cdf_type
+            cdf_kwargs = sampling.cdf_kwargs
             transform = resampling.resampling_matrix(
                 in_wvs,
                 out_wvs,
                 lsf_in = self.lsf,
-                lsf_out = 0.0,
-                lsf_cdf = self.cdf,
+                lsf_out = out_lsf,
+                lsf_cdf = lsf_cdf,
+                cdf_kwargs=cdf_kwargs,
                 lsf_cut = 5.0,
-                reverse_broadening=True,
+                reverse_broadening=False,
                 normalize="rows",
                 lsf_units="pixel",
             )
@@ -372,7 +396,14 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
                     get_transformed_covariances(transform, var)
             covar_shape = covar.shape
             out_inv_var = 1.0/(covar*np.ones(covar_shape[0]))
-            sampled_spec = Spectrum(wavelengths, out_flux, out_inv_var)
+            sampled_spec = Spectrum(
+                out_wvs, 
+                out_flux, 
+                out_inv_var, 
+                cdf_type=cdf_type, 
+                cdf_kwargs=copy(cdf_kwargs),
+                lsf=out_lsf,
+            )
             sampling_matrix = transform
         else:
             raise ValueError("mode {} not a valid sampling mode".format(mode))
@@ -385,13 +416,13 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
         if isinstance(other, (float, int)):
             return Spectrum(self.wv_soln, self.flux + other, self.ivar)
         else:
-            return add_spectra(self, other, self.wv_sample)
+            return add_spectra(self, other, self.wvs)
     
     def __truediv__(self, other):
         if isinstance(other, (float, int)):
             return Spectrum(self.wv_soln, self.flux/other, self.ivar*other**2)
         else:
-            return divide_spectra(self, other, self.wv_sample)
+            return divide_spectra(self, other, self.wvs)
     
     def __len__(self):
         return len(self.flux)
@@ -400,7 +431,7 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
         if isinstance(other, (float, int)):
             return Spectrum(self.wv_soln, self.flux*other, self.ivar/other**2)
         else:
-            return multiply_spectra(self, other, self.wv_sample)
+            return multiply_spectra(self, other, self.wvs)
     
     def __repr__(self):
         wvs = self.wvs
@@ -410,7 +441,7 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
         if isinstance(other, (float, int)):
             return Spectrum(self.wv_soln, self.flux - other, self.ivar)
         else:
-            return subtract_spectra(self, other, self.wv_sample)
+            return subtract_spectra(self, other, self.wvs)
     
     @property
     def rv(self):
@@ -465,7 +496,7 @@ def add_spectra(
         spectrum1,
         spectrum2,
         target_wvs=None, 
-        sampling_mode="interpolate",
+        sampling_mode="rebin",
 ):
     if target_wvs is None:
         target_wvs = spectrum1.wvs
@@ -481,7 +512,7 @@ def subtract_spectra(
         spectrum1,
         spectrum2,
         target_wvs=None, 
-        sampling_mode="interpolate",
+        sampling_mode="rebin",
 ):
     if target_wvs is None:
         target_wvs = spectrum1.wvs
@@ -497,7 +528,7 @@ def multiply_spectra(
         spectrum1,
         spectrum2,
         target_wvs=None, 
-        sampling_mode="interpolate",
+        sampling_mode="rebin",
 ):
     if target_wvs is None:
         target_wvs = spectrum1.wvs
@@ -514,7 +545,7 @@ def divide_spectra(
         spectrum1,
         spectrum2,
         target_wvs=None, 
-        sampling_mode="interpolate",
+        sampling_mode="rebin",
 ):
     if target_wvs is None:
         target_wvs = spectrum1.wvs

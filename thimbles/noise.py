@@ -160,7 +160,7 @@ def sparse_banded_approximate_inverse(A, extract_bands=True, band_width=None):
 
 #@task(result_name="noise_estimate")
 def estimate_spectrum_noise(
-        spectrum, 
+        spectrum,
         smoothing_scale=3.0,
         median_scale=200,
         apply_poisson=True,

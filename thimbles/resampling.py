@@ -58,7 +58,7 @@ def pixel_integrated_lsf(
       around each input pixel.
     lsf_cdf: function
       function that takes a numpy array and returns the value of the integral
-      of an line spread profile with a width of 1. If none is specified 
+      of an line spread profile.
       defaults to the integral of the standard normal distribution.
     lsf_cut: float
       at what multiple of the primary width to assume that the lsf
@@ -219,13 +219,23 @@ def resampling_matrix(
     row_to_col_space = x_row.interpolant_sampling_matrix(col_coords)
     row_lsf_at_col_coords = row_to_col_space*lsf_out
     
+    #cut_mult = max(np.median(lsf_in), np.median(row_lsf_at_cor_coords))
+    
     diff_lsf_sq = row_lsf_at_col_coords**2 - lsf_in**2
     if reverse_broadening:
         diff_lsf_sq *= -1.0
     min_sq_widths = dx_col**2*min_rel_width**2
     lsf = np.sqrt(np.where(diff_lsf_sq > min_sq_widths, diff_lsf_sq, min_sq_widths))
     
-    return pixel_integrated_lsf(x_in, x_out, lsf=lsf, lsf_cdf=lsf_cdf, lsf_cut=lsf_cut, normalize=normalize)
+    return pixel_integrated_lsf(
+        x_in, 
+        x_out, 
+        lsf=lsf, 
+        lsf_cdf=lsf_cdf, 
+        lsf_cut=lsf_cut, 
+        normalize=normalize, 
+        cdf_kwargs=cdf_kwargs
+    )
 
 def get_transformed_covariances(transform_matrix, input_covariance, fill_variance = 0):
     #import pdb; pdb.set_trace()

@@ -124,7 +124,8 @@ def read_ascii(
     lsf = []
     comment_pat = re.compile(comment)
     spec_sep_pat = re.compile(spectrum_separator)
-    for line in open(fname):
+    f = open(fname)
+    for line in f:
         if spec_sep_pat.match(line):
             if len(ivar)==0:
                 ivar = None
@@ -147,6 +148,7 @@ def read_ascii(
                 ivar.append(float(lspl[ivar_col]))
             if not lsf_col is None:
                 lsf.append(float(lspl[lsf_col]))
+    f.close()
     if len(wvs) > 0:
         if len(ivar) == 0:
             ivar = None

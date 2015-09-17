@@ -339,7 +339,14 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
                 nz_vals = np.zeros(npts, dtype=float)
                 nz_vals[l_idx:u_idx+1] = 1.0
                 sampling_matrix = scipy.sparse.dia_matrix((nz_vals, 0), shape=(npts, npts))
-            sampled_spec = Spectrum(out_wvs, out_flux, out_ivar)
+            sampled_spec = Spectrum(
+                out_wvs, 
+                out_flux, 
+                out_ivar, 
+                lsf=self.lsf[l_idx:u_idx+1],
+                cdf_type=self.cdf_type,
+                cdf_kwargs=copy(self.cdf_kwargs),
+            )
         elif mode == "interpolate":
             tmat = self.wv_soln.interpolant_sampling_matrix(wavelengths)
             out_flux = tmat*self.flux

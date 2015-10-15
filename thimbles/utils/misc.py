@@ -209,7 +209,8 @@ def local_gaussian_fit(
     poly_coeffs = np.dot(poly_covar, np.dot(xmatrix.transpose(), np.dot(inv_noise_mat, chopped_y)))
     
     #poly_coeffs = np.linalg.lstsq(xmatrix, chopped_yvalues)[0]
-    offset = -poly_coeffs[1]/(2*poly_coeffs[2])
+    
+    offset = -(poly_coeffs[1]/(2*poly_coeffs[2]))*x_scale
     center = peak_xval + offset
     sigma = x_scale/np.sqrt(2*np.abs(poly_coeffs[2])) 
     center_p_vec = np.asarray([1.0, offset, offset**2])
@@ -411,14 +412,16 @@ def minima_statistics(values, variance, last_delta_fraction=1.0, max_sm_radius=0
     return ms
 
 
-def detect_features(values, 
-                    variance, 
-                    reject_fraction=0.5,
-                    last_delta_fraction=1.0, 
-                    mask_back_off=-1,
-                    max_sm_radius=0.5,
-                    stat_func=lambda lz, rz, nc: np.sqrt(lz**2+rz**2+0.25*(nc-2)**2),
-                    min_stats=None):
+def detect_features(
+        values, 
+        variance, 
+        reject_fraction=0.5,
+        last_delta_fraction=1.0, 
+        mask_back_off=-1,
+        max_sm_radius=0.5,
+        stat_func=lambda lz, rz, nc: np.sqrt(lz**2+rz**2+0.25*(nc-2)**2),
+        min_stats=None
+):
     """detect spectral features using an arbitrary statistic
     by default the stat_func is
     s = np.sqrt(l_z**2+r_z**2+0.25*(n_c-2)**2)
@@ -823,18 +826,19 @@ def pseudo_huber_cost(resids, sigma, gamma, sum_result=True):
         result =  np.sum(result)
     return result
 
-def irls(A,
-         b,
-         sigma,
-         reweighting_func=None, 
-         start_x=None,
-         max_iter=20,
-         resid_delta_thresh=1e-8,
-         x_delta_thresh=1e-8,
-         damp = 1e-5,
-         return_fit_dict=False,
-         **reweighting_kwargs
-         ):
+def irls(
+        A,
+        b,
+        sigma,
+        reweighting_func=None, 
+        start_x=None,
+        max_iter=20,
+        resid_delta_thresh=1e-8,
+        x_delta_thresh=1e-8,
+        damp = 1e-5,
+        return_fit_dict=False,
+        **reweighting_kwargs
+):
     """
     perform iteratively reweighted least squares searching for a solution of
     Ax ~ b
@@ -885,7 +889,7 @@ def irls(A,
     if reweighting_func is None:
         reweighting_func = pseudo_huber_irls_weights
         if len(reweighting_kwargs) == 0:
-            reweighting_kwargs = {"gamma":5.0}
+            reweighting_kwargs = {"gamma":0.1}
     
     last_resids = None
     delta_x = None

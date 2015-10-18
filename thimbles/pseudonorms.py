@@ -105,6 +105,9 @@ def sorting_norm(
         n_samples=15, 
         mask = None,
         h_mask_radius=-3.5,
+        apply_h_mask = True,
+        structure_vec=None,
+        n_iter=3,
 ):
     npts = len(spectrum)
     assert n_samples >= 2
@@ -116,10 +119,12 @@ def sorting_norm(
             mask = spectrum.ivar > 0
         else:
             mask = np.ones(npts, dtype=bool)
-    
+        
         if hasattr(spectrum, "wvs"):
             wavelengths = spectrum.wvs
-            mask*= tmb.hydrogen.get_H_mask(wavelengths, h_mask_radius)
+            if apply_h_mask:
+                mask*= tmb.hydrogen.get_H_mask(
+                    wavelengths, h_mask_radius)
     
     npts_eff = int(np.sum(mask))
     if n_split is None:
@@ -129,7 +134,7 @@ def sorting_norm(
         flux = spectrum.flux
     else:
         flux = spectrum
-    
+        
     pts_per = int(npts/(n_split+1))
     split_idxs = np.arange(pts_per, npts, pts_per)[:-1]
     

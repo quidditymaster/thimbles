@@ -20,16 +20,16 @@ class SamplingModel(Model):
     def __init__(
             self, 
             output_p, 
-            input_wvs_p, 
-            input_lsf_p,
-            output_wvs_p,
-            output_lsf_p,
+            input_wvs, 
+            input_lsf,
+            output_wvs,
+            output_lsf,
     ):
         self.output_p = output_p
-        self.add_parameter("input_wvs", input_wvs_p)
-        self.add_parameter("input_lsf", input_lsf_p)
-        self.add_parameter("output_wvs", output_wvs_p)
-        self.add_parameter("output_lsf", output_lsf_p)  
+        self.add_parameter("input_wvs", input_wvs)
+        self.add_parameter("input_lsf", input_lsf)
+        self.add_parameter("output_wvs", output_wvs)
+        self.add_parameter("output_lsf", output_lsf)  
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
@@ -40,7 +40,7 @@ class SamplingModel(Model):
         return tmb.resampling.resampling_matrix(x_in, x_out, lsf_in, lsf_out)
 
 
-class Slit(ThimblesTable, Base):
+class Aperture(ThimblesTable, Base):
     name = Column(String)
     info = Column(PickleType)
     
@@ -68,25 +68,3 @@ class Chip(ThimblesTable, Base):
             info = {}
         self.info = info
 
-class SliceAlias(ParameterAliasMixin, ThimblesTable, Base):
-    _context_id = Column(Integer, ForeignKey("Slice._id"))
-    context = relationship("Slice", foreign_keys=_context_id, back_populates="context")
-
-
-class Slice(Base, ThimblesTable, HasParameterContext):
-    context = relationship("SliceAlias", collection_class=NamedParameters)
-    _chip_id = Column(Integer, ForeignKey("Chip._id"))
-    chip = relationship("Chip")
-    _order_id = Column(Integer, ForeignKey("Order._id"))
-    order = relationship("Order")
-    _slit_id = Column(Integer, ForeignKey("Slit._id"))
-    slit = relationship("Slit")
-    
-    def __init__(self, chip, order, slit):
-        HasParameterContext.__init__(self)
-        self.chip = chip
-        self.order = order
-        self.slit = slit
-    
-    def add_parameter(self, name, parameter, is_compound=False):
-        SliceAlias(name=name, context=self, parameter=parameter, is_compound=is_compound)

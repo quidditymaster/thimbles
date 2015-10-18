@@ -37,9 +37,12 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
     """A representation of a collection of relative flux measurements
     """
     context = relationship("SpectrumAlias", collection_class=NamedParameters)
-    
-    _slice_id = Column(Integer, ForeignKey("Slice._id"))
-    slice = relationship("Slice", foreign_keys=_slice_id)
+    _aperture_id = Column(Integer, ForeignKey("Aperture._id"))
+    aperture = relationship("Aperture", foreign_keys=_aperture_id)
+    _order_id = Column(Integer, ForeignKey("Order._id"))
+    order = relationship("Order", foreign_keys=_order_id)
+    _chip_id = Column(Integer, ForeignKey("Chip._id"))
+    chip = relationship("Chip", foreign_keys=_chip_id)
     _exposure_id = Column(Integer, ForeignKey("Exposure._id"))
     exposure = relationship("Exposure", foreign_keys=_exposure_id)
     _source_id = Column(Integer, ForeignKey("Source._id"))
@@ -70,12 +73,14 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
             delta_helio=None,
             helio_shifted=True,
             lsf=None,
-            lsf_degree=2,
+            model_free_lsf=None,
             cdf_type=None,
             cdf_kwargs=None,
             flags=None,
             info=None,
-            slice=None,
+            aperture=None,
+            chip=None,
+            order=None,
             exposure=None,
             source=None,
     ):
@@ -104,9 +109,11 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
           whether the helio centric velocity correction due to 
           delta_helio has already been applied.
         lsf: ndarray
-          line spread function
-        lsf_degree: integer
-          the degree of the polynomial to fit to the lsf.
+          line spread function width (usually rms width).
+        model_free_lsf: bool
+          if True then we will assume that the lsf parameter of this
+          spectrum is not the target of any upstream model and
+          its value must be independently persisted to the database.
         cdf_type: integer
           determines the function to use as the cumulative distribution
           function (CDF) of the line spread function. defaults to 
@@ -204,12 +211,13 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
         
         npts = len(flux)
         if lsf is None:
-            lsf = np.ones(npts)
-        if lsf_degree == "exact":
+            lsf = np.ones(npts, dtype=float)
+        if model_free_lsf:
+            #no model maps to the lsf so we need to persist its value indpendently
             lsf_p = PickleParameter(lsf)
-        elif isinstance(lsf_degree, int):
+        else:
+            #the value of the lsf is model dependent and should not be persisted to the database.
             lsf_p = Parameter(lsf)
-            lsf_mod = PixelPolynomialModel(output_p=lsf_p, autofit=True, degree=lsf_degree)
         self.add_parameter("lsf", lsf_p)
         
         if cdf_type is None:
@@ -248,7 +256,10 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
     
     @property
     def lsf(self):
-        return self.lsf_p.value
+        lsf_val = self.lsf_p.value
+        if lsf_val is None:
+            lsf_val = np.ones(len(self), dtype=float)
+        return lsf_val
     
     @property
     def cdf(self):
@@ -530,6 +541,7 @@ def subtract_spectra(
     out_var = spec1_samp.var + spec2_samp.var
     out_ivar = tmb.utils.misc.var_2_inv_var(out_var)
     return tmb.Spectrum(target_wvs, out_flux, out_ivar)
+
 
 def multiply_spectra(
         spectrum1,

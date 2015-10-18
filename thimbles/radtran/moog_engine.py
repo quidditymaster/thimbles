@@ -1,14 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""
-PURPOSE:
-AUTHOR: Dylan Gregersen
-DATE: Sun Nov  9 15:12:50 2014
-"""
-# ########################################################################### #
-
-# import modules
-
 
 import os
 import shutil
@@ -22,8 +13,6 @@ import thimbles as tmb
 from thimbles.radtran.engines import RadiativeTransferEngine
 from thimbles.radtran.marcs_engine import MarcsInterpolator
 from thimbles.options import Option,opts
-from thimbles.options import config_dir
-
 
 Option('moog',option_style="parent_dict")
 ex_opt = Option("executable",parent="moog",envvar="MOOGSILENT", default=None)
@@ -31,12 +20,11 @@ if not ex_opt.runtime_str is None:
     ex_opt.evaluate()
 Option("opac_rad", parent="moog", default=3.0)
 Option("delta_wv", parent="moog", default=0.01)
-default_moog_wdir = os.path.join(config_dir, "working_dirs", "moog")
 Option(
     "working_dir", 
     parent="moog",
     envvar="MOOGWORKINGDIR", 
-    default=default_moog_wdir,
+    default=os.getcwd(),
 )
 #TODO: make a default strong lines file to crop to wavelengths and use always.
 

@@ -1,15 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""
-PURPOSE: For handling tasks in Thimbles
-AUTHOR: dylangregersen
-DATE: Mon Aug 25 14:39:11 2014
-"""
-# ########################################################################### #
-
-# import modules 
-
-
 import os 
 import sys 
 import re 
@@ -24,12 +14,13 @@ import numpy as np
 from . import workingdataspace as wds
 from thimbles.options import Option, opts, EvalError
 import collections
+from . import thimbles_header_str
 
 # ########################################################################### #
 
 task_registry = {}
-def task(name=None, result_name="return_value", option_tree=opts, registry=task_registry, sub_kwargs=None):
-    new_task = Task(name=name, result_name=result_name, option_tree=option_tree, registry=registry, sub_kwargs=sub_kwargs)
+def task(name=None, result_name="return_value", option_tree=opts, registry=task_registry, sub_kwargs=None, help_=""):
+    new_task = Task(name=name, result_name=result_name, option_tree=option_tree, registry=registry, sub_kwargs=sub_kwargs, help_=help_)
     return new_task.set_func
 
 def argument_dict(func, filler_value=None, return_has_default=False):
@@ -55,11 +46,12 @@ def argument_dict(func, filler_value=None, return_has_default=False):
 class Task(Option):
     target_ns = wds.__dict__
     
-    def __init__(self, result_name, name, option_tree, registry, sub_kwargs=None, func=None):
+    def __init__(self, result_name, name, option_tree, registry, sub_kwargs=None, func=None, help_=""):
         if sub_kwargs is None:
             sub_kwargs = {}
         self.sub_kwargs = sub_kwargs
         self.name = name
+        self.help = help_
         self.result_name = result_name
         self.option_tree = option_tree
         self.registry = registry
@@ -73,7 +65,7 @@ class Task(Option):
         if not self.func is None:
             if self.name is None:
                 self.name = self.func.__name__
-            super(Task, self).__init__(self.name, default=func)
+            super(Task, self).__init__(self.name, default=func, help_=self.help)
             self._generate_child_options()
             self.registry[self.name] = self
         return func
@@ -122,4 +114,27 @@ def fprint (func,max_lines=100,exclude_docstring=True,show=True):
         print(to_print) 
     else:
         return to_print 
+
+
+@task(help_="print the help message")
+def help(topic=None):
+    if topic is None:
+        print(thimbles_header_str)
+    help_str = "{name}  :  {help}"#\n  value: {value}\n  runtime string:{run_str}" 
+    print("Top Level Tasks and Options")
+    top_opts = opts.children
+    for op_name in top_opts:
+        
+        help_ = top_opts[op_name].help
+        print(help_str.format(name=op_name, help=help_))
+    #for op in opts.options.values():
+    #    try:
+    #        value = op.value
+    #    except OptionSpecificationError:
+    #        value = "no value"
+    #    if op.runtime_str is None:
+    #        run_str = "runtime string unspecified"
+    #    else:
+    #        run_str = op.runtime_str
+    #    print help_str.format(name=op.name, help=op.help)# value=value, run_str=run_str)
 

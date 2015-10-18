@@ -3,7 +3,6 @@ from collections import OrderedDict
 from copy import copy
 
 import thimbles as tmb
-from thimbles import thimbles_header_str
 from thimbles import workingdataspace as wds
 
 class OptionSpecificationError(Exception):
@@ -12,20 +11,35 @@ class OptionSpecificationError(Exception):
 class EvalError(Exception):
     pass
 
-config_dir = os.environ.get("THIMBLESCONFIGPATH", os.path.join(os.environ["HOME"], ".config", "thimbles"))
-if not os.path.exists(config_dir):
-    os.makedirs(config_dir)
-config_file = os.path.join(config_dir, "config.py")
-
 
 class OptionTree(object):
     eval_ns = wds.__dict__
     full_path_pattern = re.compile(r"--[A-z]")
     sub_path_pattern = re.compile(r"-[A-z]")
     
-    def __init__(self, config_file=config_file):
+    def __init__(self, global_config_file=None, local_config_file=None):
         self.option_path = ""
-        self.config_file=config_file
+        if global_config_file is None:
+            default_config_dir = os.path.join(
+                os.environ["HOME"], 
+                ".config", 
+                "thimbles"
+            )
+            global_config_dir = os.environ.get("THIMBLESCONFIGPATH", default_config_dir)
+            global_config_file = os.path.join(global_config_dir, "tmb_config.py")            
+        else:
+            global_config_dir = os.path.dirname(global_config_file)
+        self.global_config_dir = global_config_dir
+        if not os.path.exists(global_config_dir):
+            os.makedirs(global_config_dir)
+        
+        self.global_config_file=global_config_file
+        if local_config_file is None:
+            cwd = os.getcwd()
+            local_cfpath = os.path.join(cwd, "tmb_config.py")
+            if os.path.isfile(local_cfpath):
+                local_config_file = local_cfpath
+        self.local_config_file = local_config_file
         #options one layer deep children["child_name"]-->child_option
         self.children = OrderedDict()
         #options['opt1.opt2.opt3']-->Option
@@ -35,9 +49,13 @@ class OptionTree(object):
         """execute the config.py file in the 
         working data name space.
         """
-        if os.path.isfile(config_file):
-            cfile = open(config_file)
+        if os.path.isfile(self.global_config_file):
+            cfile = open(self.global_config_file)
             exec(cfile.read(), self.eval_ns)
+            cfile.close()
+        if not self.local_config_file is None:
+            cfile = open(self.local_config_file)
+            exec(cfile.read(), self.eval_ns)    
             cfile.close()
     
     def __getattr__(self, opt_name):
@@ -231,7 +249,7 @@ class Option(object):
         if self.option_style == "parent_dict" or (not self.use_cached):
             raise NotImplementedError("attribute setting for these option styles not implemented")
         self._value = value
-    
+        self._valuated = True
     
     def __repr__(self):
         val = "valuation failed"
@@ -241,50 +259,4 @@ class Option(object):
             pass
         return "Option {}, value={}".format(self.option_path, val)
 
-#general behavior options
-_help = "path to prepend to relative paths when searching for input data"
-data_dir = Option("data_dir", default=os.getcwd(), help_=_help)
 
-_help = "path to prepend to relative paths when writing out files"
-output_dir = Option("output_dir", default=os.getcwd(), help_=_help)
-
-#matplotlib options
-_help = "parent option for setting matplotlib style related options"
-mpl_style = Option("mpl_style", option_style="parent_dict", help_=_help)
-lw = Option(name="line_width", default=1.5, parent=mpl_style, help="default line width")
-
-#spectrum display related options
-_help=\
-"""options relating to how spectra will be displayed by default
-"""
-Option(name="spec_display", option_style="parent_dict", help_=_help)
-
-_help=\
-"""The logarithm of the ratio of default display window in angstroms
-to the central wavelength being displayed.
-"""
-Option(name="window_width", default=-4.5, parent="spec_display", help_=_help)
-
-
-#@task(help_="print the help message")
-def help():
-    print(thimbles_header_str)
-    help_str = "{name}  :  {help}"#\n  value: {value}\n  runtime string:{run_str}" 
-    print("Top Level Options")
-    top_opts = opts.children
-    for op_name in top_opts:
-        help_ = top_opts[op_name].help
-        print(help_str.format(name=op_name, help=help_))
-    #for op in opts.options.values():
-    #    try:
-    #        value = op.value
-    #    except OptionSpecificationError:
-    #        value = "no value"
-    #    if op.runtime_str is None:
-    #        run_str = "runtime string unspecified"
-    #    else:
-    #        run_str = op.runtime_str
-    #    print help_str.format(name=op.name, help=op.help)# value=value, run_str=run_str)
-
-
-del _help

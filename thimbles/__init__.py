@@ -23,8 +23,6 @@ resource_dir = os.path.join(os.path.dirname(__file__), "resources")
 speed_of_light = 299792.458 #speed of light in km/s
 from . import options 
 
-options.Option("wavelength_medium", default="vacuum")
-
 from . import pseudonorms
 from . import thimblesdb
 from . import modeling
@@ -60,11 +58,7 @@ from . import analysis
 from thimbles import workingdataspace as wds
 
 opts = options.opts
-options.Option("db_path", 
-    envvar="THIMBLESPROJECTDB", 
-    default="",
-)
+from . import config
 opts.run_config()
-if not "db" in wds.__dict__:
-    wds.db = ThimblesDB(opts["db_path"])
+
 wds.__dict__.update(dict(thimblesdb.Base._decl_class_registry))

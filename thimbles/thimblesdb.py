@@ -83,7 +83,7 @@ class HasName(object):
         editor_style="file")},
 )
 def load_tdb(fname):
-    print("running load_tdb")
+    print("attempting to load ThimblesDB @ {}".format(fname))
     return ThimblesDB(fname)
 
 

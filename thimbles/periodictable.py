@@ -105,6 +105,4 @@ def symbol_to_z(symbol):
     except KeyError:
         return None
 
-    
 
-#from thimbles.stellar_atmospheres import solar_abundance as ptable

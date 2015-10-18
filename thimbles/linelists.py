@@ -5,6 +5,7 @@ import scipy.sparse.linalg
 import matplotlib.pyplot as plt
 import pandas as pd
 
+
 def transition_list_to_group_vec(tlist, indexer):
     group_vecs = []
     row_idxs = np.array([indexer[t] for t in tgroup])
@@ -14,6 +15,7 @@ def transition_list_to_group_vec(tlist, indexer):
     vshape = (len(indexer.transitions), 1)
     gvec = sicpy.sparse.csc_matrix((dat, ij_mat), shape=vshape)
     return gvec
+
 
 class TransitionGrouping(object):
     _fitness = None
@@ -110,7 +112,6 @@ class TransitionGrouping(object):
         
         #test for double grouped and missing transitions
         full_mat = scipy.sparse.hstack(realized_vecs)
-
         
         new_mat = scipy.sparse.hstack(cleaned_vecs)
         return TransitionGrouping(new_mat, fitness_function=self.fitness_function)

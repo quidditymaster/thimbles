@@ -1,12 +1,15 @@
 import numpy as np
 import scipy.sparse
 
+import os
 import thimbles as tmb
-from thimbles.sqlaimports import *
-from thimbles.thimblesdb import ThimblesTable, Base
-from thimbles.modeling.associations import HasParameterContext
-from thimbles.modeling.associations import NamedParameters, ParameterAliasMixin
-from thimbles.modeling import FloatParameter, Parameter
+from .options import opts
+from .sqlaimports import *
+from .thimblesdb import ThimblesTable, Base
+from .modeling.associations import HasParameterContext
+from .modeling.associations import NamedParameters, ParameterAliasMixin
+from .modeling import FloatParameter, Parameter
+from .tasks import task
 
 class SharedParametersAlias(ParameterAliasMixin, ThimblesTable, Base):
     _context_id = Column(Integer, ForeignKey("SharedParameterSpace._id"))
@@ -22,6 +25,7 @@ class SharedParameterSpace(ThimblesTable, Base, HasParameterContext):
 
     def add_parameter(self, name, parameter, is_compound=False):
         SharedParametersAlias(name=name, context=self, parameter=parameter, is_compound=is_compound)
+
 
 def make_shared_parameters(
         space_name,
@@ -76,7 +80,6 @@ def make_shared_parameters(
     sorted_exemplars = sorted(list(grouping_p.value.exemplars()), key=sorter_func)
     exemp_index_p = tmb.transitions.TransitionIndexerParameter(sorted_exemplars)
     sps.add_parameter("exemplar_indexer", exemp_index_p)
-    
     
     #telluric opacity vectors
     telluric_opac_basis = scipy.sparse.csc_matrix(np.zeros((len(model_wvs), n_tellurics)))
@@ -372,4 +375,260 @@ def make_all_models(
         spectrum_modeler(spec, database, shared_parameters)
     
     database.commit()
+
+
+def _load_db_ob(fname, cls, call_signature, converters=None, key_func=lambda x: x.name):
+    if converters is None:
+        converters = {}
+    obs = {}
+    with open(fname) as f:
+        for line in f:
+            lstr = line.strip()
+            if len(lstr) > 0:
+                if lstr[0]=="#":
+                    continue
+                lspl = lstr.split()
+                kwargs = dict(list(zip(call_signature, lspl)))
+                for conv_key in converters:
+                    kwargs[conv_key] = converters[conv_key](kwargs[conv_key])
+                new_instance = cls(**kwargs)
+                obs[key_func(new_instance)] = new_instance
+    return obs
+
+def load_sources(fname):
+    return _load_db_ob(
+        fname, 
+        cls=tmb.sources.Source, 
+        call_signature = "name ra dec".split(),
+        converters=dict(ra=float, dec=float),
+    )
+
+
+def load_exposures(fname):
+    return _load_db_ob(
+        fname, 
+        cls=tmb.observations.Exposure, 
+        call_signature = "name time duration".split(),
+        converters=dict(time=float, duration=float),
+    )
+
+def load_chips(fname):
+    return _load_db_ob(
+        fname, 
+        cls=tmb.spectrographs.Chip, 
+        call_signature = "name".split(),
+        converters={}
+    )
+
+def load_slits(fname):
+    return _load_db_ob(
+        fname, 
+        cls=tmb.spectrographs.Slit, 
+        call_signature = "name".split(),
+        converters=dict(),
+    )
+
+def load_orders(fname):
+    return _load_db_ob(
+        fname, 
+        cls=tmb.spectrographs.Order, 
+        call_signature = "number".split(),
+        converters=dict(number=int),
+        key_func=lambda x: x.number
+    )
+
+
+class ModelComponentTemplate(object):
+    
+    def __init__(
+            self,
+            #what parameter class to use for each parameter node
+            #{"parameter_name":ParameterClass} or {parameter_name":[ParameterClass]} in the case of compound parameters
+            #e.g. {"coeffs":PickleParameter, "lsf":Parameter}
+            parameter_classes,
+            
+            #extra arguments to pass to the parameter factory
+            #{"parameter_name":{"kw":val}}
+            #e.g. {"rv":{"value":32.1}}
+            parameter_kwargs,
+            
+            #what model class to use for each model edge
+            #{"model_edge_name":ModelClass}
+            #e.g. {"lsf_poly":PixelPolynomialModel}
+            model_classes,
+            
+            #how to connect model inputs to parameters
+            #{"model_name":[["parameter_name", "model_input_name", is_compound], ...] 
+            #e.g. {"lsf_poly":[["coeffs", "coeffs", False]]
+            input_edges,
+            
+            #extra non-Parameter class arguments to pass models
+            #{"model_name":{"kwarg_name": values}
+            #e.g. {"model_wvs":{"npts":4096}}
+            model_kwargs,
+            
+            #how to connect model outputs to parameters
+            #{"model_name":"parameter_name"}
+            #e.g. {"lsf_poly":"lsf"}
+            output_edges, 
+            
+            #how to find pre-existing parameters in external contexts
+            #{parameter_name:["context_name", "parameter_name_within_context"]}
+            #e.g. {"lsf":["spectrum", "lsf"]}
+            fetched_parameters,
+            
+            #which parameters to give aliases in external contexts and what names to give them
+            #{"context_name":[["parameter_name", "external_name", is_compound]]}
+            pushed_parameters,
+    ):
+        self.parameter_classes = parameter_classes
+        self.parameter_kwargs = parameter_kwargs
+        self.model_classes = model_classes
+        self.input_edges = input_edges
+        self.model_kwargs = model_kwargs
+        self.output_edges = output_edges
+        self.fetched_parameters = fetched_parameters
+        self.pushed_parameters = pushed_parameters
+    
+    def apply_to_contexts(
+            self,
+            #a dictionary of named external contexts
+            #{"context_name":context_instance}
+            #e.g. {"spectrum": spec, "global":shared_params}
+            contexts,
+    ):
+        import pdb; pdb.set_trace()
+        instantiated_params = {}
+        for param_name in self.parameter_classes:
+            if param_name in self.fetched_parameters:
+                context_name, cont_pname = self.fetched_parameters[param_name]
+                fetched_p = contexts[context_name][cont_pname]
+                instantiated_params[param_name] = fetched_p
+            else:
+                pkwargs = self.parameter_kwargs.get(param_name, {})
+                for pk in pkwargs:
+                    raw_arg = pkwargs[pk]
+                    if hasattr(raw_arg, "__call__"):
+                        pkwargs[pk] = raw_arg(contexts)
+                
+                pcls = self.parameter_classes[param_name]
+                instantiated_params[param_name] = pcls(**pkwargs)
+        
+        for model_name in self.input_edges:
+            model_kwargs = {}
+            inp_edges = self.input_edges[model_name]
+            for param_name, input_name, is_compound in inp_edges:
+                inp_param = instantiated_params[param_name]
+                if is_compound:
+                    plist = model_kwargs.get(input_name, [])
+                    if isinstance(inp_param, Parameter):
+                        plist.append(inp_param)
+                    else:
+                        plist.extend(inp_param)
+                    model_kwargs[input_name] = plist
+                else:
+                    model_kwargs[input_name] = inp_param
+            extra_kwargs = self.model_kwargs.get(model_name, {})
+            for kw in extra_kwargs:
+                raw_kwarg = extra_kwargs[kw]
+                if hasattr(raw_kwarg, "__call__"):
+                    extra_kwargs[kw] = raw_kwarg(contexts)
+            model_kwargs.update(extra_kwargs)
+            mod_cls = self.model_classes[model_name]
+            outp_name = self.output_edges[model_name]
+            c_output_p = instantiated_params[outp_name]
+            mod_instance = mod_cls(output_p=c_output_p, **model_kwargs)
+        
+        for context_name in self.pushed_parameters:
+            target_context = contexts[context_name]
+            alias_list = self.pushed_parameters[context_name]
+            for param_name, alias, is_compound in alias_list:
+                cparam = instantiated_params[param_name]
+                target_context.add_parameter(
+                    alias,
+                    parameter=instantiated_params[param_name],
+                    is_compound=is_compound)
+
+class ModelingPattern(object):
+    
+    def __init__(
+            self,
+            #a list of model components and their unique context specification
+            #[[context_identity_tuple, template_instance,]]
+            model_templates,
+            context_extractors,
+    ):
+        self.model_templates = model_templates
+        self.context_extractors = context_extractors
+        self.incorporated_context_tuples = set()
+    
+    def get_data_context(self, data_instance):
+        contexts = {}
+        for cont_name in self.context_extractors:
+            cext = self.context_extractors[cont_name]
+            contexts[cont_name] = cext(data_instance)
+        return contexts
+    
+    def incorporate_datum(
+            self,
+            data_instance,
+    ):
+        data_contexts = self.get_data_context(data_instance)
+        for context_id_tuple, mct in self.model_templates:
+            cur_context_tup = tuple([data_contexts[cname] for cname in context_id_tuple])
+            if not (cur_context_tup in self.incorporated_context_tuples):
+                mct.apply_to_contexts(data_contexts)
+                self.incorporated_context_tuples.add(cur_context_tup)
+    
+    def incorporate_data(
+            self,
+            data_list,
+    ):
+        for datum in data_list:
+            self.incorporate_datum(datum)
+
+
+standard_config_head = \
+"""
+import thimbles as tmb
+opts = tmb.opts
+from thimbles import workingdataspace as wds
+
+#moog stuff
+opts["moog.working_dir"] = "{moogwdir}"
+opts["moog.executable"] = "{moogsilent}"
+
+#instantiate our probject database
+db = tmb.ThimblesDB("{project_db_path}")
+#put a reference to our project db into the working data space
+wds.db = db
+#make our default database our project db
+opts["default_db"] = db
+
+#spectra options
+opts["spectra.io.read_default"] = tmb.io.read_spec
+opts["spectra.io.write_default"] = tmb.io.write_spec
+
+opts["wavelengths.medium"] = "vaccuum"
+"""
+
+@task()
+def newproject(projname, flavor="standard", create_moog_wdir=False):
+    cur_dir = os.getcwd()
+    moogwdir = os.path.join(cur_dir, "moogdir")
+    if create_moog_wdir:
+        os.system("mkdir {}".format(moogwdir))
+    
+    project_db_path = os.path.join(cur_dir, "{}.db".format(projname))
+    config_str = standard_config_head.format(
+        moogwdir=moogwdir,
+        moogsilent=tmb.opts["moog.executable"],
+        project_db_path=project_db_path,
+    )
+    if os.path.isfile("tmb_config.py"):
+        print("pre-existing tmb-config.py found. quitting")
+    else:
+        print("writing configuration into local file tmb_config.py")
+        with open("tmb_config.py", "w") as f:
+            f.write(config_str)
 

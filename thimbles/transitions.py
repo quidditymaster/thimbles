@@ -465,9 +465,9 @@ def accept_new(trans, db):
 def update_linelist(
         linelist,
         database=None,
-        dwv=0.02,
+        dlogwv=5e-6,
         dep=0.05,
-        dloggf=0.5,
+        dloggf=1.0,
         match_isotopes=False,
         on_match=prefer_existing,
         on_matchless=accept_new,

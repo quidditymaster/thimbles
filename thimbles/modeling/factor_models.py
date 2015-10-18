@@ -125,27 +125,19 @@ class PixelPolynomialModel(Model):
     def __init__(
             self, 
             output_p,
-            coeffs=None,
-            autofit=True,
-            degree=4,
+            coeffs,
+            npts,
     ):
         self.output_p = output_p
-        self.npts = len(self.output_p.value)
-        if coeffs is None:
-            if autofit:
-                x = self.get_x()
-                y = self.output_p.value
-                coeffs = np.polyfit(x, y, deg=degree)
-            else:
-                coeffs = np.zeros(degree)
-                coeffs[-1] = 1.0
-        coeffs_p = PickleParameter(coeffs)
-        self.add_parameter("coeffs", coeffs_p)
+        self.npts = npts
+        if not isinstance(coeffs, Parameter):
+            coeffs = PickleParameter(coeffs)
+        self.add_parameter("coeffs", coeffs)
     
     def get_x(self, pixels=None):
         if pixels is None:
             pixels = np.arange(self.npts)
-        return (pixels-0.5*self.npts)/self.npts
+        return (pixels-0.5*self.npts)/(0.5*self.npts)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)

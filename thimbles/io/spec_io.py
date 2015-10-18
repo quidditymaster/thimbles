@@ -552,10 +552,24 @@ pass
         fname=dict(editor_style="file"),
         file_type={},
 ))
-def read_spec(fname, file_type="detect", extra_kwargs=None):
+def read_spec(
+        fname, 
+        parent_dir=None, 
+        file_type="detect", 
+        extra_kwargs=None
+):
     """
-    a swiss army knife read in function for spectra, attempts to detect 
-    and read in a large variety of formats.
+    A swiss army knife read-in function for spectra.
+    attempts to automatically detect the file format and act appropriately 
+    but may not work 100% correctly in all situations. 
+    It is wise doublecheck that all aspects of the data are handled properly for any format you read in. 
+    
+    fname: string
+      the name or path to the file to be read in.
+    
+    parent_dir: string
+      if the path provided to the spectrum file in the fname argument
+      is relative one may specify the parent directory here.
     
     file type: string
       "detect"    attempt to determine the file type automatically
@@ -567,6 +581,9 @@ def read_spec(fname, file_type="detect", extra_kwargs=None):
       a dictionary to unpack into the readin function as keyword arguments
       that gets called on the basis of the file_type.
     """
+    if not parent_dir is None:
+        fname = os.path.join(parent_dir, fname)
+    
     if extra_kwargs is None:
         extra_kwargs = {}
     if not isinstance(file_type, str):
@@ -601,3 +618,29 @@ def write_spec(spectra, fname, file_type="ascii"):
         write_hdf5(spectra, fname)
     else:
         raise NotImplementedError("spectrum output of file_type: {} has not been implemented".format(file_type))
+
+
+def read_scf():
+    if isinstance(sources, str):
+        sources = load_sources(sources)
+    if isinstance(exposures, str):
+        exposures = load_exposures(exposures)
+    if isinstance(chips, str):
+        chips = load_chips(chips)
+    if isinstance(slits, str):
+        slits = load_slits(slits)
+    if isinstance(orders, str):
+        orders = load_orders(orders)
+    
+    if read_func is None:
+        read_func = opts["spectra.io.read_default"]
+    
+    with open(fname) as f:
+        for line in f:
+            lspl = line.split()
+            if len(lspl) > 0:
+                if lspl[0][0] == "#":
+                    continue
+                spec_path, sn, en, cn, sn, onum = lspl
+                onum = int(onum)
+                spectra = read_func(spec_path)

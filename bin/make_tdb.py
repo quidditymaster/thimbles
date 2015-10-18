@@ -2,7 +2,6 @@ import thimbles as tmb
 import argparse
 
 parser = argparse.ArgumentParser()
-
 parser.add_argument("db_path")
 parser.add_argument("--line-list", "--ll")
 parser.add_argument("--standard_name", default="default")

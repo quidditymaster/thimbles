@@ -45,6 +45,10 @@ class Model(ThimblesTable, Base):
     def add_parameter(self, name, parameter, is_compound=False):
         InputAlias(name=name, context=self, parameter=parameter, is_compound=is_compound)
     
+    @property
+    def parameters(self):
+        return self.inputs.parameters
+    
     def __call__(self, vdict=None):
         raise NotImplementedError("Model is intended strictly as a parent class. you must subclass it and implement a __call__ method.")
     

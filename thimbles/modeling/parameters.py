@@ -35,6 +35,8 @@ class Parameter(ThimblesTable, Base):
         collection_class = NamedContexts,
     )   
     
+    _upstream_graph = None
+    _downstream_graph = None
     _setting_callbacks = None
     _invalidation_callbacks = None
     

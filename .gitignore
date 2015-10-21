@@ -1,5 +1,6 @@
 # Large Data Files
 data
+thimbles/resources/g2_mp_giant.h5
 
 # Project Files
 .project
@@ -16,3 +17,6 @@ data
 #backup files
 *.bak
 
+#test junk
+thimbles/radtran/tests/batch.par
+thimbles/radtran/tests/*.tmp

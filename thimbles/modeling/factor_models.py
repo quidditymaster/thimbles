@@ -47,6 +47,19 @@ class MultiplierModel(Model):
         for param in factors[1:]:
             product = product*vdict[param]
         return product
+    
+    def fast_deriv(self, param):
+        all_factors = self.parameters
+        complimentary_prod = 1.0
+        param_is_dependent = False
+        for factor in all_factors:
+            if factor != param:
+                complimentary_prod *= factor.value
+            else:
+                param_is_dependent = True
+        if not param_is_dependent:
+            raise ValueError("given parameter is not an input of this model!")
+        return complimentary_prod
 
 
 class PickleParameter(Parameter):
@@ -97,6 +110,11 @@ class MatrixMultiplierModel(Model):
         mat = vdict[self.inputs["matrix"]]
         vec = vdict[self.inputs["vector"]]
         return mat*vec
+    
+    def fast_deriv(self, param):
+        if param == self.inputs["vector"]:
+            return self.inputs["matrix"].value
+        return None
 
 
 class NegativeExponentialModel(Model):
@@ -105,14 +123,22 @@ class NegativeExponentialModel(Model):
         "polymorphic_identity":"NegativeExponentialModel",
     }
     
-    def __init__(self, input_param, output_p=None, substrate=None):
-        self.parameters = [input_param]
+    def __init__(self, output_p, optical_depth):
         self.output_p = output_p
-        self.substrate=substrate
+        self.add_parameter("optical_depth", optical_depth)
     
     def __call__(self, vprep=None):
-        p0 ,= self.parameters
-        return np.exp(-p0.value)
+        vdict = self.get_vdict(vprep)
+        op_depth = vdict[self.inputs["optical_depth"]]
+        return np.exp(-op_depth)
+    
+    def fast_deriv(self, param):
+        opd_param = self.inputs["optical_depth"]
+        if param == opd_param:
+            opd_val = opd_param.value
+            val_deriv = -opd_val*np.exp(-opd_val)
+            return scipy.sparse.dia_matrix((val_deriv, 0), shape=(len(opd_val), len(opd_val)))
+        return None
 
 
 class PixelPolynomialModel(Model):
@@ -143,7 +169,7 @@ class PixelPolynomialModel(Model):
         vdict = self.get_vdict(vprep)
         coeffs = vdict[self.inputs["coeffs"]]
         return np.polyval(coeffs, self.get_x())
-
+            
 
 class LogisticModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)

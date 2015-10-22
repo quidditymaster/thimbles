@@ -66,40 +66,13 @@ class Model(ThimblesTable, Base):
         vdict.update(replacements)
         return vdict
     
-    def parameter_expansion(self, input_vec, **kwargs):
-        parameters = self.free_parameters
-        deriv_vecs = []
-        for p in parameters:
-            if not p._expander is None:
-                deriv_vecs.append(p.expand(input_vec, **kwargs))
-                continue 
-            pval = p.get()
-            pshape = p.shape
-            #TODO: use the parameters own derivative_scale scale
-            if pshape == tuple():
-                p.set(pval+p.derivative_scale)
-                plus_d = self(input_vec, **kwargs)
-                p.set(pval-p.derivative_scale)
-                minus_d = self(input_vec, **kwargs)
-                deriv = (plus_d-minus_d)/(2.0*p.derivative_scale)
-                deriv_vecs.append(scipy.sparse.csc_matrix(deriv.reshape((-1, 1))))
-                #don't forget to reset the parameters back to the start
-                p.set(pval)
-            else:
-                flat_pval = pval.reshape((-1,))
-                cur_n_param =  len(flat_pval)
-                if cur_n_param > 50:
-                    raise ValueError("""your parameter vector is large consider implementing your own expansion via the Parameter.expander decorator""".format(cur_n_param))
-                delta_vecs = np.eye(cur_n_param)*p.derivative_scale
-                for vec_idx in range(cur_n_param):
-                    minus_vec = flat_pval - delta_vecs[vec_idx]
-                    p.set(minus_vec.reshape(pshape))
-                    minus_d = self(input_vec, **kwargs)
-                    plus_vec = flat_pval + delta_vecs[vec_idx]
-                    p.set(plus_vec.reshape(pshape))
-                    plus_d = self(input_vec, **kwargs)
-                    deriv = (plus_d - minus_d)/(2.0*delta_vecs[vec_idx, vec_idx])
-                    deriv_vecs.append(scipy.sparse.csc_matrix(deriv.reshape((-1, 1))))
-                p.set(flat_pval.reshape(pshape))
-        pexp_mat = scipy.sparse.hstack(deriv_vecs)
-        return pexp_mat
+    def fast_deriv(self, param):
+        """
+This model should be implemented for performance sensitive or frequently used model classes.
+
+calculate the derivative of the output parameter of this model with respect to the given input parameter in the region near the current model parameter values.
+        
+ if this method returns None for a particular input parameter the dervative determination harness will assume that a discrete derivative will need to be calculated for parameter influence paths containing that parameter/model pair. 
+        """
+        return None
+

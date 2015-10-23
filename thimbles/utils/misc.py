@@ -949,17 +949,6 @@ def l1_factor(input_matrix, input_weights, rank=3, n_iter=3):
                 h[rank_idx, col_idx] = opt_h
     return w, h
 
-def cache_decorator (cache,key):
-    def outer (func):
-        def inner (*args,**kwargs):
-            if cache.get(key,None) is not None:
-                return cache[key]
-            ret = func(*args,**kwargs)
-            cache[key] = ret
-            return ret
-        return inner
-    return outer
-
 def vac_to_air(vac_wvs):
     """
     following the vald conversion 
@@ -1062,11 +1051,24 @@ def sparse_row_circulant_matrix(vec, npts, normalize=False):
         cmat = mult_dia_mat*cmat
     return cmat
 
-def anti_smoothing_matrix(width, npts):
-    max_width = int(max(1, 5*width))+1
-    deltas = np.arange(-max_width, max_width+1)
-    dvec = scipy.gradient(scipy.gradient(np.exp(-(deltas/width)**2)))
-    return sparse_row_circulant_matrix(dvec, npts)
+#https://en.wikipedia.org/wiki/Five-point_stencil
+#NOTE: this assumes a dx == 1.0 to convert to different dx values
+#you need to multiply the resultant estimate by dx^order
+_five_pt_stencil = np.array([
+    [0.2, 0.2, 0.2, 0.2, 0.2], #mean--> 0th derivative
+    [-1/12.0, +8/12.0, 0.0, -8/12.0, +8/12.0], #1st deriv
+    [-1/12.0, +16/12.0, -30/12.0, +16/12.0, -1/12.0], #2nd deriv
+    [1/2.0, -2/2.0, 0.0, +2/2.0, -1/2.0] #3rd deriv
+    [1, -4, 6, -4, 1], #4th deriv
+])
+
+
+def discrete_derivative_matrix(npts, order=1, dx=1.0):
+    if order > 4:
+        raise ValueError("only dervative orders less than 5 are supp")
+    deriv_conv = _five_pt_stencil[order]*(dx**order)
+    return sparse_row_circulant_matrix(deriv_conv, npts=npts, normalize=False)
+
 
 def _voigt_resids(voigt_pvec, center, x, y):
     vprof = voigt(x, center, voigt_pvec[0], voigt_pvec[1])

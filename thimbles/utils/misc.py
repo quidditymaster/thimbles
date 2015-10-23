@@ -1058,7 +1058,7 @@ _five_pt_stencil = np.array([
     [0.2, 0.2, 0.2, 0.2, 0.2], #mean--> 0th derivative
     [-1/12.0, +8/12.0, 0.0, -8/12.0, +8/12.0], #1st deriv
     [-1/12.0, +16/12.0, -30/12.0, +16/12.0, -1/12.0], #2nd deriv
-    [1/2.0, -2/2.0, 0.0, +2/2.0, -1/2.0] #3rd deriv
+    [1/2.0, -2/2.0, 0.0, +2/2.0, -1/2.0], #3rd deriv
     [1, -4, 6, -4, 1], #4th deriv
 ])
 
@@ -1066,7 +1066,7 @@ _five_pt_stencil = np.array([
 def discrete_derivative_matrix(npts, order=1, dx=1.0):
     if order > 4:
         raise ValueError("only dervative orders less than 5 are supp")
-    deriv_conv = _five_pt_stencil[order]*(dx**order)
+    deriv_conv = _five_pt_stencil[order]/(dx**order)
     return sparse_row_circulant_matrix(deriv_conv, npts=npts, normalize=False)
 
 

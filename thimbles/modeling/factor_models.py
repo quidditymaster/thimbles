@@ -76,7 +76,7 @@ class PickleParameter(Parameter):
 class IntegerParameter(Parameter):
     _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
     __mapper_args__={
-        "polymorphic_identity":"FloatParameter",
+        "polymorphic_identity":"IntegerParameter",
     }
     _value = Column(Integer)
     

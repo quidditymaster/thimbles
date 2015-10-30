@@ -33,7 +33,7 @@ except ImportError:
 from thimbles import resampling
 from . import partitioning
 from . import piecewise_polynomial
-from thimbles.profiles import voigt
+from thimbles.profiles import voigt, gauss
 from . import piecewise_polynomial as ppol
 
 
@@ -148,8 +148,10 @@ def local_gaussian_fit(
         y_values, 
         y_variance=None,
         peak_idx=None, 
-        fit_width=2, 
-        xvalues=None, 
+        fit_width=1, 
+        xvalues=None,
+        opt_cleanup=False,
+        cleanup_width=3,
         return_fit_dict=False
 ):
     """fit a quadratic function taking pixels from 
@@ -215,6 +217,23 @@ def local_gaussian_fit(
     sigma = x_scale/np.sqrt(2*np.abs(poly_coeffs[2])) 
     center_p_vec = np.asarray([1.0, offset, offset**2])
     peak_y_value = np.dot(center_p_vec, poly_coeffs)
+    
+    def _gauss_resids(pvec, center, x, y):
+        prof = gauss(x, center, pvec[0])
+        opt_mult = np.sum(prof*y)/np.sum(prof**2)
+        resids = y-opt_mult*prof
+        return resids
+    
+    if opt_cleanup:
+        lb = max(peak_idx - cleanup_width, 0)
+        ub = min(peak_idx + cleanup_width, len(y_values)-1)
+        if xvalues is None:
+            xvalues = np.arange(lb, ub+1)
+        chopped_x = xvalues[lb:ub+1].copy()
+        chopped_y = y_values[lb:ub+1].copy()
+        start_vec = [sigma]
+        opt_res = scipy.optimize.leastsq(_gauss_resids, start_vec, args=(offset+peak_xval, chopped_x, chopped_y))
+        sigma = np.abs(opt_res[0][0])
     
     if return_fit_dict:
         fd = {}
@@ -792,13 +811,13 @@ def vec_sort_lad(e, u):
     return opt_ratio
 
 def pseudo_huber_irls_weights(resids, sigma, gamma=5.0):
-    z = np.where(resids != 0, resids/sigma, 1e-6)/gamma
+    z = np.where(resids != 0, resids/sigma, 1e-10)/gamma
     return 2.0*(np.sqrt(1.0 + z**2) - 1)/z**2
 
 def pseudo_residual(resids, sigma, gamma=5.0):
     """a convenience function for use in conjunction with 
     scipy.optimize.leastsq, instead of returning the true residuals
-    call this function on the residual vector to carry out a 
+    call this function on the normal residual vector and return that as the residual to the leastsq function to carry out a 
     least pseudo-huber cost fit to the data instead of a least squares fit.
     
     parameters
@@ -895,7 +914,7 @@ def irls(
     delta_x = None
     
     if A_issparse:
-        solver = lambda x, y: scipy.sparse.linalg.lsqr(x, y, damp=damp)
+        solver = lambda x, y: scipy.sparse.linalg.bicg(x, y, damp=damp)
         dotter = lambda x, y: x*y
     else:
         A = np.asarray(A)
@@ -1056,7 +1075,7 @@ def sparse_row_circulant_matrix(vec, npts, normalize=False):
 #you need to multiply the resultant estimate by dx^order
 _five_pt_stencil = np.array([
     [0.2, 0.2, 0.2, 0.2, 0.2], #mean--> 0th derivative
-    [-1/12.0, +8/12.0, 0.0, -8/12.0, +8/12.0], #1st deriv
+    [-1/12.0, 8/12.0, 0.0, -8/12.0, +8/12.0], #1st deriv
     [-1/12.0, +16/12.0, -30/12.0, +16/12.0, -1/12.0], #2nd deriv
     [1/2.0, -2/2.0, 0.0, +2/2.0, -1/2.0], #3rd deriv
     [1, -4, 6, -4, 1], #4th deriv

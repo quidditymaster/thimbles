@@ -12,11 +12,12 @@ THIMBLES:
 """
 __doc__ = thimbles_header_str
 
-try:
-    import numba
-    _with_numba = True
-except ImportError:
-    _with_numba = False
+_with_numba = False
+#try:
+#    import numba
+#    _with_numba = True
+#except ImportError:
+#    _with_numba = False
 
 import os
 resource_dir = os.path.join(os.path.dirname(__file__), "resources")

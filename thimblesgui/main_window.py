@@ -14,7 +14,7 @@ import scipy.optimize
 
 #internal imports
 from thimblesgui import QtCore, QtGui, Qt
-from thimbles.options import Option, opts
+from thimbles.options import opts
 from thimbles.tasks import task_registry
 from thimbles import workingdataspace as wds
 
@@ -22,23 +22,30 @@ import thimblesgui as tmbg
 from thimblesgui.views import ObjectTreeWidget
 from thimblesgui.task_widgets import TaskLauncher 
 import thimbles as tmb
+from thimblesgui.active_collections import MappedListModel, ActiveCollection, ActiveCollectionView
+from thimblesgui.object_creation_dialogs import NewStarDialog
+
 from thimbles import ThimblesDB
 gui_resource_dir = os.path.join(os.path.dirname(__file__),"resources")
 
 # ########################################################################### #
 
-Option("GUI", option_style="parent_dict")
-
-_help=\
-"""suppress the splash screen
-"""
-Option(name="show-splash", default=False, help=_help)
 
 class ThimblesMainWindow(QtGui.QMainWindow):
     
-    def __init__(self):
+    def __init__(self, project_db_path):
         super(ThimblesMainWindow, self).__init__()
         self.setWindowTitle("Thimbles")
+        self.db = ThimblesDB(project_db_path)
+        self.selection = tmbg.selection.GlobalSelection(
+            channels=[
+                "source",
+                "spectrum",
+                "rv",
+                "norm",
+            ],
+        )
+        tmb.wds.gui_selection = self.selection
         
         self.make_actions()
         self.make_menus()
@@ -47,148 +54,80 @@ class ThimblesMainWindow(QtGui.QMainWindow):
         self.make_dock_widgets()
     
     def make_actions(self):
-        #QtGui.QAction(QtGui.QIcon(":/images/new.png"), "&Attach Database", self)        
+        #QtGui.QAction(QtGui.QIcon(":/images/new.png"), "&Attach Database", self)
+        self.save_act = QtGui.QAction("&Save", self)
+        self.save_act.setShortcut("Ctrl+s")
+        self.save_act.setStatusTip("commit state to database")
+        self.save_act.triggered.connect(self.on_save)
+        
         self.quit_act = QtGui.QAction("&Quit", self)
         self.quit_act.setShortcut("Ctrl+Q")
         self.quit_act.setStatusTip("Quit Thimbles")
         self.quit_act.triggered.connect(self.close)
+        
+        self.new_star_act = QtGui.QAction("&New Star", self)
+        self.new_star_act.setStatusTip("Create a New Star object")
+        self.new_star_act.triggered.connect(self.on_new_star)
+        
+        self.about_act = QtGui.QAction("&About", self)
+        self.about_act.setStatusTip("About Thimbles")
+        self.about_act.triggered.connect(self.on_about)
     
     def make_menus(self):
-        self.file_menu = self.menuBar().addMenu("&File")
+        menu_bar = self.menuBar()
+        
+        self.file_menu = menu_bar.addMenu("&File")
         self.file_menu.addAction(self.quit_act)
+        self.file_menu.addAction(self.save_act)
+        
+        self.context_menu = menu_bar.addMenu("&Context")
+        source_menu = self.context_menu.addMenu("Sources")
+        source_menu.addAction(self.new_star_act)
+        
+        self.help_menu = self.menuBar().addMenu("&Help")
+        self.help_menu.addAction(self.about_act)
     
     def make_tool_bar(self):
         self.file_tool_bar = self.addToolBar("File")
+        self.file_tool_bar.addAction(self.save_act)
     
     def make_status_bar(self):
         self.statusBar().showMessage("Ready")
     
     def make_dock_widgets(self):
-        dock = QtGui.QDockWidget("working data space", self)
+        dock = QtGui.QDockWidget("sources", self)
+        dock.setAllowedAreas(Qt.AllDockWidgetAreas)
+        source_collection = ActiveCollection(self.db)
+        self.source_widget = ActiveCollectionView(
+            active_collection = source_collection,
+            selection=self.selection,
+            selection_channel="source",
+        )
+        dock.setWidget(self.source_widget)
+        self.setCentralWidget(dock)
+
+        dock = QtGui.QDockWidget("sources2", self)
+        dock.setAllowedAreas(Qt.AllDockWidgetAreas)
+        also_source_collection = ActiveCollection(self.db)
+        self.source_widget = ActiveCollectionView(
+            active_collection = also_source_collection,
+            selection=self.selection,
+            selection_channel="source",
+        )
+        dock.setWidget(self.source_widget)
+        self.addDockWidget(Qt.RightDockWidgetArea, dock)
+        
+        #dock = QtGui.QDockWidget("working data space", self)
         #dock.setAllowedAreas(Qt.AllDockWidgetAreas)
-        self.wds_widget = ObjectTreeWidget(wds, parent=dock)
-        dock.setWidget(self.wds_widget)
-        self.addDockWidget(Qt.LeftDockWidgetArea, dock)
+        #self.wds_widget = ObjectTreeWidget(wds, parent=dock)
+        #dock.setWidget(self.wds_widget)
+        #self.addDockWidget(Qt.LeftDockWidgetArea, dock)
         #self.setCentralWidget(dock)
         
-        dock = QtGui.QDockWidget("tasks", self)
-        self.task_launcher = TaskLauncher(parent=dock)
-        dock.setWidget(self.task_launcher)
-        self.addDockWidget(Qt.RightDockWidgetArea, dock)
-
-
-class OldAppForm(QtGui.QMainWindow):
-    
-    def __init__(self):
-        super(AppForm, self).__init__()
-        self.setWindowTitle("Thimbles")
-        
-        #self.tasks_box = self._make_task_box()
-        #self.createActions()
-        #self.createMenus()
-        #self.createToolBar()
-        #self.createStatusBar()
-        
-        self.splitter = QtGui.QSplitter(Qt.Horizontal)
-        layout = QtGui.QGridLayout()
-        self.setCentralWidget(self.splitter)
-        #self.main_frame.setLayout(layout)
-        #self.setCentralWidget(self.main_frame)
-        
-        #make working data space view 
-        self.wds_widget = ObjectTreeWidget(wds, parent=self)
-        self.splitter.addWidget(self.wds_widget)
-        #layout.addWidget(self.wds_widget, 0, 1, 1, 1)
-        
-        self.splitter.addWidget(self.task_scroll)
-        #self.layout.addWidget(self.task_scroll, 0, 2, 1, 1)
-        #op_gb = self._init_operations_groups()
-        #self.layout.addWidget(op_gb)
-        
-        #self.main_frame.setLayout(self.layout)
-        
-        #self.create_menu()
-        #self._init_actions()
-        #self._init_menus()
-        
-        #self._init_status_bar()
-        #self._connect()
-    
-    def print_args(self, *args, **kwargs):
-        """prints the arguments passed in
-        useful for connecting to events during gui debugging"""
-        print("in print_args")
-        print(args, kwargs)
-    
-    def _init_operations_groups(self):
-        all_op_box = QGroupBox("spectral operations")
-        top_layout = QVBoxLayout()
-        
-        mono_box = self._init_mono_operations()
-        dual_box = self._init_dual_operations()
-        multi_box = self._init_multi_operations()
-        
-        top_layout.addWidget(mono_box)
-        top_layout.addWidget(dual_box)
-        top_layout.addWidget(multi_box)
-        all_op_box.setLayout(top_layout)
-        return all_op_box
-    
-    def _init_mono_operations(self):
-        op_box = QGroupBox("mono spectrum operations")
-        btn_grid = QGridLayout()
-        self.load_btn = QPushButton("load")
-        self.norm_btn = QPushButton("norm")
-        self.rv_btn = QPushButton("set rv")
-        self.extract_order_btn = QPushButton("extract order")
-        self.ex_norm_btn = QPushButton("extract normalized")
-        self.fit_features_btn = QPushButton("fit features")
-        #self.tell_btn = QPushButton("extract telluric")
-        btn_grid.addWidget(self.load_btn, 0, 0, 1, 1)
-        btn_grid.addWidget(self.norm_btn, 1, 0, 1, 1)
-        btn_grid.addWidget(self.rv_btn, 2, 0, 1, 1)
-        btn_grid.addWidget(self.extract_order_btn, 3, 0, 1, 1)
-        btn_grid.addWidget(self.fit_features_btn, 4, 0, 1, 1)
-        #btn_grid.addWidget(self.tell_btn, 1, 0, 1, 1)
-        op_box.setLayout(btn_grid)
-        return op_box
-    
-    def _init_dual_operations(self):
-        op_box = QGroupBox("paired spectrum operations")
-        btn_grid = QGridLayout()
-        self.add_btn = QPushButton("+")
-        self.sub_btn = QPushButton("-")
-        self.mul_btn = QPushButton("*")
-        self.div_btn = QPushButton("/")
-        btn_grid.addWidget(self.add_btn, 0, 0, 1, 1)
-        btn_grid.addWidget(self.sub_btn, 0, 1, 1, 1)
-        btn_grid.addWidget(self.mul_btn, 1, 0, 1, 1)
-        btn_grid.addWidget(self.div_btn, 1, 1, 1, 1)
-        op_box.setLayout(btn_grid)
-        return op_box
-    
-    def _init_multi_operations(self):
-        op_box = QGroupBox("multi spectrum operations")
-        btn_grid = QGridLayout()
-        self.coadd_btn = QPushButton("coadd")
-        self.compare_btn =QPushButton("compare")
-        btn_grid.addWidget(self.coadd_btn, 0, 0, 1, 1)
-        btn_grid.addWidget(self.compare_btn, 1, 0, 1, 1)
-        op_box.setLayout(btn_grid)
-        return op_box
-    
-    def _connect(self):
-        self.main_table_view.doubleClicked.connect(self.on_double_click)
-        self.rv_btn.clicked.connect(self.on_set_rv)
-        self.div_btn.clicked.connect(self.on_div)
-        self.mul_btn.clicked.connect(self.on_mul)
-        self.add_btn.clicked.connect(self.on_add)
-        self.sub_btn.clicked.connect(self.on_sub)
-        self.load_btn.clicked.connect(self.on_load)
-        self.fit_features_btn.clicked.connect(self.on_fit_features)
-        self.norm_btn.clicked.connect(self.on_norm)
-        self.compare_btn.clicked.connect(self.on_compare)
-        self.extract_order_btn.clicked.connect(self.on_extract_order)
+        #dock = QtGui.QDockWidget("tasks", self)
+        #self.task_launcher = TaskLauncher(parent=dock)
+        #dock.setWidget(self.task_launcher)
+        #self.addDockWidget(Qt.RightDockWidgetArea, dock)
     
     def bad_selection(self, msg=None):
         """indicate when operations cannot be performed because of bad user selections
@@ -200,443 +139,36 @@ class OldAppForm(QtGui.QMainWindow):
         self.wd = tmbg.dialogs.WarningDialog(msg)
         self.wd.warn()
     
-    def get_row(self, row):
-        return self.main_table_model.rows[row]
+    def on_save(self):
+        self.db.commit()
+        save_msg = "committed to {}".format(self.db.path)
+        self.statusBar().showMessage(save_msg)
     
-    def match_standard(self, spectra):
-        return 
-    
-    def on_double_click(self, index):
-        col_index = index.column()
-        if col_index == 0:
-            return
-        row_index = index.row()
-        row_object = self.get_row(row_index)
-        row_object.on_double_click()
-    
-    def on_compare(self):
-        smod = self.main_table_view.selectionModel()
-        selrows = smod.selectedRows()
-        row_objs = [self.get_row(r.row()) for r in selrows]
-        row_types = [r.type_id for r in row_objs]
-        row_data = [r.data for r in row_objs]
-        type_ids = list(set(row_types))
-        if len(type_ids) == 1:
-            cur_type ,= type_ids
-            color_cycle = cycle("bgrky")
-            fig = plt.figure()
-            ax = fig.add_subplot(111)
-            if cur_type == "spectra":
-                for spec_set in row_data:
-                    cur_c = next(color_cycle)
-                    for spec in spec_set:
-                        ax.plot(spec.wv, spec.flux/spec.norm, c=cur_c)
-            plt.show()
-        elif len(type_ids) == 0:
-            self.bad_selection("nothing selected to compare!")
-        else:
-            self.bad_selection("not all types matched")
-    
-    def on_delete(self):
-        smod = self.main_table_view.selectionModel()
-        selrows = smod.selectedRows()
-        self.main_table_model.beginRemoveRows()
-    
-    def on_add(self):
-        self.on_op(lambda x, y: x+y, "+")
-    
-    def on_sub(self):
-        self.on_op(lambda x, y: x-y, "-")
-    
-    def on_div(self):
-        self.on_op(lambda x, y: x/y, "/")
-    
-    def on_mul(self):
-        self.on_op(lambda x, y: x*y, "*")
-    
-    def on_op(self, operation_func, op_symbol):
-        smod = self.main_table_view.selectionModel()
-        selrows = smod.selectedRows()
-        if len(selrows) != 2:
-            self.bad_selection("need 2 spectra selected")
-            return
-        row_idx1, row_idx2 = selrows[0].row(), selrows[1].row()
-        row1, row2 = self.get_row(row_idx1), self.get_row(row_idx2)
-        if row1.type_id != "spectra" or row2.type_id != "spectra":
-            self.bad_selection("operations only work on 2 spectra")
-            return
-        if len(row1.data) != len(row2.data):
-            self.wd = tmbg.dialogs.WarningDialog("combining different numbers of spectra doesn't work yet")
-            self.wd.warn()
-            return
-        try:
-            out_spectra = []
-            for spec1, spec2 in zip(row1.data, row2.data):
-                nflux1 = spec1.flux/spec1.norm
-                nflux2 = spec2.flux/spec2.norm
-                op_flux = operation_func(spec1, spec2)
-                out_spectra.append(tmb.Spectrum(spec1.wv, op_flux))
-            row_name = "%s %s %s" (row1.name, op_symbol, row2.name)
-            new_row = tmbg.models.SpectraRow(out_spectra, row_name)
-            self.main_table_model.addRow(new_row, row_name)
-        except Exception as e:
-            self.wd = tmbg.dialogs.WarningDialog("error carrying out the operation", e)
-            self.wd.warn()
-    
-    def on_extract_order(self):
-        smod = self.main_table_view.selectionModel()
-        selrows = smod.selectedRows()
-        if len(selrows) > 1:
-            self.bad_selection("extract one at a time")
-            return
-        row_idx = selrows[0].row()
-        row = self.get_row(row_idx)
-        if row.type_id != "spectra":
-            self.bad_selection("can only extract orders from spectra")
-            return
-        ex_ord_res = QInputDialog.getInt(self, "extract order dialog", "enter order number (0 indexed)")
-        ex_ord, input_success = ex_ord_res
-        if not input_success:
-            return
-        new_name = "%s_order_%d" % (row.name, ex_ord)
-        
-        new_spec = [row.data[ex_ord]]
-        self.main_table_model.addRow(tmbg.models.SpectraRow(new_spec, new_name))
-    
-    def on_fit_features(self):
-        smod = self.main_table_view.selectionModel()
-        selrows = smod.selectedRows()
-        if len(selrows) != 2:
-            self.bad_selection("need one line list and one spectrum selected")
-            return
-        row1, row2 = selrows[0].row(), selrows[1].row()
-        spec = None
-        ll = None
-        for row_index in [row1, row2]:
-            row = self.get_row(row_index)
-            if row.type_id == "spectra":
-                spec = row.data
-                spec_name = row.name
-            elif row.type_id == "line list":
-                ll = row.data
-                ll_name = row.name
-        if spec != None and ll != None:
-            culled_features = self.pre_cull_lines(spec, ll)
-            if len(culled_features) == 0:
-                self.wd = tmbg.dialogs.WarningDialog("There were no features in the overlap! \n Check your wavelength solution")
-                self.wd.warn()
-                return
-            fit_features = self.fit_features(culled_features)
-            features_name = "features from %s %s" % (spec_name, ll_name)
-            frow = tmbg.models.FeaturesRow(fit_features, features_name)
-            self.main_table_model.addRow(frow)
-        else:
-            self.bad_selection("need one line list and one spectrum selected")
-    
-    def on_set_rv(self):
-        smod = self.main_table_view.selectionModel()
-        selrows = smod.selectedRows()
-        if len(selrows) != 1:
-            return
-        row = self.get_row(selrows[0].row())
-        if row.type_id == "spectra":
-            rvdialog = tmbg.dialogs.RVSettingDialog(row.data, self)
-            row.widgets["rv"] = rvdialog
-            rvdialog.set_rv()
-    
-    def on_norm(self):
-        smod = self.main_table_view.selectionModel()
-        selrows = smod.selectedRows()
-        row_idxs = [r.row() for r in selrows]
-        row_objs = [self.get_row(idx) for idx in row_idxs]
-        for row in row_objs:
-            if row.type_id == "spectra":
-                nd = tmbg.dialogs.NormalizationDialog(row.data)
-                nd.get_norm()
-                #for spec in row.data:
-                #    spec.approx_norm()
-    
-    def on_load(self):
-        ld = tmbg.dialogs.LoadDialog()
-        new_row = ld.get_row()
-        if isinstance(new_row, tmbg.models.MainTableRow):
-            self.main_table_model.addRow(new_row)
-    
-    def pre_cull_lines(self, spectra, ldat):
-        accepted_mask = np.zeros(len(ldat), dtype=bool)
-        line_spec_idxs = np.zeros(len(ldat), dtype=int)
-        for spec_idx in range(len(spectra)):
-            spec = spectra[spec_idx]
-            min_wv = np.min(spec.wv)
-            max_wv = np.max(spec.wv)
-            wv_del = (max_wv-min_wv)/float(len(spec.wv))
-            for feat_idx in range(len(ldat)):
-                cwv, cid, cep, cloggf = ldat[feat_idx]
-                samp_bounds = (cwv-2*wv_del, cwv+2*wv_del)
-                solar_logeps = tmb.stellar_atmospheres.solar_abundance[cid]["abundance"]
-                strength = solar_logeps + cloggf - cep*5040.0/self.options.start_teff
-                bspec = spectra[spec_idx].bounded_sample(samp_bounds)
-                accepted=False
-                if not bspec is None:
-                    if len(bspec) > 3:
-                        precull_opt = self.options.pre_cull
-                        if precull_opt=="snr":
-                            med_snr = np.median(bspec.flux*np.sqrt(bspec.ivar))
-                            if med_snr > 1.0:
-                                accepted=True
-                        elif precull_opt[:8] == "strength":
-                            if strength > float(precull_opt[8:]):
-                                accepted = True
-                        elif precull_opt=="none":
-                            accepted = True
-                            print("no pre culling of linelist done")
-                        else:
-                            raise Exception("unknown line culling option %s" % precull_opt)
-                    if accepted:
-                        accepted_mask[feat_idx] = True
-                        line_spec_idxs[feat_idx] = spec_idx
-        culled_features = []
-        for feat_idx in range(len(ldat)):
-            if accepted_mask[feat_idx]:
-                #import pdb; pdb.set_trace()
-                sample_width = self.options.display_width
-                cwv, cid, cep, cloggf = ldat[feat_idx]
-                sample_bounds = (cwv-sample_width, cwv+sample_width)
-                bspec = spectra[line_spec_idxs[feat_idx]].bounded_sample(sample_bounds, copy=False)
-                
-                tp = tmb.features.AtomicTransition(cwv, cid, cloggf, cep)
-                wvdel = np.abs(bspec.wv[1]-bspec.wv[0])
-                start_p = np.asarray([0.0, wvdel, 0.0])
-                lprof = tmb.profiles.LineProfile(cwv, start_p, profile_func="voigt")
-                nf = tmb.features.Feature(lprof, 0.00, 0.00, tp, data_sample=bspec)
-                culled_features.append(nf)
-        return culled_features
-    
-    def fit_features(self, features):
-        #import pdb; pdb.set_trace()
-        #tmb.modeling.spectral_models.quick_quadratic_fit(features)
-        for i in range(int(self.options.iteration)):
-            tmb.modeling.spectral_models.ensemble_feature_fit(features, self.options.fit_width)
-        return features
-    
-    def load_linelist(self):
-        ldat = None
-        if not self.options.line_list is None:
-            try:
-                ldat = np.loadtxt(self.options.line_list ,skiprows=1, usecols=[0, 1, 2, 3])
-                ll_base_name = os.path.basename(self.options.line_list)
-                ll_row = tmbg.models.LineListRow(ldat, ll_base_name)
-                self.main_table_model.addRow(ll_row)
-            except Exception as e:
-                print("there was an error reading file %s" % self.options.line_list)
-                print(e)
-        self.ldat = ldat
-    
-    def save_features(self, fname, features):
-        out_fname=fname.split(".")[0] + ".features.pkl"
-        out_fpath = os.path.join(self.options.output_dir, out_fname)
-        pickle.dump(features, open(out_fpath, "w"))
-    
-    def save_moog_from_features(self, fname, features):
-        out_fname=fname.split(".")[0] + ".features.ln"
-        out_fpath = os.path.join(self.options.output_dir, out_fname)
-        io.linelist_io.write_moog_from_features(out_fpath, features)
-    
-    def pre_process_spectra(self, spectra):
-        #apply the normalization
-        if self.options.norm == "auto":
-            for spec in spectra:
-                spec.normalize()
-        
-        #apply the radial velocity shift
-        #import pdb; pdb.set_trace()
-        if self.options.rv == "cc":
-            #best_template = self.match_standard(spectra)
-            #import pdb; pdb.set_trace()
-            rv = tmb.velocity.template_cc_rv(spectra, max_velocity=self.options.max_rv)
-        else:
-            rv = float(self.options.rv)
-        for spec in spectra:
-            spec.set_rv(rv)
-        
-        if self.ldat is None:
-            print("cannot carry out a fit without a feature line list")
-            return None
-        
-        if self.options.fit == "individual":
-            culled_features = self.pre_cull_lines(spectra, self.ldat)
-            tmb.modeling.quick_quadratic_fit(culled_features)
-            fit_features = self.fit_features(culled_features)
-        return fit_features
-    
-    def preconditioned_feature_fit(self, features):
-        lparams = np.array([f.profile.get_parameters() for f in features])
-        
-        cent_wvs = np.array([f.wv for f in features])
-        vel_offs = lparams[:, 0]/cent_wvs
-        
-        sig_over_wv = lparams[:, 1]/cent_wvs
-        sig_med = np.median(sig_over_wv)
-        sig_mad = np.median(np.abs(sig_over_wv-sig_med))
-        print("sig_med", sig_med, "sig_mad", sig_mad)
-        
-        vel_med = np.median(vel_offs)
-        vel_mad = np.median(np.abs(vel_offs - vel_med))
-        print("vel median", vel_med, "vel mad", vel_mad)
-        
-        gam_med = np.median(np.abs(lparams[:, 2]))
-        gam_mad = np.median(np.abs(lparams[:, 2]-gam_med))
-        print("gam med", gam_med, "gam_mad", gam_mad)
-        
-        gam_thresh = self.options.gamma_max
-        mpt = 1.4*self.options.inlier_threshold
-        
-        def resids(pvec, wvs, lprof, nflux):
-            pr = lprof.get_profile(wvs, pvec[2:])
-            cent_wv = lprof.center
-            ew, relnorm, _off, g_sig, l_sig = pvec
-            g_sig = np.abs(g_sig)
-            l_sig = np.abs(l_sig)
-            sig_reg = 0
-            rndiff = np.abs(relnorm-1.0)
-            sig_reg += self.options.continuum_weight*np.abs(rndiff)
-            wv_delta = np.abs(wvs[-1]-wvs[0])/len(wvs)
-            vel_off = _off/wvs[int(len(wvs)/2)]
-            vel_diff =  np.abs(vel_off-vel_med)
-            
-            if vel_diff > mpt*vel_mad:
-                sig_reg += (vel_diff - mpt*vel_mad)/vel_mad
-            sig_diff = np.abs(g_sig/cent_wv-sig_med)
-            if sig_diff > mpt*sig_mad:
-                sig_reg += (sig_diff-mpt*sig_mad)/(sig_mad + 0.1*wv_delta)
-            if np.abs(l_sig) > gam_thresh:
-                sig_reg += np.abs((l_sig-gam_thresh))/np.max(0.1*wv_delta, gam_mad)
-            gam_diff = np.abs(l_sig-gam_med)
-            sig_reg += gam_diff/np.max(0.3*wv_delta, gam_mad)
-            fdiff = nflux-(1.0-ew*pr)*relnorm
-            return np.hstack((fdiff ,sig_reg))
-        
-        for feat_idx in range(len(features)):
-            feat = features[feat_idx]
-            cwv = feat.wv
-            delta_wv = np.abs(feat.data_sample.wv[-1]-feat.data_sample.wv[0])/len(feat.data_sample)
-            fit_width = self.options.fit_width
-            if isinstance(fit_width, str):
-                if "average" == fit_width:
-                    delta_wv=max(4.2*sig_med*cwv, 5*delta_wv)
-            else:
-                delta_wv = float(self.options.fit_width)
-            fit_bounds = (cwv-delta_wv, cwv+delta_wv)
-            bspec = feat.data_sample.bounded_sample(fit_bounds)
-            start_p = feat.profile.get_parameters()
-            start_p[1:] = np.abs(start_p[1:])
-            if np.abs(start_p[1]/cwv-sig_med) > 3.0*sig_mad:
-                start_p[1] = sig_med*cwv
-            if np.abs(start_p[2]-gam_med) > 3.0*gam_mad:
-                start_p[2] = gam_med
-            guessv = np.hstack((feat.eq_width, 1.0, start_p))
-            nflux = bspec.flux/bspec.norm
-            lprof=feat.profile
-            fit_res = scipy.optimize.leastsq(resids, guessv, args=(bspec.wv, lprof, nflux))
-            fit = fit_res[0]
-            fit[3:] = np.abs(fit[3:])
-            lprof.set_parameters(fit[2:])
-            feat.relative_continuum = fit[1]
-            feat.set_eq_width(fit[0]) 
-        return features
-    
-    def _init_fit_widget(self):
-        self.fit_widget = tmbg.widgets.FeatureFitWidget(self.spec, self.features, 0, self.options.fwidth, parent=self)
-        self.layout.addWidget(self.fit_widget, 0, 0, 1, 1)
-    
-    def save (self):
-        QMessageBox.about(self, "Save MSG", "SAVE THE DATA\nTODO")
-    
-    def undo (self):
-        QMessageBox.about(self, "Undo", "UNDO THE DATA\nTODO")
-    
-    def redo (self):
-        QMessageBox.about(self, "Redo", "REDO THE DATA\nTODO")
-
-    def _init_actions(self):
-        
-        self.menu_actions = {}
-        
-        self.menu_actions['save'] = QAction(QIcon(_resources_dir+'/images/save.png'),
-                "&Save...", self, shortcut=QKeySequence.Save,
-                statusTip="Save the current data",
-                triggered=self.save)
-        
-        self.menu_actions['save as'] = QAction(QIcon(_resources_dir+'/images/save_as.png'),
-                "&Save As...", self, shortcut=QKeySequence.SaveAs,
-                statusTip="Save the current data as....",
-                triggered=self.save)
-        
-        self.menu_actions['undo'] = QAction(QIcon(_resources_dir+'/images/undo_24.png'),
-                "&Undo", self, shortcut=QKeySequence.Undo,
-                statusTip="Undo the last editing action", triggered=self.undo)
-        
-        self.menu_actions['redo'] =  QAction(QIcon(_resources_dir+'/images/redo_24.png'),
-                                                   "&Redo", self, shortcut=QKeySequence.Redo,
-                                                   statusTip="Redo the last editing action", triggered=self.redo)
-        
-        #         self.menu_actions['fullscreen'] = QtGui.QAction(None,"&Full Screen",self,shortcut="Ctrl+f",
-        #                                            statusTip="Run in full screen mode",triggered=self.full_screen)
-        
-        self.menu_actions['quit'] = QAction(QIcon(_resources_dir+'/images/redo_24.png'),
-                                                   "&Quit", self, shortcut=QKeySequence.Quit,
-                                                   statusTip="Quit the application", triggered=self.close)
-        
-        self.menu_actions['about'] = QAction(QIcon("hello_world"),"&About", self,
-                                                    statusTip="Show the application's About box",
-                                                    triggered=self.on_about)
-        
-        self.menu_actions['aboutQt'] = QAction(QIcon('hello_world'),"About &Qt", self,
-                                                     statusTip="Show the Qt library's About box",
-                                                     triggered=qApp.aboutQt)
-    
-    def _init_menus(self):
-        get_items = lambda *keys: [self.menu_actions.get(k,None) for k in keys]
-        
-        # --------------------------------------------------------------------------- #
-        self.file_menu = self.menuBar().addMenu("&File")
-        items = get_items('quit')#,'save','about','save as')
-        self.add_actions(self.file_menu, items)  
-
-        # --------------------------------------------------------------------------- #
-        #self.edit_menu = self.menuBar().addMenu("&Edit")
-        #items = get_items('undo','redo')
-        #self.add_actions(self.edit_menu, items)
-        
-        # --------------------------------------------------------------------------- #
-        #self.view_menu = self.menuBar().addMenu("&View")
-        #self.toolbar_menu = self.view_menu.addMenu('&Toolbars')
-        #self.tabs_menu = self.view_menu.addMenu("&Tabs")
-        
-        # --------------------------------------------------------------------------- #
-        #self.menuBar().addSeparator()
-        
-        # --------------------------------------------------------------------------- #
-        self.help_menu = self.menuBar().addMenu("&Help")
-        items = get_items('about','aboutQt','')
-        self.add_actions(self.help_menu, items)
-    
-    def _init_status_bar(self):
-        self.status_text = QLabel("startup")
-        self.statusBar().addWidget(self.status_text, 1)
-         
-    def add_actions(self, target, actions):
-        for action in actions:
-            if action is None:
-                target.addSeparator()
-            else:
-                target.addAction(action)    
+    def on_new_star(self):
+        new_star = NewStarDialog.get_new(parent=self)
+        if not new_star is None:
+            self.db.add(new_star)
     
     def on_about(self):
-        msg = """
-        Thimbles is a set of python modules for handling spectra.
-        This program is a GUI built on top of the Thimbles libraries.
-        
-        developed in the Cosmic Origins group at the University of Utah
-        """
-        QMessageBox.about(self, "about Thimbles GUI", msg)
+        about_msg =\
+"""
+THIMBLES:
+  Tools for
+  Handling 
+  Integrated
+  Modeling of
+  Breathtakingly
+  Large
+  Ensembles of
+  Spectra
+
+Thimbles was developed in the Cosmic Origins group at the University of Utah.
+"""
+        QtGui.QMessageBox.about(self, "about Thimbles GUI", about_msg)
+    
+    def print_args(self, *args, **kwargs):
+        """prints the arguments passed in
+        useful for connecting to events during gui debugging"""
+        print("in print_args")
+        print(args, kwargs)
+

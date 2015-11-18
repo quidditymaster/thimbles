@@ -76,6 +76,12 @@ class MatplotlibWidget(QtGui.QWidget):
         self.canvas.callbacks.connect("button_release_event", self.emit_button_released)
         self.canvas.callbacks.connect("pick_event", self.emit_pick_event)
     
+    def request_redraw(self):
+        self.canvas.figure._tmb_redraw=True
+    
+    def force_redraw(self):
+        self.canvas.draw()    
+    
     def check_redraw(self):
         if self.canvas.figure._tmb_redraw:
             self.canvas.draw()
@@ -100,5 +106,3 @@ class MatplotlibWidget(QtGui.QWidget):
     def axis(self, row, column):
         return self.canvas.axis(row, column)
     
-    def draw (self):
-        self.canvas.draw()

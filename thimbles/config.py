@@ -30,5 +30,11 @@ _help=\
 """The logarithm of the ratio of default display window in angstroms
 to the central wavelength being displayed.
 """
-Option(name="window_width", default=-4.5, parent="spec_display", help_=_help)
+Option(name="log_window_width", default=-4.0, parent="spec_display", help_=_help)
 
+
+Option("GUI", option_style="parent_dict")
+_help=\
+"""show/suppress the splash screen
+"""
+Option(name="show_splash", default=True, help=_help, parent="GUI")

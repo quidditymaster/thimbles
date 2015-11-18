@@ -345,6 +345,7 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
             out_wvs = self.wvs[l_idx:u_idx+1].copy()
             out_flux = self.flux[l_idx:u_idx+1].copy()
             out_ivar = self.ivar[l_idx:u_idx+1].copy()
+            out_lsf = self.lsf[l_idx:u_idx+1].copy()
             if return_matrix:
                 npts = len(self)
                 nz_vals = np.zeros(npts, dtype=float)
@@ -353,8 +354,8 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
             sampled_spec = Spectrum(
                 out_wvs, 
                 out_flux, 
-                out_ivar, 
-                lsf=self.lsf[l_idx:u_idx+1],
+                out_ivar,
+                lsf=out_lsf,
                 cdf_type=self.cdf_type,
                 cdf_kwargs=copy(self.cdf_kwargs),
             )
@@ -525,6 +526,7 @@ def add_spectra(
     out_var = spec1_samp.var + spec2_samp.var
     out_ivar = tmb.utils.misc.var_2_inv_var(out_var)
     return tmb.Spectrum(target_wvs, out_flux, out_ivar)
+
 
 def subtract_spectra(
         spectrum1,

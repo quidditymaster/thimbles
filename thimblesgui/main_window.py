@@ -24,6 +24,7 @@ from thimblesgui.task_widgets import TaskLauncher
 import thimbles as tmb
 from thimblesgui.active_collections import MappedListModel, ActiveCollection, ActiveCollectionView
 from thimblesgui.object_creation_dialogs import NewStarDialog
+from thimblesgui.loading_dialog import LoadDialog
 
 from thimbles import ThimblesDB
 gui_resource_dir = os.path.join(os.path.dirname(__file__),"resources")
@@ -37,15 +38,21 @@ class ThimblesMainWindow(QtGui.QMainWindow):
         super(ThimblesMainWindow, self).__init__()
         self.setWindowTitle("Thimbles")
         self.db = ThimblesDB(project_db_path)
+        default_collections = [
+            "source",
+            "spectrum",
+            "rv",
+            "norm",
+        ]
         self.selection = tmbg.selection.GlobalSelection(
-            channels=[
-                "source",
-                "spectrum",
-                "rv",
-                "norm",
-            ],
+            channels=default_collections,
+            
         )
         tmb.wds.gui_selection = self.selection
+        tmb.wds.gui_db = self.db
+        #collection_list = []
+        #for colec_name in default_collections:
+        #    collection_list.append(ActiveCollection())
         
         self.make_actions()
         self.make_menus()
@@ -55,6 +62,11 @@ class ThimblesMainWindow(QtGui.QMainWindow):
     
     def make_actions(self):
         #QtGui.QAction(QtGui.QIcon(":/images/new.png"), "&Attach Database", self)
+        
+        self.load_act = QtGui.QAction("Load Spectra", self)
+        self.load_act.setStatusTip("load spectra from file")
+        self.load_act.triggered.connect(self.on_load)
+        
         self.save_act = QtGui.QAction("&Save", self)
         self.save_act.setShortcut("Ctrl+s")
         self.save_act.setStatusTip("commit state to database")
@@ -77,8 +89,9 @@ class ThimblesMainWindow(QtGui.QMainWindow):
         menu_bar = self.menuBar()
         
         self.file_menu = menu_bar.addMenu("&File")
-        self.file_menu.addAction(self.quit_act)
+        self.file_menu.addAction(self.load_act)
         self.file_menu.addAction(self.save_act)
+        self.file_menu.addAction(self.quit_act)
         
         self.context_menu = menu_bar.addMenu("&Context")
         source_menu = self.context_menu.addMenu("Sources")
@@ -97,7 +110,7 @@ class ThimblesMainWindow(QtGui.QMainWindow):
     def make_dock_widgets(self):
         dock = QtGui.QDockWidget("sources", self)
         dock.setAllowedAreas(Qt.AllDockWidgetAreas)
-        source_collection = ActiveCollection(self.db)
+        source_collection = ActiveCollection(name="sources", db=self.db)
         self.source_widget = ActiveCollectionView(
             active_collection = source_collection,
             selection=self.selection,
@@ -105,10 +118,10 @@ class ThimblesMainWindow(QtGui.QMainWindow):
         )
         dock.setWidget(self.source_widget)
         self.setCentralWidget(dock)
-
+        
         dock = QtGui.QDockWidget("sources2", self)
         dock.setAllowedAreas(Qt.AllDockWidgetAreas)
-        also_source_collection = ActiveCollection(self.db)
+        also_source_collection = ActiveCollection(name="sources_also", db=self.db)
         self.source_widget = ActiveCollectionView(
             active_collection = also_source_collection,
             selection=self.selection,
@@ -139,16 +152,6 @@ class ThimblesMainWindow(QtGui.QMainWindow):
         self.wd = tmbg.dialogs.WarningDialog(msg)
         self.wd.warn()
     
-    def on_save(self):
-        self.db.commit()
-        save_msg = "committed to {}".format(self.db.path)
-        self.statusBar().showMessage(save_msg)
-    
-    def on_new_star(self):
-        new_star = NewStarDialog.get_new(parent=self)
-        if not new_star is None:
-            self.db.add(new_star)
-    
     def on_about(self):
         about_msg =\
 """
@@ -165,6 +168,21 @@ THIMBLES:
 Thimbles was developed in the Cosmic Origins group at the University of Utah.
 """
         QtGui.QMessageBox.about(self, "about Thimbles GUI", about_msg)
+    
+    def on_load(self):
+        ld = LoadDialog("tmb.io.read_spec", target_collection="collection_name", parent=self)
+        ld.exec_()
+        print("load result", ld.result)
+    
+    def on_new_star(self):
+        new_star = NewStarDialog.get_new(parent=self)
+        if not new_star is None:
+            self.db.add(new_star)
+    
+    def on_save(self):
+        self.db.commit()
+        save_msg = "committed to {}".format(self.db.path)
+        self.statusBar().showMessage(save_msg)
     
     def print_args(self, *args, **kwargs):
         """prints the arguments passed in

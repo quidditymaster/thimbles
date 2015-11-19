@@ -9,14 +9,19 @@ class QueryDialog(QtGui.QDialog):
     _query = None
     _query_valid = False
     
-    def __init__(self, active_collection, default_query, parent=None):
+    def __init__(
+            self,
+            active_collection,
+            default_query="db.query()",
+            parent=None
+    ):
         super().__init__(parent=parent)
         
         layout = QtGui.QGridLayout()
         self.setLayout(layout)
         
         self.active_collection = active_collection
-        query_expr = self.active_collection._last_query_expression
+        query_expr = self.active_collection.default_query
         if query_expr is None:
             query_expr = default_query
         self.query_edit = QtGui.QTextEdit(query_expr)
@@ -61,45 +66,8 @@ class QueryDialog(QtGui.QDialog):
         if self._query_valid:
             result = query.all()
             self.active_collection.set(result)
-            self.active_collection._last_query_expression = self._query_text
+            self.active_collection.default_query = self._query_text
             self.accept()
-
-
-class ActiveCollection(QtCore.QObject):
-    values_reset = QtCore.pyqtSignal()
-    _last_query_expression = None
-    
-    def __init__(self, db, values=None):
-        super(ActiveCollection, self).__init__()
-        if values is None:
-            values = []
-        self.values = values
-        self.db = db
-        
-        self.indexer = {}
-        self.set(values, )
-    
-    def __getitem__(self, index):
-        return self.values[index]
-    
-    def set(self, values):
-        self.indexer = {}
-        for idx, val in enumerate(values):
-            self.indexer[val] = idx
-        self.values = values
-        self.values_reset.emit()
-    
-    def extend(self, values):
-        extend_vals = []
-        for val in values:
-            if not val in self.indexer:
-                extend_vals.append(val)
-                self.indexer[val] = len(values)
-                self.values.append(val)
-        if len(extend_vals) > 0:
-            self.changed.emit()
-            self.extended.emit(extend_vals)
-    
 
 class ItemMappedColumn(object):
     
@@ -157,8 +125,8 @@ class NewItemMappedColumnDialog(NewObjectDialog):
             factory = ItemMappedColumn,
             parent=parent
         )
-    
-        
+
+
 class MappedListModel(QtCore.QAbstractTableModel):
     
     def __init__(self, active_collection, columns):
@@ -171,9 +139,14 @@ class MappedListModel(QtCore.QAbstractTableModel):
         return self.active_collection.values
     
     @QtCore.pyqtSlot()
-    def on_values_reset(self):
+    def on_reset(self):
         self.beginResetModel()
         self.endResetModel()
+    
+    @QtCore.pyqtSlot(list)
+    def on_extended(self, extended_idxs):
+        self.beginInsertRows(QtCore.QModelIndex(), extended_idxs[0], extended_idxs[-1])
+        self.endInsertRows()
     
     def rowCount(self, parent=QModelIndex()):
         return len(self._data)
@@ -211,7 +184,48 @@ class MappedListModel(QtCore.QAbstractTableModel):
             return False
 
 
-repr_column = ItemMappedColumn("value", getter=lambda x: x, value_converter=lambda x: repr(x))    
+repr_column = ItemMappedColumn("value", getter=lambda x: x, value_converter=lambda x: repr(x))
+name_column = ItemMappedColumn("name", getter=lambda x: x.name, value_converter=lambda x: x)
+
+class ActiveCollection(QtCore.QObject):
+    reset = QtCore.pyqtSignal()
+    extended = QtCore.pyqtSignal()
+    
+    def __init__(self, name, db, values=None, default_query=None):
+        super(ActiveCollection, self).__init__()
+        self.name = name
+        if values is None:
+            values = []
+        self.values = values
+        self.db = db
+        self.default_query=None
+        
+        self.indexer = {}
+        self.set(values, )
+    
+    def __getitem__(self, index):
+        return self.values[index]
+    
+    def set(self, values):
+        self.indexer = {}
+        for idx, val in enumerate(values):
+            self.indexer[val] = idx
+        self.values = values
+        self.reset.emit()
+    
+    def extend(self, values):
+        extend_vals = []
+        for val in values:
+            if not val in self.indexer:
+                extend_vals.append(val)
+                self.indexer[val] = len(values)
+                self.values.append(val)
+        if len(extend_vals) > 0:
+            self.extended.emit(extend_vals)
+    
+    def add_all(self):
+        self.db.add_all(self.values)
+
 
 class ActiveCollectionView(QtGui.QWidget):
     
@@ -230,23 +244,28 @@ class ActiveCollectionView(QtGui.QWidget):
         self.selection_channel = selection_channel
         self.active_collection = active_collection
         
-        layout = QtGui.QVBoxLayout()
+        self.make_actions()
+        self.make_menu()
         
-        button_box = QtGui.QGroupBox(parent=self)
-        box_layout = QtGui.QHBoxLayout()
+        layout = QtGui.QVBoxLayout()
+        layout.addWidget(self.menu_bar)
+        #button_box = QtGui.QGroupBox(parent=self)
+        #box_layout = QtGui.QHBoxLayout()
         #make buttons
-        self.query_btn = QtGui.QPushButton("query")
-        self.query_btn.clicked.connect(self.on_edit_query)
-        box_layout.addWidget(self.query_btn)
-        self.edit_columns_btn = QtGui.QPushButton("doesn't work")
-        box_layout.addWidget(self.edit_columns_btn)
-        button_box.setLayout(box_layout)
-        layout.addWidget(button_box)
+        #self.query_btn = QtGui.QPushButton("query")
+        #self.query_btn.clicked.connect(self.on_edit_query)
+        #box_layout.addWidget(self.query_btn)
+        #self.edit_columns_btn = QtGui.QPushButton("doesn't work")
+        #box_layout.addWidget(self.edit_columns_btn)
+        #button_box.setLayout(box_layout)
+        #layout.addWidget(button_box)
         
         self.table_view = QtGui.QTableView()
         data_model = MappedListModel(active_collection, columns=columns)
         self.data_model = data_model
-        active_collection.values_reset.connect(data_model.on_values_reset)
+        #connect to the data model signals
+        active_collection.reset.connect(data_model.on_reset)
+        active_collection.extended.connect(data_model.on_extended)
         self.table_view.setModel(data_model)
         self.table_view.setSelectionBehavior(1)#1==select rows
         self.table_view.setSelectionMode(1)#single selection?
@@ -257,6 +276,35 @@ class ActiveCollectionView(QtGui.QWidget):
         layout.addWidget(self.table_view)
         
         self.setLayout(layout)
+    
+    def make_actions(self):
+        self.clear_act = QtGui.QAction("clear", self)
+        self.clear_act.setToolTip("empty the collection")
+        self.clear_act.triggered.connect(self.on_clear)
+        
+        self.query_act = QtGui.QAction("query", self)
+        self.query_act.setToolTip("populate collection from the database via a SQLAlchemy query")
+        self.query_act.triggered.connect(self.on_query)
+        
+        self.add_all_act = QtGui.QAction("add all", self)
+        self.add_all_act.setToolTip("persist collection instances to the database")
+        self.add_all_act.triggered.connect(self.on_add_all)
+    
+    def make_menu(self):
+        menu_bar = QtGui.QMenuBar(parent=self)
+        self.menu_bar = menu_bar
+        db_menu = self.menu_bar.addMenu("database")
+        db_menu.addAction(self.query_act)
+        db_menu.addAction(self.add_all_act)
+        
+        manage_menu = self.menu_bar.addMenu("manage")
+        manage_menu.addAction(self.clear_act)
+    
+    def on_add_all(self):
+        self.active_collection.add_all()
+    
+    def on_clear(self):
+        self.active_collection.set([])
     
     def on_local_selection_changed(self, selected, deslected):
         if len(selected) > 0:
@@ -273,7 +321,7 @@ class ActiveCollectionView(QtGui.QWidget):
     
     def get_global_selection(self):
         return self.selection[self.selection_channel]
-        
+    
     def on_global_selection_changed(self):
         local_selection = self.get_local_selection()
         global_selection = self.get_global_selection()
@@ -287,8 +335,8 @@ class ActiveCollectionView(QtGui.QWidget):
                 qsel.select(start_qidx, end_qidx)
             self.local_selection_model.select(qsel, QtGui.QItemSelectionModel.SelectCurrent)
     
-    def on_edit_query(self):
-        qd = QueryDialog(self.active_collection, "db.query(Star)", parent=self)
+    def on_query(self):
+        qd = QueryDialog(self.active_collection, parent=self)
         qd.exec_()
         #q = qd.query
         #print(q)

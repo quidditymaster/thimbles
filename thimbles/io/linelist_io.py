@@ -21,7 +21,7 @@ def read_vald_linelist(fname, list_medium="air", target_medium=None):
     file.close()
     input_re = re.compile(r"'([A-Z][a-z]{0,1})([A-Z][a-z]{0,1}){0,1} {1,4}([12])'")
     if target_medium == None:
-        target_medium = tmb.opts["wavelength_medium"]
+        target_medium = tmb.opts["wavelengths.medium"]
     if list_medium == target_medium:
         medium_converter = lambda x : x
     elif (list_medium == "air") and (target_medium == "vacuum"):

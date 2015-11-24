@@ -12,7 +12,6 @@ class SelectionChannel(QtCore.QObject):
     
     def select(self, obj):
         self.obj = obj
-        print("setting obj =", obj)
         self.changed.emit()
 
 

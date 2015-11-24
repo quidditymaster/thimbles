@@ -73,7 +73,7 @@ class Ion(ThimblesTable, Base):
         return self._weight
     
     @property
-    def symbol(self):
+    def molecule(self):
         if self._symbol is None:
             if self.monatomic:
                 symbol = ptable["symbol"].ix[(self.z, 0)]
@@ -82,8 +82,11 @@ class Ion(ThimblesTable, Base):
                 symbol = "{}{}".format(*ptable["symbol"].ix[[(z1, 0), (z2, 0)]])
             self._symbol = symbol
         return self._symbol
-
-
+    
+    @property
+    def symbol(self):
+        return "{} {}".format(self.molecule, "I"*(self.charge+1))
+    
 class IonIndex(Base, ThimblesTable):
     _ion_id = Column(Integer, ForeignKey("Ion._id"))
     ion = relationship("Ion", foreign_keys=_ion_id)

@@ -1,14 +1,15 @@
+import os
+
 import numpy as np
 import scipy.sparse
 
-import os
 import thimbles as tmb
 from .options import opts
 from .sqlaimports import *
 from .thimblesdb import ThimblesTable, Base
 from .modeling.associations import HasParameterContext
 from .modeling.associations import NamedParameters, ParameterAliasMixin
-from .modeling import FloatParameter, Parameter
+from .modeling import Parameter, FloatParameter, PickleParameter
 from .tasks import task
 
 class SharedParametersAlias(ParameterAliasMixin, ThimblesTable, Base):
@@ -497,7 +498,7 @@ class ModelComponentTemplate(object):
             #e.g. {"spectrum": spec, "global":shared_params}
             contexts,
     ):
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
         instantiated_params = {}
         for param_name in self.parameter_classes:
             if param_name in self.fetched_parameters:
@@ -549,6 +550,19 @@ class ModelComponentTemplate(object):
                     parameter=instantiated_params[param_name],
                     is_compound=is_compound)
 
+class ContextExtractor(object):
+    
+    def __init__(self, defaults, context_attrs, extract_self_as):
+        self.defaults = defaults
+        self.context_attrs = context_attrs
+    
+    def __call__(self, obj):
+        context_dict = copy(defaults)
+        context_dict[self.extract_self_as] = obj
+        for attr_name in self.context_attrs:
+            context_dict[attr_name] = getattr(obj, attr_name)
+        return context_dict
+
 class ModelingPattern(object):
     
     def __init__(
@@ -586,6 +600,147 @@ class ModelingPattern(object):
     ):
         for datum in data_list:
             self.incorporate_datum(datum)
+        return
+
+global_mct = ModelComponentTemplate(
+    parameter_classes = {
+        "model_wvs":Parameter,
+        "min_wv":FloatParameter,
+        "max_wv":FloatParameter,
+        "model_lsf":FloatParameter,
+    },
+    parameter_kwargs = {
+        "min_wv":{"value":lambda x: tmb.opts["modeling.min_wv"]},
+        "max_wv":{"value":lambda x: tmb.opts["modeling.max_wv"]},
+        "model_lsf":{"value":0.0},
+    },
+    model_classes={
+        "model_wvs":tmb.coordinatization.LogLinearCoordinatizationModel,
+    },
+    input_edges = {
+        "model_wvs":[
+            ["min_wv", "min_p", False],
+            ["max_wv", "max_p", False],
+        ],
+    },
+    model_kwargs = {
+        "model_wvs":{
+            "npts":lambda x: int(np.log(opts["modeling.max_wv"]/opts["modeling.min_wv"])*opts["modeling.resolution"])+1
+        }
+    },
+    output_edges = {
+        "model_wvs":"model_wvs",
+    },
+    fetched_parameters={},
+    pushed_parameters={
+        "global":[
+            ["model_wvs", "model_wvs", False],
+            ["model_lsf", "model_lsf", False],
+        ],
+    }
+)
+
+def dirac_vec(n, i):
+    vec = np.zeros(n, dtype=float)
+    vec[i] = 1.0
+
+sampling_mct = ModelComponentTemplate(
+    parameter_classes = {
+        "lsf":None, 
+        "lsf_coeffs":PickleParameter, 
+        "sampling_matrix":Parameter, 
+        "model_wvs":None,
+        "model_lsf":None,
+        "spectrum_wvs":None
+    },
+    parameter_kwargs={
+        "lsf_coeffs":{"value":lambda x: dirac_vec(4, -1)}
+    },
+    model_classes={
+        "lsf_poly":tmb.modeling.PixelPolynomialModel, 
+        "sampling_matrix":tmb.spectrographs.SamplingModel,
+    },
+    input_edges = {
+        "lsf_poly":[["lsf_coeffs", "coeffs", False]],
+        "sampling_matrix":[
+            ["model_wvs", "input_wvs", False],
+            ["model_lsf", "input_lsf", False],
+            ["spectrum_wvs", "output_wvs", False],
+            ["lsf", "output_lsf", False],
+        ]
+    },
+    model_kwargs={
+        "lsf_poly":{
+            "npts":lambda x: len(x["spectrum"].flux)
+        },
+    },
+    output_edges = {
+        "lsf_poly":"lsf",
+        "sampling_matrix":"sampling_matrix",
+    },
+    fetched_parameters = {
+        "lsf":["spectrum", "lsf"],
+        "spectrum_wvs":["spectrum", "rest_wvs"],
+        "model_wvs":["global", "model_wvs"],
+        "model_lsf":["global", "model_lsf"],
+    },
+    pushed_parameters = {
+        "spectrum":[
+            ["lsf_coeffs", "lsf_coeffs", False],
+            ["sampling_matrix", "sampling_matrix", False],
+        ],
+    },
+)
+
+
+def extract_pseudonorm_coeffs(spec_context):
+    spec = spec_context['spectrum']
+    psnorm = spec.pseudonorm()
+    npts = len(spec)
+    xvals = (np.arange(npts) - 0.5*npts)/(0.5*npts)
+    pseudonorm_coeffs = np.polyfit(xvals, psnorm)
+    return pseudonorm_coeffs
+
+
+normalization_mct = ModelComponentTemplate(
+    parameter_classes = {
+        "norm":Parameter, 
+        "norm_coeffs":PickleParameter, 
+    },
+    parameter_kwargs={
+        "norm_coeffs":{"value":extract_pseudonorm_coeffs}
+    },
+    model_classes={
+        "norm_poly":tmb.modeling.PixelPolynomialModel, 
+    },
+    input_edges = {
+        "norm_poly":[["lsf_coeffs", "coeffs", False]],
+    },
+    model_kwargs={
+        "norm_poly":{
+            "npts":lambda x: len(x["spectrum"])
+        },
+    },
+    output_edges = {
+        "norm_poly":"norm",
+    },
+    fetched_parameters = {
+    },
+    pushed_parameters = {
+        "spectrum":[
+            ["norm_coeffs", "lsf_coeffs", False],
+            ["norm", "norm_coeffs", False],
+        ],
+    },
+)
+
+model_component_recipes = {
+    "spectral default":[
+        [("global",), global_mct,],
+        [("spectrum",), sampling_mct],
+        [("spectrum",), normalization_mct],
+    ],
+}
 
 
 standard_config_head = \

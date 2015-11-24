@@ -44,3 +44,75 @@ class Star(Source):
     
     def __repr__(self):
         return "Star: {} ".format(self.name)
+    
+    @property
+    def teff(self):
+        return self["teff"].value
+    
+    @teff.setter
+    def teff(self, value):
+        self["teff"].set(value)
+    
+    @property
+    def logg(self):
+        return self["logg"].value
+    
+    @logg.setter
+    def logg(self, value):
+        self["logg"].set(value)
+    
+    @property
+    def metalicity(self):
+        return self["metalicity"].value
+    
+    @metalicity.setter
+    def metalicity(self, value):
+        self["metalicity"].set(value)
+    
+    @property
+    def vmicro(self):
+        return self["vmicro"].value
+    
+    @vmicro.setter
+    def vmicro(self, value):
+        self["vmicro"].set(value)
+    
+    @property
+    def vmacro(self):
+        return self["vmacro"].value
+    
+    @vmacro.setter
+    def vmacro(self, value):
+        self["vmacro"].set(value)
+    
+    @property
+    def vsini(self):
+        return self["vsini"].value
+    
+    @vsini.setter
+    def vsini(self, value):
+        self["vsini"].set(value)
+    
+    @property
+    def ldark(self):
+        return self["ldark"].value
+
+    @ldark.setter
+    def ldark(self, value):
+        self["ldark"].set(value)
+    
+    @property
+    def mass(self):
+        return self["mass"].value
+    
+    @mass.setter
+    def age(self, value):
+        self["age"].set(value)
+    
+    @property
+    def age(self):
+        return self["age"].value
+    
+    @age.setter
+    def age(self, value):
+        self["age"].set(value)

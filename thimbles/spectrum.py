@@ -293,6 +293,14 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
     def ivar(self, value):
         self.obs_flux.ivar = value
     
+    def median_snr(self):
+        return np.sqrt(np.median(self.flux**2 * self.ivar))
+
+    def median_resolution(self):
+        wvs = self.wvs
+        dwv = scipy.gradient(wvs)
+        return np.median(wvs/dwv)
+    
     def sample(self,
             sampling,
             mode="rebin", 

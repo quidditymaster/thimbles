@@ -1,19 +1,28 @@
 from .options import Option, opts
 import thimbles as tmb
 
+
 Option("wavelengths", option_style="parent_dict")
 Option("medium", default="vacuum", parent="wavelengths")
 Option("units", default="Angstroms", parent="wavelengths")
+
 
 Option("spectra", option_style="parent_dict")
 Option("io", parent="spectra", option_style="parent_dict")
 Option("read_default", parent="spectra.io", runtime_str="tmb.io.read_spec")
 Option("write_default", parent="spectra.io", runtime_str="tmb.io.write_spec")
 
+
 Option("modeling", option_style="parent_dict")
 Option("min_wv", parent="modeling")
 Option("max_wv", parent="modeling")
 Option("resolution", parent="modeling", default=3e5)
+
+
+Option("database", option_style="parent_dict")
+Option("dialect", default="sqlite", parent="database")
+Option("echo_sql", default=False, parent="database")
+
 
 #matplotlib options
 _help = "parent option for setting matplotlib style related options"
@@ -34,7 +43,14 @@ Option(name="log_window_width", default=-4.0, parent="spec_display", help_=_help
 
 
 Option("GUI", option_style="parent_dict")
-_help=\
-"""show/suppress the splash screen
-"""
-Option(name="show_splash", default=True, help=_help, parent="GUI")
+Option(
+    name="show_splash",
+    default=True,
+    help="show/suppress the splash screen\n",
+    parent="GUI"
+)
+Option(
+    name="project_path",
+    default="",
+    parent="GUI"
+)

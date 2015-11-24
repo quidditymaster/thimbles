@@ -37,6 +37,7 @@ class Exposure(Base, ThimblesTable, HasParameterContext):
     
     def add_parameter(self, name, parameter, is_compound=False):
         ExposureAlias(name=name, context=self, parameter=parameter, is_compound=is_compound)
-
-
+    
+    def __repr__(self):
+        return "Exposure: {}".format(self.name)
 

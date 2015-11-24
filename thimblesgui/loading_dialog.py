@@ -37,17 +37,20 @@ class LoadDialog(QtGui.QDialog):
     
     def __init__(
             self,
-            read_func_expression,
-            target_collection,
+            collection,
+            default_read_func="tmb.io.read_spec",
             parent=None
     ):
         super().__init__(parent=None)
-        
+        self.collection = collection
         layout = QtGui.QVBoxLayout()
         self.setLayout(layout)
+        rfunc_expr = collection.default_read_func
+        if rfunc_expr is None:
+            rfunc_expr = default_read_func
         self.read_func_expression = PythonExpressionLineEdit(
             field_label="read in function",
-            expression=read_func_expression,
+            expression=rfunc_expr,
             parent=self,
         )
         layout.addWidget(self.read_func_expression)
@@ -60,10 +63,6 @@ class LoadDialog(QtGui.QDialog):
         
         control_group = QtGui.QWidget(parent=self)
         cglay = QtGui.QHBoxLayout()
-        self.target_collection_le = QtGui.QLineEdit()
-        self.target_collection_le.setText(target_collection)
-        cglay.addWidget(QtGui.QLabel("collection"))
-        cglay.addWidget(self.target_collection_le)
         control_group.setLayout(cglay)
         
         spacer = QtGui.QWidget()

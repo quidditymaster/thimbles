@@ -25,6 +25,8 @@ import thimbles as tmb
 from thimblesgui.active_collections import MappedListModel, ActiveCollection, ActiveCollectionView
 from thimblesgui.object_creation_dialogs import NewStarDialog
 from thimblesgui.loading_dialog import LoadDialog
+from thimblesgui.column_sets import star_columns, full_transition_columns, base_transition_columns, spectrum_columns
+from thimblesgui.contextualization_dialog import contextualizations
 
 from thimbles import ThimblesDB
 gui_resource_dir = os.path.join(os.path.dirname(__file__),"resources")
@@ -38,21 +40,39 @@ class ThimblesMainWindow(QtGui.QMainWindow):
         super(ThimblesMainWindow, self).__init__()
         self.setWindowTitle("Thimbles")
         self.db = ThimblesDB(project_db_path)
-        default_collections = [
+        contextualizations.connect_gui(self)
+        self.make_collections()
+        self.selection = tmbg.selection.GlobalSelection(
+            channels=[
             "source",
             "spectrum",
-            "rv",
-            "norm",
-        ]
-        self.selection = tmbg.selection.GlobalSelection(
-            channels=default_collections,
-            
-        )
+            "transition",
+        ],)
+        tmb.wds.gui = self
         tmb.wds.gui_selection = self.selection
         tmb.wds.gui_db = self.db
-        #collection_list = []
-        #for colec_name in default_collections:
-        #    collection_list.append(ActiveCollection())
+
+        SharedParameterSpace =tmb.analysis.SharedParameterSpace
+        gp_result = self.db.query(SharedParameterSpace).filter(SharedParameterSpace.name == "global").all()
+        if len(gp_result) > 1:
+            raise Exception("multiple global parameter spaces found")
+        elif len(gp_result) == 0:
+            gp = tmb.analysis.SharedParameterSpace("global")
+            gp_result = [gp]
+            self.db.add(gp)
+        self.global_params = gp_result[0]
+        
+        self.modeling_pattern = tmb.analysis.ModelingPattern(
+            model_templates = tmb.analysis.model_component_recipes["spectral default"],
+            context_extractors = {
+                "global": lambda x : self.global_params,
+                "spectrum": lambda x: x,
+                "exposure": lambda x: x.exposure,
+                "order":lambda x: x.order,
+                "chip": lambda x: x.chip,
+                "aperture": lambda x: x.aperture,
+            },
+        )
         
         self.make_actions()
         self.make_menus()
@@ -60,12 +80,42 @@ class ThimblesMainWindow(QtGui.QMainWindow):
         self.make_status_bar()
         self.make_dock_widgets()
     
+    def make_collections(self):
+        self.collections = {}
+        
+        spectra_collection = ActiveCollection(
+            name="spectra",
+            db=self.db,
+            default_columns=spectrum_columns,
+            default_query="db.query(Spectrum)",
+            default_read_func="tmb.io.read_spec",
+        )
+        self.collections["spectra"] = spectra_collection
+        
+        star_collection = ActiveCollection(
+            name="stars",
+            db=self.db,
+            default_columns=star_columns,
+            default_read_func="tmb.io.read_spec",
+            default_query="db.query(Star).offset(0).limit(50)",
+        )
+        self.collections["stars"] = star_collection
+
+        default_tq = "db.query(Transition).join(Ion).filter(Transition.wv > 2000).filter(Transition.wv < 20000).offset(0).limit(1000)"
+        transition_collection = ActiveCollection(
+            name="transitions",
+            db=self.db,
+            default_columns=base_transition_columns,
+            default_read_func="tmb.io.read_linelist",
+            default_query=default_tq,
+        )
+        self.collections["transitions"] = transition_collection
+        
     def make_actions(self):
         #QtGui.QAction(QtGui.QIcon(":/images/new.png"), "&Attach Database", self)
-        
-        self.load_act = QtGui.QAction("Load Spectra", self)
-        self.load_act.setStatusTip("load spectra from file")
-        self.load_act.triggered.connect(self.on_load)
+        self.apply_models_act = QtGui.QAction("apply models", self)
+        self.apply_models_act.setStatusTip("generate model components for each spectrum")
+        self.apply_models_act.triggered.connect(self.on_apply_models)
         
         self.save_act = QtGui.QAction("&Save", self)
         self.save_act.setShortcut("Ctrl+s")
@@ -89,13 +139,15 @@ class ThimblesMainWindow(QtGui.QMainWindow):
         menu_bar = self.menuBar()
         
         self.file_menu = menu_bar.addMenu("&File")
-        self.file_menu.addAction(self.load_act)
         self.file_menu.addAction(self.save_act)
         self.file_menu.addAction(self.quit_act)
         
         self.context_menu = menu_bar.addMenu("&Context")
         source_menu = self.context_menu.addMenu("Sources")
         source_menu.addAction(self.new_star_act)
+        
+        self.modeling_menu = menu_bar.addMenu("&Modeling")
+        self.modeling_menu.addAction(self.apply_models_act)
         
         self.help_menu = self.menuBar().addMenu("&Help")
         self.help_menu.addAction(self.about_act)
@@ -108,26 +160,34 @@ class ThimblesMainWindow(QtGui.QMainWindow):
         self.statusBar().showMessage("Ready")
     
     def make_dock_widgets(self):
-        dock = QtGui.QDockWidget("sources", self)
+        dock = QtGui.QDockWidget("spectra", self)
         dock.setAllowedAreas(Qt.AllDockWidgetAreas)
-        source_collection = ActiveCollection(name="sources", db=self.db)
-        self.source_widget = ActiveCollectionView(
-            active_collection = source_collection,
+        self.spectra_widget = ActiveCollectionView(
+            active_collection = self.collections["spectra"],
             selection=self.selection,
-            selection_channel="source",
+            selection_channel="spectrum",
         )
-        dock.setWidget(self.source_widget)
+        dock.setWidget(self.spectra_widget)
         self.setCentralWidget(dock)
         
-        dock = QtGui.QDockWidget("sources2", self)
+        dock = QtGui.QDockWidget("stars", self)
         dock.setAllowedAreas(Qt.AllDockWidgetAreas)
-        also_source_collection = ActiveCollection(name="sources_also", db=self.db)
         self.source_widget = ActiveCollectionView(
-            active_collection = also_source_collection,
+            active_collection = self.collections["stars"],
             selection=self.selection,
             selection_channel="source",
         )
         dock.setWidget(self.source_widget)
+        self.addDockWidget(Qt.LeftDockWidgetArea, dock)
+        
+        dock = QtGui.QDockWidget("transitions", self)
+        dock.setAllowedAreas(Qt.AllDockWidgetAreas)
+        self.transition_widget = ActiveCollectionView(
+            active_collection = self.collections["transitions"],
+            selection=self.selection,
+            selection_channel="transition",
+        )
+        dock.setWidget(self.transition_widget)
         self.addDockWidget(Qt.RightDockWidgetArea, dock)
         
         #dock = QtGui.QDockWidget("working data space", self)
@@ -168,11 +228,11 @@ THIMBLES:
 Thimbles was developed in the Cosmic Origins group at the University of Utah.
 """
         QtGui.QMessageBox.about(self, "about Thimbles GUI", about_msg)
-    
-    def on_load(self):
-        ld = LoadDialog("tmb.io.read_spec", target_collection="collection_name", parent=self)
-        ld.exec_()
-        print("load result", ld.result)
+
+    def on_apply_models(self):
+        print("apply models dood!")
+        spectra = self.collections["spectra"]
+        self.modeling_pattern.incorporate_data(spectra)
     
     def on_new_star(self):
         new_star = NewStarDialog.get_new(parent=self)

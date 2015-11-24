@@ -50,6 +50,8 @@ class Aperture(ThimblesTable, Base):
             info = {}
         self.info = info
 
+    def __repr__(self):
+        return "Aperture: {}".format(self.name)
 
 class Order(ThimblesTable, Base):
     number = Column(Integer)
@@ -57,6 +59,8 @@ class Order(ThimblesTable, Base):
     def __init__(self, number):
         self.number = number
 
+    def __repr__(self):
+        return "Order: {}".format(self.number)
 
 class Chip(ThimblesTable, Base):
     name = Column(String)
@@ -67,4 +71,7 @@ class Chip(ThimblesTable, Base):
         if info is None:
             info = {}
         self.info = info
+    
+    def __repr__(self):
+        return "Chip: {}".format(self.name)
 

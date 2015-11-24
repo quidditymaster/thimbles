@@ -1,6 +1,7 @@
 
 from thimblesgui import QtCore, QtGui, Qt
 from thimblesgui.object_creation_dialogs import NewObjectDialog
+from thimblesgui.loading_dialog import LoadDialog
 import thimbles as tmb
 QModelIndex = QtCore.QModelIndex
 
@@ -12,7 +13,7 @@ class QueryDialog(QtGui.QDialog):
     def __init__(
             self,
             active_collection,
-            default_query="db.query()",
+            #default_query="db.query()",
             parent=None
     ):
         super().__init__(parent=parent)
@@ -22,8 +23,8 @@ class QueryDialog(QtGui.QDialog):
         
         self.active_collection = active_collection
         query_expr = self.active_collection.default_query
-        if query_expr is None:
-            query_expr = default_query
+        #if query_expr is None:
+        #    query_expr = default_query
         self.query_edit = QtGui.QTextEdit(query_expr)
         self.query_edit.textChanged.connect(self.on_editing)
         layout.addWidget(self.query_edit, 0, 0, 1, 3)
@@ -185,20 +186,33 @@ class MappedListModel(QtCore.QAbstractTableModel):
 
 
 repr_column = ItemMappedColumn("value", getter=lambda x: x, value_converter=lambda x: repr(x))
-name_column = ItemMappedColumn("name", getter=lambda x: x.name, value_converter=lambda x: x)
 
 class ActiveCollection(QtCore.QObject):
     reset = QtCore.pyqtSignal()
     extended = QtCore.pyqtSignal()
     
-    def __init__(self, name, db, values=None, default_query=None):
+    def __init__(
+            self,
+            name,
+            db,
+            values=None,
+            default_query=None,
+            default_columns=None,
+            default_read_func=None,
+    ):
         super(ActiveCollection, self).__init__()
         self.name = name
         if values is None:
             values = []
         self.values = values
         self.db = db
-        self.default_query=None
+        if default_query is None:
+            default_query = "db.query().offset(0).limit(20)"
+        self.default_query=default_query
+        if default_columns is None:
+            default_columns = [repr_column]
+        self.default_columns = default_columns
+        self.default_read_func = default_read_func
         
         self.indexer = {}
         self.set(values, )
@@ -239,7 +253,7 @@ class ActiveCollectionView(QtGui.QWidget):
     ):
         super(ActiveCollectionView, self).__init__(parent)
         if columns is None:
-            columns = [repr_column]
+            columns = active_collection.default_columns
         self.selection = selection
         self.selection_channel = selection_channel
         self.active_collection = active_collection
@@ -249,16 +263,6 @@ class ActiveCollectionView(QtGui.QWidget):
         
         layout = QtGui.QVBoxLayout()
         layout.addWidget(self.menu_bar)
-        #button_box = QtGui.QGroupBox(parent=self)
-        #box_layout = QtGui.QHBoxLayout()
-        #make buttons
-        #self.query_btn = QtGui.QPushButton("query")
-        #self.query_btn.clicked.connect(self.on_edit_query)
-        #box_layout.addWidget(self.query_btn)
-        #self.edit_columns_btn = QtGui.QPushButton("doesn't work")
-        #box_layout.addWidget(self.edit_columns_btn)
-        #button_box.setLayout(box_layout)
-        #layout.addWidget(button_box)
         
         self.table_view = QtGui.QTableView()
         data_model = MappedListModel(active_collection, columns=columns)
@@ -282,29 +286,39 @@ class ActiveCollectionView(QtGui.QWidget):
         self.clear_act.setToolTip("empty the collection")
         self.clear_act.triggered.connect(self.on_clear)
         
-        self.query_act = QtGui.QAction("query", self)
+        self.load_act = QtGui.QAction("load", self)
+        self.load_act.setToolTip("load objects from file")
+        self.load_act.triggered.connect(self.on_load)
+        
+        self.query_act = QtGui.QAction("query db", self)
         self.query_act.setToolTip("populate collection from the database via a SQLAlchemy query")
         self.query_act.triggered.connect(self.on_query)
         
-        self.add_all_act = QtGui.QAction("add all", self)
+        self.add_all_act = QtGui.QAction("add to db", self)
         self.add_all_act.setToolTip("persist collection instances to the database")
         self.add_all_act.triggered.connect(self.on_add_all)
     
     def make_menu(self):
         menu_bar = QtGui.QMenuBar(parent=self)
         self.menu_bar = menu_bar
-        db_menu = self.menu_bar.addMenu("database")
-        db_menu.addAction(self.query_act)
-        db_menu.addAction(self.add_all_act)
-        
-        manage_menu = self.menu_bar.addMenu("manage")
-        manage_menu.addAction(self.clear_act)
+        data_menu = self.menu_bar.addMenu("data")
+        data_menu.addAction(self.load_act)
+        data_menu.addAction(self.query_act)
+        data_menu.addAction(self.add_all_act)
+        data_menu.addAction(self.clear_act)
     
     def on_add_all(self):
         self.active_collection.add_all()
     
     def on_clear(self):
         self.active_collection.set([])
+    
+    def on_load(self):
+        ld = LoadDialog(self.active_collection)
+        ld.exec_()
+        result = ld.result
+        if not result is None:
+            self.active_collection.set(result)
     
     def on_local_selection_changed(self, selected, deslected):
         if len(selected) > 0:

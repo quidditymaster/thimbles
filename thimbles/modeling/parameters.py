@@ -34,9 +34,11 @@ class Parameter(ThimblesTable, Base):
         "DistributionAlias",
         collection_class = NamedContexts,
     )   
+    estimators = relationship(
+        "EstimatorAlias",
+        collection_class = NamedContexts
+    )
     
-    _upstream_graph = None
-    _downstream_graph = None
     _setting_callbacks = None
     _invalidation_callbacks = None
     

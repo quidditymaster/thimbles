@@ -45,10 +45,12 @@ class NormalDistribution(Distribution):
     mean = Column(PickleType)
     ivar = Column(PickleType)
     
-    def __init__(self, mean, ivar, parameters=None):
+    def __init__(self, mean=None, ivar=None, parameters=None):
         Distribution.__init__(self, parameters=parameters)
-        self.mean = np.asarray(mean)
-        self.ivar = np.asarray(ivar)
+        if not mean is None:
+            self.mean = np.asarray(mean)
+        if not ivar is None:
+            self.ivar = np.asarray(ivar)
     
     @property
     def var(self):

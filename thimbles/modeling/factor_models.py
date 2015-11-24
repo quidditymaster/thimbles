@@ -83,6 +83,7 @@ class IntegerParameter(Parameter):
     def __init__(self, value=None):
         self._value = value
 
+
 class FloatParameter(Parameter):
     _id = Column(Integer, ForeignKey("Parameter._id"), primary_key=True)
     __mapper_args__={

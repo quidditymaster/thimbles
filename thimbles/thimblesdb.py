@@ -21,10 +21,6 @@ class ThimblesTable(object):
     def session(self):
         return self._sa_instance_state.session
 
-Option("database", option_style="parent_dict")
-Option("dialect", default="sqlite", parent="database")
-Option("echo_sql", parent="database", default=False)
-
 class ThimblesDB(object):
     """a wrapper for a database containing our data and our fit-models and parameters
 
@@ -77,26 +73,6 @@ class ThimblesDB(object):
 
 class HasName(object):
     name = Column(String)
-
-@task(result_name="tdb",
-    sub_kwargs={"fname":dict(
-        editor_style="file")},
-)
-def load_tdb(fname):
-    print("attempting to load ThimblesDB @ {}".format(fname))
-    return ThimblesDB(fname)
-
-
-@task(result_name="operation_error")
-def add_all(data, tdb):
-    try:
-        if not isinstance(data, list):
-            data = [data]
-        tdb.add_all(data)
-    except Exception as e:
-        return e
-    return None
-
 
 def find_or_create(
         instance_class,

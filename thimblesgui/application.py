@@ -30,8 +30,9 @@ class ThimblesMainApplication(QtGui.QApplication):
             for i in range(10):
                 time.sleep(0.01)
                 self.processEvents()
-
-        self.main_window = ThimblesMainWindow("junk")
+        
+        db_path = tmb.opts["GUI.project_path"]
+        self.main_window = ThimblesMainWindow(db_path)
         if not self.splash is None:
             self.splash.finish(self.main_window)
         self.main_window.show()

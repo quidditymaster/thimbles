@@ -439,6 +439,59 @@ def load_orders(fname):
     )
 
 
+def component_template_gv(mct):
+    parameter_classes = mct.parameter_classes
+    fetched_params = mct.fetched_parameters
+    pushed_params = mct.pushed_parameters
+    model_classes = mct.model_classes
+    minp_edges = mct.input_edges
+    mout_edges = mct.output_edges
+    
+    gv = ["digraph graphname{"]
+    
+    for param_name in parameter_classes:
+        node_id = "param.{}".format(param_name)
+        style="solid"
+        if param_name in fetched_params:
+            style="dashed"
+        gv.append("param_{param_name} [shape=oval, style={style}, label={param_name}];".format(style=style, param_name=param_name))
+    
+    context_node_str = "context_{context_name} [shape=polygon, sides=7, label={context_name}];"
+    for context_name in pushed_params.keys():
+        gv.append(context_node_str.format(context_name=context_name))
+    
+    for param_name in fetched_params:
+        context_name, pnwc = fetched_params[param_name]
+        gv.append(context_node_str.format(context_name=context_name))
+    
+    for model_name in model_classes:
+        gv.append("model_{model_name} [shape=box, label={model_name}];".format(model_name=model_name))
+    
+    for model_name in minp_edges:
+        for input_edge in minp_edges[model_name]:
+            param_name, model_port, compoundness = input_edge
+            if compoundness:
+                compound_indicator = "[]"
+            else:
+                compound_indicator = ""
+            gv.append('param_{param_name} -> model_{model_name} [label="{model_port}{compound_indicator}"];'.format(param_name=param_name, model_name=model_name, model_port=model_port, compound_indicator=compound_indicator))
+    
+    for model_name in mout_edges:
+        param_name = mout_edges[model_name]
+        gv.append("model_{model_name} -> param_{param_name};".format(param_name=param_name, model_name=model_name))
+    
+    for param_name in fetched_params:
+        context_name, in_context_pname = fetched_params[param_name]
+        gv.append("context_{context_name} -> param_{param_name} [label={in_context_pname}];".format(context_name=context_name, param_name=param_name, in_context_pname=in_context_pname))
+    
+    for context_name in pushed_params:
+        for context_edge in pushed_params[context_name]:
+            param_name, in_context_pname, is_compound = context_edge
+            gv.append("param_{param_name} -> context_{context_name} [label={in_context_pname}];".format(context_name=context_name, param_name=param_name, in_context_pname=in_context_pname))
+    
+    gv.append("}")
+    return "\n".join(gv)
+
 class ModelComponentTemplate(object):
     
     def __init__(
@@ -549,6 +602,7 @@ class ModelComponentTemplate(object):
                     alias,
                     parameter=instantiated_params[param_name],
                     is_compound=is_compound)
+######
 
 class ContextExtractor(object):
     
@@ -563,17 +617,58 @@ class ContextExtractor(object):
             context_dict[attr_name] = getattr(obj, attr_name)
         return context_dict
 
-class ModelingPattern(object):
+
+class ComponentRegistry(object):
+    
+    def __init__(self):
+        self.component_options = {}
+        self.default_query_exprs = {}
+        self.default_context_exprs = {}
+    
+    def set_query_expression(
+            self,
+            component_name,
+            template_name,
+            query_expression
+    ):
+        qexps = self.default_query_exprs.get(component_name, {})
+        qexps[template_name] = query_expression
+        self.default_query_exprs[component_name] = qexps
+    
+    def set_context_extractor_expression(
+            self,
+            component_name,
+            template_name,
+            context_expression
+    ):
+        qexps = self.default_query_exprs.get(component_name, {})
+        qexps[template_name] = query_expression
+        self.default_query_exprs[component_name] = qexps
+    
+    def register_template(
+            self,
+            component_name,
+            template_name,
+            template_instance,
+    ):
+        copts = self.component_options.get(component_name, {})
+        copts[template_name] = template_instance
+        self.component_options[component_name] = copts
+    
+    
+component_templates = ComponentRegistry()
+
+class ModelNetworkRecipe(object):
     
     def __init__(
             self,
             #a list of model components and their unique context specification
             #[[context_identity_tuple, template_instance,]]
             model_templates,
-            context_extractors,
+            context_extractor,
     ):
         self.model_templates = model_templates
-        self.context_extractors = context_extractors
+        self.extractor = context_extractors
         self.incorporated_context_tuples = set()
     
     def get_data_context(self, data_instance):
@@ -602,7 +697,7 @@ class ModelingPattern(object):
             self.incorporate_datum(datum)
         return
 
-global_mct = ModelComponentTemplate(
+default_global_mct = ModelComponentTemplate(
     parameter_classes = {
         "model_wvs":Parameter,
         "min_wv":FloatParameter,
@@ -639,12 +734,13 @@ global_mct = ModelComponentTemplate(
         ],
     }
 )
+component_templates.register_template("global", "default", default_global_mct)
 
 def dirac_vec(n, i):
     vec = np.zeros(n, dtype=float)
     vec[i] = 1.0
 
-sampling_mct = ModelComponentTemplate(
+default_sampling_mct = ModelComponentTemplate(
     parameter_classes = {
         "lsf":None, 
         "lsf_coeffs":PickleParameter, 
@@ -692,6 +788,11 @@ sampling_mct = ModelComponentTemplate(
     },
 )
 
+component_templates.register_template(
+    "sampling",
+    "default",
+    default_sampling_mct
+)
 
 def extract_pseudonorm_coeffs(spec_context):
     spec = spec_context['spectrum']
@@ -702,7 +803,7 @@ def extract_pseudonorm_coeffs(spec_context):
     return pseudonorm_coeffs
 
 
-normalization_mct = ModelComponentTemplate(
+default_normalization_mct = ModelComponentTemplate(
     parameter_classes = {
         "norm":Parameter, 
         "norm_coeffs":PickleParameter, 
@@ -733,14 +834,57 @@ normalization_mct = ModelComponentTemplate(
         ],
     },
 )
+component_templates.register_template("normalization", "default", default_normalization_mct)
 
-model_component_recipes = {
-    "spectral default":[
-        [("global",), global_mct,],
-        [("spectrum",), sampling_mct],
-        [("spectrum",), normalization_mct],
-    ],
-}
+plain_ew_mct = ModelComponentTemplate(
+    parameter_classes = {
+        "synthetic_ews":tmb.transitions.TransitionMappedParameter,
+        "measurement_ews":Parameter,
+        "spectrum_ews":Parameter,
+        "lsf_coeffs":PickleParameter, 
+        "sampling_matrix":Parameter, 
+        "model_wvs":None,
+        "model_lsf":None,
+        "spectrum_wvs":None
+    },
+    parameter_kwargs={
+        "lsf_coeffs":{"value":lambda x: dirac_vec(4, -1)}
+    },
+    model_classes={
+        "lsf_poly":tmb.modeling.PixelPolynomialModel, 
+        "sampling_matrix":tmb.spectrographs.SamplingModel,
+    },
+    input_edges = {
+        "lsf_poly":[["lsf_coeffs", "coeffs", False]],
+        "sampling_matrix":[
+            ["model_wvs", "input_wvs", False],
+            ["model_lsf", "input_lsf", False],
+            ["spectrum_wvs", "output_wvs", False],
+            ["lsf", "output_lsf", False],
+        ]
+    },
+    model_kwargs={
+        "lsf_poly":{
+            "npts":lambda x: len(x["spectrum"].flux)
+        },
+    },
+    output_edges = {
+        "lsf_poly":"lsf",
+        "sampling_matrix":"sampling_matrix",
+    },
+    fetched_parameters = {
+        "lsf":["spectrum", "lsf"],
+        "spectrum_wvs":["spectrum", "rest_wvs"],
+        "model_wvs":["global", "model_wvs"],
+        "model_lsf":["global", "model_lsf"],
+    },
+    pushed_parameters = {
+        "spectrum":[
+            ["lsf_coeffs", "lsf_coeffs", False],
+            ["sampling_matrix", "sampling_matrix", False],
+        ],
+    },
+)
 
 
 standard_config_head = \

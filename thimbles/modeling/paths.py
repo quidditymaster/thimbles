@@ -67,3 +67,27 @@ def find_all_paths(source, target, influence_graph=None):
         influence_graph = extract_influence_graph(target, direction="upstream")
     return nx.algorithms.simple_paths.all_simple_paths(influence_graph, source, target)
 
+
+def influence_graph_gv(influence_graph):
+    gv = ["digraph influence"]
+    nodes = influence_graph.nodes()
+    node_ids = {nodes[i]:"{}".format(i) for i in range(len(nodes))}
+    node_labels = {}
+    nodestr = "{node_id} [shape={shape}];\n"
+    for node in influence_graph.nodes():
+        if isinstance(node, Parameter):
+            shape = "oval"
+            label="Parameter"
+        elif isinstance(node, Model):
+            shape = "box"
+            label = "Model"
+        
+        node_id = node_ids[node]
+        gv.append(nodestr.format(shape=shape, node_id=node_id))
+    ###
+    for n1, n2 in influence_graph.edges():
+        n1id = node_ids[n1]
+        n2id = node_ids[n2]
+        gv.append("{} -> {};\n".format(n1id, n2id))
+    gv.append("}")
+    return "\n".join(gv)

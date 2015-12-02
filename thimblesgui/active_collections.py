@@ -25,7 +25,8 @@ class QueryDialog(QtGui.QDialog):
         query_expr = self.active_collection.default_query
         #if query_expr is None:
         #    query_expr = default_query
-        self.query_edit = QtGui.QTextEdit(query_expr)
+        self.query_edit = QtGui.QTextEdit()
+        self.query_edit.setPlainText(query_expr)
         self.query_edit.textChanged.connect(self.on_editing)
         layout.addWidget(self.query_edit, 0, 0, 1, 3)
         

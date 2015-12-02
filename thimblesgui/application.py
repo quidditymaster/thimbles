@@ -32,15 +32,20 @@ class ThimblesMainApplication(QtGui.QApplication):
                 self.processEvents()
         
         db_path = tmb.opts["GUI.project_path"]
-        self.main_window = ThimblesMainWindow(db_path)
-        if not self.splash is None:
-            self.splash.finish(self.main_window)
-        self.main_window.show()
+        self.project_db = tmb.ThimblesDB(db_path)
         
+        #self.main_window = ThimblesMainWindow(db_path)
+        #if not self.splash is None:
+        #    self.splash.finish(self.main_window)
+        #self.main_window.show()
         #screen_rect = self.desktop().screenGeometry()
         #print(screen_rect)
         #size = screen_rect.width(), screen_rect.height()
-        self.main_window.show()
+        #self.main_window.show()
+    
+    def finish_splash(self, mw):
+        if not self.splash is None:
+            self.splash.finish(mw)
     
     def on_quit (self):
         pass

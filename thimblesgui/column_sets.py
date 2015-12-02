@@ -1,6 +1,6 @@
 
 from thimblesgui.active_collections import ItemMappedColumn, repr_column
-from thimblesgui.contextualization_dialog import ContextualizationEngine
+from thimbles.contexts import ContextualizationEngine, contextualizers
 import thimbles as tmb
 from . import object_creation_dialogs
 
@@ -145,97 +145,113 @@ wvboundc = ItemMappedColumn(
     value_converter=lambda x: "{:8.0f} < wv < {:8.0f}".format(*x),
 )
 star_contextualizer = ContextualizationEngine(
-    context_class = tmb.star.Star,
-    filter_generator = lambda query, name : query.filter(tmb.star.Star.name == name),
-    object_creation_dialog = object_creation_dialogs.NewStarDialog,
+    table_spec = tmb.star.Star,
+    tag_filter_factory = lambda query, name : query.filter(tmb.star.Star.name == name),
+    extractors={
+        "star": lambda x: x,
+    },
 )
-sourcec = ItemMappedColumn(
-    "source",
+contextualizers.register(spine_name="stars", context_engine = star_contextualizer)
+
+starc = ItemMappedColumn(
+    "star",
     getter=lambda x:x.source,
     value_converter = lambda x : "{}".format(x),
-    string_converter = star_contextualizer,
+    string_converter = lambda x: star_contextualizer.find(tag=x)[0],
     setter=lambda x, y: setattr(x, "source", y),
 )
 
-
 Aperture = tmb.spectrographs.Aperture
 aperture_contextualizer = ContextualizationEngine(
-    context_class = Aperture,
-    filter_generator = lambda query, name : query.filter(Aperture.name == name),
-    object_creation_dialog = object_creation_dialogs.NewApertureDialog,
+    table_spec = Aperture,
+    tag_filter_factory = lambda query, name : query.filter(Aperture.name == name),
 )
 aperturec = ItemMappedColumn(
     "aperture",
     getter=lambda x:x.aperture,
     value_converter = lambda x : "{}".format(x),
-    string_converter=aperture_contextualizer,
+    string_converter= lambda x: aperture_contextualizer.find(tag=x)[0],
     setter=lambda x, y: setattr(x, "aperture", y),
 )
 
 
 Order = tmb.spectrographs.Order
 order_contextualizer = ContextualizationEngine(
-    context_class = Order,
-    filter_generator = lambda query, number : query.filter(Order.number == number),
-    object_creation_dialog = object_creation_dialogs.NewOrderDialog,
+    table_spec=Order,
+    tag_filter_factory = lambda query, number : query.filter(Order.number == number),
 )
 orderc = ItemMappedColumn(
     "order",
     getter=lambda x:x.order,
     value_converter = lambda x : "{}".format(x),
-    string_converter=order_contextualizer,
+    string_converter=lambda x : order_contextualizer.find(tag=x)[0],
     setter=lambda x, y: setattr(x, "order", y)
 )
 
 
 Chip = tmb.spectrographs.Chip
 chip_contextualizer = ContextualizationEngine(
-    context_class = Order,
-    filter_generator = lambda query, name : query.filter(Chip.name == name),
-    object_creation_dialog = object_creation_dialogs.NewChipDialog,
+    table_spec = Order,
+    tag_filter_factory = lambda query, name : query.filter(Chip.name == name),
 )
 chipc = ItemMappedColumn(
     "chip",
     getter=lambda x:x.chip,
     value_converter = lambda x : "{}".format(x),
-    string_converter=chip_contextualizer,
+    string_converter=lambda x: chip_contextualizer.find(tag=x)[0],
     setter=lambda x, y: setattr(x, "chip", y)
 )
 
 Exposure = tmb.observations.Exposure
 exposure_contextualizer = ContextualizationEngine(
-    context_class = Order,
-    filter_generator = lambda query, name : query.filter(Exposure.name == name),
-    object_creation_dialog = object_creation_dialogs.NewExposureDialog,
+    table_spec = Order,
+    tag_filter_factory = lambda query, name : query.filter(Exposure.name == name),
 )
 exposurec = ItemMappedColumn(
     "exposure",
     getter=lambda x:x.exposure,
     value_converter = lambda x : "{}".format(x),
-    string_converter = exposure_contextualizer,
+    string_converter = lambda x : exposure_contextualizer.find(tag=x)[0],
     setter = lambda x, y: setattr(x, "exposure", y)
 )
 
-
 snrc = ItemMappedColumn(
     "median SNR",
-    getter = lambda x: x.median_snr(),
+    getter = lambda x: x.snr_estimate(),
     value_converter = lambda x: "{:8.2f}".format(x),
 )
 
 resolutionc = ItemMappedColumn(
     "median resolution",
-    getter = lambda x: x.median_resolution(),
+    getter = lambda x: x.resolution_estimate(),
     value_converter = lambda x: "{:8.2f}".format(x),
+)
+
+rvc = ItemMappedColumn(
+    "radial velocity",
+    getter = lambda x: x["rv"].value,
+    setter = lambda x, v: setattr(x["rv"], "value" , v),
+    value_converter = lambda x: "{:5.2f} Km/s".format(x),
+    string_converter = float
+)
+
+vhelioc = ItemMappedColumn(
+    "rv helio",
+    getter = lambda x: x["delta_helio"].value,
+    setter = lambda x, v: setattr(x["delta_helio"], "value" , v),
+    value_converter = lambda x: "{:5.2f} Km/s".format(x),
+    string_converter = float
 )
 
 spectrum_columns = [
     wvboundc,
     snrc,
+    starc,
     resolutionc,
-    sourcec,
     aperturec,
     orderc,
     chipc,
-    exposurec
+    exposurec,
+    rvc,
+    vhelioc
 ]

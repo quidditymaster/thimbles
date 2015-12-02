@@ -293,10 +293,22 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
     def ivar(self, value):
         self.obs_flux.ivar = value
     
-    def median_snr(self):
-        return np.sqrt(np.median(self.flux**2 * self.ivar))
-
-    def median_resolution(self):
+    def snr_estimate(self, reducer=np.median, per="pixel"):
+        snr2_per_pix = self.flux**2*self.ivar
+        if per == "pixel":
+            snr2 = snr2_per_pix
+        elif per == "resolution-element":
+            snr2 = 2.0*self.lsf*snr2_per_pix
+        elif per == "angstrom":
+            dlam = scipy.gradient(self.wvs)
+            snr2 = snr2_per_pix/dlam
+        elif per == "terahertz":
+            freq = 299792458.0/(self.wvs*100) #f in TeraHertz if wvs in angstroms
+            dfreq = -scipy.gradient(freq)
+            snr2 = snr2_per_pix/dfreq
+        return np.sqrt(reducer(snr2))
+    
+    def resolution_estimate(self):
         wvs = self.wvs
         dwv = scipy.gradient(wvs)
         return np.median(wvs/dwv)
@@ -328,7 +340,7 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
         trim_edges: bool
           if True instead of returning the flux at the wavelengths
           specified in the sampling argument instead only return
-          the overlap of those wavelengths this spectrum.
+          the overlap of those wavelengths with this spectrum.
         
         return_matrix: bool
           if true return both a sampled version of the spectrum and the

@@ -6,52 +6,65 @@ from sqlalchemy.orm.exc import MultipleResultsFound, NoResultFound
 import thimbles as tmb
 
 class ContextualizationRegistry(object):
+    global_contexts = {}
     
     def __init__(self):
         self.contextualizers = []
-        self._gui_connected = False
+        self._db_connected = False
     
-    def connect_gui(self, main_window):
-        self.main_window = main_window
-        self._gui_connected = True
+    def connect_db(self, db):
+        self.db = db
+        self._db_connected = True
         for contextualizer in self.contextualizers:
-            contextualizer.connect_gui(self.main_window)
+            contextualizer.connect_db(self.main_window)
     
-    def register(self, contextualizer):
+    def register_contextualizer(self, contextualizer):
         self.contextualizers.append(contextualizer)
-        if self._gui_connected:
-            contextualizer.connect_gui(self.main_window)
+        if self._db_connected:
+            contextualizer.connect_db(self.main_window)
+    
+    def register_global_context(self, context_name, context):
+        self.global_contexts[context_name] = context
 
-contextualizations = ContextualizationRegistry()
+
+contextualization_registry = ContextualizationRegistry()
 
 class ContextualizationEngine(object):
-    gui = None
+    db = None
     
     def __init__(
             self,
-            context_class,
+            context_spine,
             filter_generator,
-            object_creation_dialog,
-            auto_create=True,
+            global_contexts=None,
+            on_none_found=None,
+            on_multiple_found=None,
     ):
-        self.context_class = context_class
+        self.context_spine = context_spine
         self.filter_generator = filter_generator
         self.object_creation_dialog = object_creation_dialog
-        contextualizations.register(self)
+        self.on_none_found = on_none_found
+        self.on_multiple_found=on_multiple_found
+        #contextualizations.register_contextualizer(self)
     
-    def __call__(self, context_tag):
-        query = self.gui.db.query(self.context_class)
+    def find(self, context_tag):
+        query = self.db.query(self.context_spine)
         query = self.filter_generator(query, context_tag)
         try:
             result = query.one()
         except MultipleResultsFound:
-            print("context filter not specific enough")
+            if not self.on_multiple_found is None:
+                self.on_multiple_found()
         except NoResultFound:
-            result = self.object_creation_dialog.get_new(self.gui)
+            if not self.on_none_found is None:
+                self.on_none_found()
         return result
     
-    def connect_gui(self, gui):
-        self.gui = gui
+    def expand(self, backbone_instance):
+        pass
+    
+    def connect_db(self, db):
+        self.db = db
 
 
 #TODO: different behaviors for multiple and no matching.

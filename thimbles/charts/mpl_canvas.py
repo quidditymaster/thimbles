@@ -37,7 +37,15 @@ class MatplotlibCanvas(FigureCanvas):
     
     """
     
-    def __init__(self, nrows, ncols, sharex, sharey, subplot_kws=None):
+    def __init__(
+            self,
+            nrows,
+            ncols,
+            sharex,
+            sharey,
+            projection=None,
+            subplot_kws=None
+    ):
         # setup Matplotlib Figure and Axis
         kws = dict(
             top=0.98,
@@ -80,7 +88,7 @@ class MatplotlibCanvas(FigureCanvas):
                 elif sharex == "all":
                     x_share_ax = self.axes[0]
                 else:
-                    raise Exception("don't recognize sharex behavior")
+                    raise Exception("don't recognize this sharex behavior")
                 if sharey == "none":
                     y_share_ax = None
                 elif sharey == "rows":
@@ -96,8 +104,8 @@ class MatplotlibCanvas(FigureCanvas):
                 elif sharey == "all":
                     y_share_ax = self.axes[0]
                 else:
-                    raise Exception("don't recognize sharey behavior")
-                self.axes.append(self.fig.add_subplot(nrows, ncols, ax_num, sharex=x_share_ax, sharey=y_share_ax))
+                    raise Exception("don't recognize this sharey behavior")
+                self.axes.append(self.fig.add_subplot(nrows, ncols, ax_num, sharex=x_share_ax, sharey=y_share_ax, projection=projection))
                 ax_num += 1
         
         #set the current axis to the first axis

@@ -544,13 +544,23 @@ class ModelComponentTemplate(object):
         self.fetched_parameters = fetched_parameters
         self.pushed_parameters = pushed_parameters
     
-    def apply_to_contexts(
+    def search_and_apply(
             self,
-            #a dictionary of named external contexts
-            #{"context_name":context_instance}
-            #e.g. {"spectrum": spec, "global":shared_params}
-            contexts,
+            context_engine,
     ):
+        modeling_spine = context_engine.find()
+        for backbone_instance in modeling_spine:
+            self.apply(backbone_instance, context_engine)
+    
+    def apply(
+            self,
+            backbone_instance,
+            context_engine,
+    ):
+        #a dictionary of named external contexts
+        #{"context_name":context_instance}
+        #e.g. {"spectrum": spec, "global":shared_params}
+        contexts = context_engine.contextualize(backbone_instance)
         #import pdb; pdb.set_trace()
         instantiated_params = {}
         for param_name in self.parameter_classes:
@@ -604,46 +614,10 @@ class ModelComponentTemplate(object):
                     is_compound=is_compound)
 ######
 
-class ContextExtractor(object):
-    
-    def __init__(self, defaults, context_attrs, extract_self_as):
-        self.defaults = defaults
-        self.context_attrs = context_attrs
-    
-    def __call__(self, obj):
-        context_dict = copy(defaults)
-        context_dict[self.extract_self_as] = obj
-        for attr_name in self.context_attrs:
-            context_dict[attr_name] = getattr(obj, attr_name)
-        return context_dict
-
-
 class ComponentRegistry(object):
     
     def __init__(self):
         self.component_options = {}
-        self.default_query_exprs = {}
-        self.default_context_exprs = {}
-    
-    def set_query_expression(
-            self,
-            component_name,
-            template_name,
-            query_expression
-    ):
-        qexps = self.default_query_exprs.get(component_name, {})
-        qexps[template_name] = query_expression
-        self.default_query_exprs[component_name] = qexps
-    
-    def set_context_extractor_expression(
-            self,
-            component_name,
-            template_name,
-            context_expression
-    ):
-        qexps = self.default_query_exprs.get(component_name, {})
-        qexps[template_name] = query_expression
-        self.default_query_exprs[component_name] = qexps
     
     def register_template(
             self,
@@ -654,8 +628,7 @@ class ComponentRegistry(object):
         copts = self.component_options.get(component_name, {})
         copts[template_name] = template_instance
         self.component_options[component_name] = copts
-    
-    
+
 component_templates = ComponentRegistry()
 
 class ModelNetworkRecipe(object):

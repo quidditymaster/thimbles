@@ -1,8 +1,8 @@
-from thimbles.sqlaimports import *
-from thimbles.thimblesdb import Base, ThimblesTable
-from thimbles.modeling import Parameter, FloatParameter
-from thimbles.sources import Source
-
+from .sqlaimports import *
+from .thimblesdb import Base, ThimblesTable
+from .modeling import Parameter, FloatParameter
+from .sources import Source
+from .contexts import ContextualizationEngine
 
 class Star(Source):
     _id = Column(Integer, ForeignKey("Source._id"), primary_key=True)
@@ -106,8 +106,8 @@ class Star(Source):
         return self["mass"].value
     
     @mass.setter
-    def age(self, value):
-        self["age"].set(value)
+    def mass(self, value):
+        self["mass"].set(value)
     
     @property
     def age(self):
@@ -116,3 +116,4 @@ class Star(Source):
     @age.setter
     def age(self, value):
         self["age"].set(value)
+

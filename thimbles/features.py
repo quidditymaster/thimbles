@@ -32,6 +32,7 @@ def voigt_feature_matrix(
         wv_indexer=None,
         n_gamma=60.0,
         n_sigma=6.0,
+        sigma_proportional=True,
 ):
     indexes = []
     profiles = []
@@ -63,6 +64,8 @@ def voigt_feature_matrix(
             prof = np.power(10.0, -saturations[col_idx]*prof)-1.0
             #and normalize to have equivalent width == 1 angstrom
             prof /= np.sum(prof*local_wv_grad)
+        if sigma_proportional:
+            prof *= csig
         indexes.append(np.array([np.arange(lb, ub+1), np.repeat(col_idx, len(prof))]))
         profiles.append(prof)
     indexes = np.hstack(indexes)
@@ -80,18 +83,18 @@ class FeatureMatrixModel(Model):
     def __init__(
             self,
             output_p,
-            model_wv_p,
-            centers_p,
-            sigma_p,
-            gamma_p,
-            saturation_p,
+            model_wv,
+            centers,
+            sigma,
+            gamma,
+            saturation,
     ):
         self.output_p = output_p
-        self.add_parameter("model_wvs", model_wv_p)
-        self.add_parameter("centers", centers_p)
-        self.add_parameter("sigmas", sigma_p)
-        self.add_parameter("gammas", gamma_p)
-        self.add_parameter("saturations", saturation_p)
+        self.add_parameter("model_wvs", model_wv)
+        self.add_parameter("centers", centers)
+        self.add_parameter("sigmas", sigma)
+        self.add_parameter("gammas", gamma)
+        self.add_parameter("saturations", saturation)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
@@ -120,16 +123,16 @@ class SigmaModel(Model):
     def __init__(
             self, 
             output_p, 
-            teff_p, 
-            vmicro_p, 
-            transition_wvs_p, 
-            ion_weights_p
+            teff, 
+            vmicro, 
+            transition_wvs, 
+            molecular_weights,
     ):
         self.output_p = output_p
-        self.add_parameter("teff", teff_p)
-        self.add_parameter("vmicro", vmicro_p)
-        self.add_parameter("wvs", transition_wvs_p)
-        self.add_parameter("weights", ion_weights_p)
+        self.add_parameter("teff", teff)
+        self.add_parameter("vmicro", vmicro)
+        self.add_parameter("wvs", transition_wvs)
+        self.add_parameter("weights", molecular_weights)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
@@ -204,49 +207,53 @@ class RelativeStrengthMatrixModel(Model):
     def __init__(
             self,
             output_p,
-            grouping_p,
-            transition_indexer_p,
-            exemplar_indexer_p,
-            pseudostrength_p,
-            cog_p,
+            grouping,
+            transition_indexer,
+            pseudostrength,
+            row_indexer,
+            col_indexer,
+            cog,
     ):
         self.output_p = output_p
-        self.add_parameter("groups", grouping_p)
-        self.add_parameter("transition_indexer", transition_indexer_p)
-        self.add_parameter("exemplar_indexer", exemplar_indexer_p)
-        self.add_parameter("pseudostrength", pseudostrength_p)
-        self.add_parameter("cog", cog_p)
-        
+        self.add_parameter("groups", grouping)
+        self.add_parameter("transition_indexer", transition_indexer)
+        self.add_parameter("pseudostrength", pseudostrength)
+        self.add_parameter("row_indexer", row_indexer)
+        self.add_parameter("col_indexer", row_indexer)
+        self.add_parameter("cog", cog)
+    
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
         row_idxs = [] #transition indexes
         col_idxs = [] #exemplar indexes
         rel_strengths = []
         groups = vdict[self.inputs["groups"]]
-        exemplar_indexer = vdict[self.inputs["exemplar_indexer"]]
+        row_indexer = vdict[self.inputs["row_indexer"]]
+        col_indexer = vdict[self.inputs["col_indexer"]]
         transition_indexer = vdict[self.inputs["transition_indexer"]]
         pseudostrengths = vdict[self.inputs["pseudostrength"]]
         cog = vdict[self.inputs["cog"]]
-        exemplars = exemplar_indexer.transitions
-        for exemplar_idx, exemplar in enumerate(exemplars):
-            exemp_idx_as_trans = transition_indexer[exemplar]
-            exemplar_pst = pseudostrengths[exemp_idx_as_trans]
+        col_transitions = col_indexer.transitions
+        for col_idx, exemplar_trans in enumerate(col_transitions):
+            global_trans_idx = transition_indexer[exemplar]
+            exemplar_pst = pseudostrengths[global_trans_idx]
             exemplar_mult = cog(exemplar_pst)
-            grouped_transitions = groups.get(exemplar)
+            grouped_transitions = groups.get(exemplar_trans)
             if grouped_transitions is None:
                 continue
             for trans in grouped_transitions:
                 ctrans_idx = transition_indexer.trans_to_idx.get(trans)
-                if ctrans_idx is None:
+                row_idx = row_indexer.trans_to_idx.get(trans)
+                if (ctrans_idx is None) or (row_idx is None):
                     continue
                 trans_pst = pseudostrengths[ctrans_idx]
                 trans_mult = cog(trans_pst)
                 delt_log_strength = trans_mult-exemplar_mult
                 delt_log_strength = min(3.0, delt_log_strength)
                 rel_strengths.append(np.power(10.0, delt_log_strength))
-                col_idxs.append(exemplar_idx)
-                row_idxs.append(ctrans_idx)
-        out_shape = (len(transition_indexer), len(exemplars))
+                col_idxs.append(col_idx)
+                row_idxs.append(row_idx)
+        out_shape = (len(row_indexer), len(col_indexer))
         return scipy.sparse.csr_matrix((rel_strengths, (row_idxs, col_idxs)), shape=out_shape)
 
 class CollapsedFeatureMatrixModel(Model):
@@ -255,10 +262,15 @@ class CollapsedFeatureMatrixModel(Model):
         "polymorphic_identity":"GroupedFeatureMatrixModel",
     }
     
-    def __init__(self, output_p, feature_matrix_p, grouping_matrix_p):
+    def __init__(
+            self,
+            output_p,
+            feature_matrix,
+            grouping_matrix,
+    ):
         self.output_p = output_p
-        self.add_parameter("feature_matrix", feature_matrix_p)
-        self.add_parameter("grouping_matrix", grouping_matrix_p)
+        self.add_parameter("feature_matrix", feature_matrix)
+        self.add_parameter("grouping_matrix", grouping_matrix)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict()

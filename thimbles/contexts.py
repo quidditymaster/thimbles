@@ -1,6 +1,12 @@
 
 from copy import copy
 import thimbles.workingdataspace as wds
+from thimbles.sources import Source
+import thimbles as tmb
+from thimbles.star import Star
+from thimbles.spectrographs import Aperture, Chip, Order
+from thimbles.observations import Exposure
+from thimbles.spectrum import Spectrum
 
 class ContextualizationEngine(object):
     cregistry = None
@@ -37,7 +43,7 @@ class ContextualizationEngine(object):
         if self._query_db is db:
             if not self._query is None:
                 return self._query
-        q = db.query(self.table_spec)
+        q = db.query(*self.table_spec)
         if not self.join_spec is None:
             q = q.join(self.join_spec)
         if not self.filter_factory is None:
@@ -68,19 +74,99 @@ class ContextualizationEngine(object):
             cdict[cname] = self.extractors[cname](instance)
         return cdict
 
+    def set_context_registry(self, reg):
+        self.cregistry = reg
+
 
 class ContextualizationRegistry(object):
     
     def __init__(self):
         self.global_contexts = {}
         self.spines = {}
+        self.modeling_templates = {}
     
     def add_global(self, name, instance):
         self.global_contexts[name] = instance
     
-    def register(self, spine_name, context_engine):
-        self.spines[spine_name] = context_engine
-        context_engine.cregistry = self
-
+    def __getitem__(self, index):
+        return self.spines[index]
+    
+    def __setitem__(self, index, value):
+        value.set_context_registry(self)
+        self.spines[index] = value
 
 contextualizers = ContextualizationRegistry()
+global_ce = ContextualizationEngine(
+    table_spec=tmb.analysis.SharedParameterSpace,
+    filter_factory=lambda q: q.filter(tmb.analysis.SharedParameterSpace.name == "global"),
+)
+contextualizers["global"] = global_ce
+
+star_contextualizer = ContextualizationEngine(
+    table_spec = [Star],
+    tag_filter_factory = lambda query, name : query.filter(Star.name == name),
+    extractors={
+        "star": lambda x: x,
+    },
+)
+contextualizers["stars"] = star_contextualizer
+
+aperture_contextualizer = ContextualizationEngine(
+    table_spec = Aperture,
+    tag_filter_factory = lambda query, name : query.filter(tmb.spectrographs.Aperture.name == name),
+    extractors={
+        "aperture": lambda x:x,
+    }
+)
+contextualizers["apertures"] = aperture_contextualizer
+
+order_contextualizer = ContextualizationEngine(
+    table_spec=[tmb.spectrographs.Order],
+    tag_filter_factory = lambda query, number : query.filter(Order.number == number),
+    extractors={
+        "order": lambda x: x
+    }
+)
+contextualizers["orders"] = order_contextualizer
+
+chip_contextualizer = ContextualizationEngine(
+    table_spec = Order,
+    tag_filter_factory = lambda query, name : query.filter(Chip.name == name),
+    extractors = {
+        "chip": lambda x: x,
+    }
+)
+contextualizers["chips"] = chip_contextualizer
+
+exposure_contextualizer = ContextualizationEngine(
+    table_spec = [Exposure],
+    tag_filter_factory = lambda query, name : query.filter(Exposure.name == name),
+    extractors = {
+        "exposure": lambda x: x,
+    }
+)
+contextualizers["exposures"] = exposure_contextualizer
+
+
+spectrum_contextualizer = ContextualizationEngine(
+    table_spec = [Spectrum],
+    extractors = {
+        "spectrum" : lambda x: x,
+        "source" : lambda x: x.source,
+        "exposure" : lambda x: x.exposure,
+        "aperture" : lambda x: x.aperture,
+        "chip": lambda x: x.chip
+    }
+)
+contextualizers["spectra"] = spectrum_contextualizer
+
+
+source_spectra_pairs = ContextualizationEngine(
+    table_spec = [Spectrum, Source]
+    extractors = {
+        "spectrum" : lambda x: x[0],
+        "source" : lambda x: x[1],
+    }
+)
+contextualizers["source spectrum pairs"] = source_spectra_pairs
+

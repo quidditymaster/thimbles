@@ -617,17 +617,17 @@ class ModelComponentTemplate(object):
 class ComponentRegistry(object):
     
     def __init__(self):
-        self.component_options = {}
+        self.spines = {}
     
     def register_template(
             self,
-            component_name,
+            spine_name,
             template_name,
             template_instance,
     ):
-        copts = self.component_options.get(component_name, {})
+        copts = self.spines.get(spine_name, {})
         copts[template_name] = template_instance
-        self.component_options[component_name] = copts
+        self.spines[spine_name] = copts
 
 component_templates = ComponentRegistry()
 
@@ -670,12 +670,18 @@ class ModelNetworkRecipe(object):
             self.incorporate_datum(datum)
         return
 
-default_global_mct = ModelComponentTemplate(
+global_mct = ModelComponentTemplate(
     parameter_classes = {
-        "model_wvs":Parameter,
         "min_wv":FloatParameter,
         "max_wv":FloatParameter,
+        "model_wvs":Parameter,
         "model_lsf":FloatParameter,
+        "transition_indexer":tmb.transitions.TransitionIndexerParameter,
+        "measurement_indexer":tmb.transitions.TransitionIndexerParameter,
+        "primary_indexer":tmb.transitions.TransitionIndexerParameter,
+        "transition_wvs":Parameter,
+        "measurement_grouping":tmb.transitions.ExemplarGroupingParameter,
+        "primary_grouping":tmb.transitions.ExemplarGroupingParameter,
     },
     parameter_kwargs = {
         "min_wv":{"value":lambda x: tmb.opts["modeling.min_wv"]},
@@ -683,12 +689,20 @@ default_global_mct = ModelComponentTemplate(
         "model_lsf":{"value":0.0},
     },
     model_classes={
-        "model_wvs":tmb.coordinatization.LogLinearCoordinatizationModel,
+        "wavelength_solution":tmb.coordinatization.LogLinearCoordinatizationModel,
+        "wv_vectorizer":tmb.features.TransitionWavelengthVectorModel,
+        "molecular_weight_vectorizer":tmb.features.IonWeightVectorModel,
     },
     input_edges = {
-        "model_wvs":[
+        "wavelength_solution":[
             ["min_wv", "min_p", False],
             ["max_wv", "max_p", False],
+        ],
+        "wv_vectorizer":[
+            ["transition_indexer", "indexer", False],
+        ],
+        "molecular_weight_vectorizer":[
+            ["transition_indexer", "indexer", False]
         ],
     },
     model_kwargs = {
@@ -697,17 +711,26 @@ default_global_mct = ModelComponentTemplate(
         }
     },
     output_edges = {
-        "model_wvs":"model_wvs",
+        "wavelength_solution":"model_wvs",
+        "wv_vectorizer":"transition_wvs",
+        "molecular_weight_vectorizer":"molecular_weights"
     },
     fetched_parameters={},
     pushed_parameters={
         "global":[
+            ["min_wv", "min_wv", False],
+            ["max_wv", "max_wv", False],
             ["model_wvs", "model_wvs", False],
             ["model_lsf", "model_lsf", False],
+            ["transition_wvs", "transition_wvs", False],
+            ["molecular_weights", "molecular_weights", False],
+            ["transition_indexer", "transition_indexer", False],
+            ["measurement_indexer", "measurement_indexer", False],
+            ["primary_indexer", "primary_indexer", False],
         ],
     }
 )
-component_templates.register_template("global", "default", default_global_mct)
+component_templates.register_template("global", "default", global_mct)
 
 def dirac_vec(n, i):
     vec = np.zeros(n, dtype=float)
@@ -760,7 +783,6 @@ default_sampling_mct = ModelComponentTemplate(
         ],
     },
 )
-
 component_templates.register_template(
     "sampling",
     "default",
@@ -802,12 +824,256 @@ default_normalization_mct = ModelComponentTemplate(
     },
     pushed_parameters = {
         "spectrum":[
-            ["norm_coeffs", "lsf_coeffs", False],
-            ["norm", "norm_coeffs", False],
+            ["norm", "norm", False],
+            #["norm_coeffs", "norm_coeffs", False],
         ],
     },
 )
 component_templates.register_template("normalization", "default", default_normalization_mct)
+
+
+fluxed_source_mct = ModelComponentTemplate(
+    parameter_classes = {
+        "source_features":None,
+        "continuum_shape":None,
+        "central_flux":Parameter,
+        "broadening_matrix":None,
+        "source_flux":Parameter,
+    },
+    parameter_kwargs = {},
+    model_classes={
+        "flux_multiplier":tmb.modeling.MultiplierModel,
+        "broadener":tmb.modeling.MatrixMultiplierModel
+    },
+    input_edges={
+        "flux_multiplier":[
+            ["features", "factors", True],
+            ["continuum_shape", "factors", True],
+        ],
+        "broadener":[
+            ["central_flux", "vector", False],
+            ["broadening_matrix", "matrix", True],
+        ],
+    },
+    model_kwargs={},
+    output_edges={
+        "flux_multiplier":"central_flux",
+        "broadener":"source_flux",
+    },
+    fetched_parameters = {
+        "continuum_shape":["source", "continuum_shape"],
+        "source_features":["source", "source_features"],
+        "broadengin_matrix":["source", "broadening_matrix"],
+    },
+    pushed_parameters = {
+        "source":[
+            ["central_flux", "central_flux", False],
+            ["source_flux", "source_flux", True],
+        ],
+    }
+)
+component_templates.register_template("source", "fluxed source", fluxed_source_mct)
+
+
+bare_source_mct = ModelComponentTemplate(
+    parameter_classes = {
+        "source_flux":Parameter,
+    },
+    parameter_kwargs = {},
+    model_classes={
+        "flux_multiplier":tmb.modeling.MultiplierModel,
+        "broadener":tmb.modeling.MatrixMultiplierModel
+    },
+    input_edges={
+        "flux_multiplier":[
+            ["features", "factors", True],
+            ["continuum_shape", "factors", True],
+        ],
+        "broadener":[
+            ["central_flux", "vector", False],
+            ["broadening_matrix", "matrix", True],
+        ],
+    },
+    model_kwargs={},
+    output_edges={
+        "flux_multiplier":"central_flux",
+        "broadener":"source_flux",
+    },
+    fetched_parameters = {
+        "continuum_shape":["source", "continuum_shape"],
+        "source_features":["source", "source_features"],
+        "broadengin_matrix":["source", "broadening_matrix"],
+    },
+    pushed_parameters = {
+        "source":[
+            ["source_flux", "source_flux", True],
+        ],
+    }
+)
+component_templates.register_template("source", "source flux", fluxed_source_mct)
+
+
+star_mct = ModelComponentTemplate(
+    parameter_classes = {
+        "central_features":Parameter,
+        "features":Parameter,
+        "broadening_matrix":Parameter,
+        "sigma_vec":Parameter,
+        "gamma_vec":Parameter,
+        "pseudostrength":Parameter,
+        "reference_gamma":FloatParameter,
+        "relative_ion_density":tmb.abundances.IonMappedParameter,
+        "cog":Parameter,
+        "teff":None,
+        "vmicro":None,
+        "vsini":None,
+        "vmacro":None,
+        "ldark":None,
+        "model_wvs":None,
+        "transition_wvs":None,
+        "molecular_weights":None,
+        "transition_indexer":None,
+        "measurement_indexer":None,
+        "measurement_grouping":None,
+        "primary_indexer":None,
+        "feature_matrix":Parameter,
+        "measurement_rsm":Parameter,
+        "primary_rsm":Parameter,
+        "condensed_feature_matrix":Parameter,
+        "saturation_offset":FloatParameter,
+        "saturation":Parameter,
+        "measured_ews":tmb.transitions.TransitionMappedParameter,
+        "measured_ew_vec":Parameter,
+    },
+    parameter_kwargs={
+        "reference_gamma":{"value":0.02},
+        "saturation_offset":{"value":-1.0},
+    },
+    model_classes={
+        "broadening_matrix_model":tmb.rotation.BroadeningMatrixModel,
+        "broadener":tmb.modeling.MatrixMultiplierModel,
+        "sigma_model":tmb.features.SigmaModel,
+        "gamma_model":tmb.features.GammaModel,
+        "pseudostrength_model":tmb.cog.PseudoStrengthModel,
+        "cog_model":tmb.cog.SaturationCurveModel,
+        "saturation_model":tmb.cog.SaturationModel,
+        "feature_matrix_model":tmb.features.FeatureMatrixModel,
+        #"primary_grouping_matrix_model":tmb.features.RelativeStrengthMatrixModel,
+        "measurement_rsm_model":tmb.features.RelativeStrengthMatrixModel,
+        "feature_condenser":tmb.features.CollapsedFeatureMatrixModel,
+        "feature_model":tmb.modeling.MatrixMultiplierModel,
+        "ew_vectorizer":tmb.transitions.TransitionMappedVectorizerModel,
+    },
+    input_edges = {
+        "sigma_model":[
+            ["teff", "teff", False],
+            ["vmicro", "vmicro", False],
+            ["transition_wvs", "transition_wvs", False],
+            ["molecular_weights", "molecular_weights", False],
+        ],
+        "gamma_model":[
+            ["reference_gamma", "gamma", False],
+            ["transition_wvs", "transition_wvs", False],
+        ],
+        "pseudostrength_model":[
+            ["transition_indexer", "transition_indexer", False,],
+            ["relative_ion_density", "ion_correction", False,],
+            ["teff", "teff", False],
+        ],
+        "saturation_model":[
+            ["pseudostrength", "pseudostrength", False,],
+            ["saturation_offset", "offset", False],
+        ],
+        "feature_matrix_model":[
+            ["model_wvs", "model_wvs", False],
+            ["transition_wvs", "centers", False],
+            ["sigma_vec", "sigma", False],
+            ["gamma_vec", "gamma", False],
+            ["saturation", "saturation", False],
+        ],
+        "measurement_rsm_model":[
+            ["measurement_grouping", "measurement_grouping", False],
+            ["transition_indexer", "transition_indexer", False],
+            ["measurement_indexer","exemplar_indexer", False],
+            ["pseudostrength", "pseudostrength", False],
+            ["cog", "cog", False],
+        ],
+        "cog_model":[
+            ["gamma_vec", "gamma", False],
+            ["sigma_vec", "sigma", False],
+        ],
+        "broadening_matrix_model":[
+            ["model_wvs", "model_wvs", False],
+            ["vsini", "vsini", False],
+            ["vmacro", "vmacro", False],
+            ["ldark", "ldark", False],
+        ],
+        "broadener":[
+            ["broadening_matrix", "matrix", False],
+            ["central_features", "vector", False],
+        ],
+        "feature_condenser":[
+            ["feature_matrix", "feature_matrix", False],
+            ["measurement_rsm", "grouping_matrix", False],
+        ],
+        "feature_model":[
+            ["condensed_feature_matrix", "matrix", False],
+            ["measured_ew_vec", "vector", False],
+        ],
+        "ew_vectorizer":[
+            ["measured_ews", "mapped_values", False],
+            ["measurement_indexer", "indexer", False],
+        ],
+    },
+    model_kwargs={},
+    output_edges = {
+        "sigma_model":"sigma_vec",
+        "gamma_model":"gamma_vec",
+        "pseudostrength_model":"pseudostrength",
+        "saturation_model":"saturation",
+        "broadener":"features",
+        "broadening_matrix_model":"broadening_matrix",
+        "cog_model":"cog",
+        "measurement_rsm_model":"measurement_rsm",
+        "primary_rsm_model":"primary_rsm",
+        "feature_condenser":"condensed_feature_matrix",
+        "feature_model":"central_features",
+        "feature_matrix_model":"feature_matrix",
+        "ew_vectorizer":"measured_ew_vec",
+    },
+    fetched_parameters = {
+        "teff":["star", "teff"],
+        "vmicro":["star", "vmicro"],
+        "vmacro":["star", "vmacro"],
+        "vsini":["star", "vsini"],
+        "ldark":["star", "ldark"],
+        "measurement_indexer":["global", "measurement_indexer"],
+        "measurement_grouping":["global", "measurement_grouping"],
+        "primary_grouping":["global", "primary_grouping"],
+        "transition_indexer": ["global", "transition_indexer"],
+        "primary_indexer":["global", "primary_indexer"],
+        "transition_wvs":["global", "transition_wvs"],
+        #"primary_associator": ["global", "primary_map"],
+        #"measurement_associator": ["global"
+        "molecular_weights":["global", "full_molecular_weights"],
+        "model_wvs":["global", "model_wvs"],
+    },
+    pushed_parameters = {
+        "star":[
+            #["features", "features", False],
+            #["full_ews", "full_ews", False],
+            #["measured_ews", "measured_ews", False],
+            #["sigma_vec", "sigma_vec", False],
+            #["gamma_vec", "gamma_vec", False],
+            #["relative_ion_density", "relative_ion_density", False],
+            #["broadening_matrix", "broadening_matrix", False],
+            #["feature_matrix", "feature_matrix", False],
+            #["pseudostrengths", "pseudostrengths", False],
+        ],
+    },
+)
+component_templates.register_template("stars", "default", star_mct)
+
 
 plain_ew_mct = ModelComponentTemplate(
     parameter_classes = {

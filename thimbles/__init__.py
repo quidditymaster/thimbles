@@ -30,6 +30,7 @@ from . import modeling
 from .periodictable import ptable, atomic_number, atomic_symbol
 from . import io
 from . import sources
+from .star import Star
 from . import photometry
 from . import spectrographs
 from . import observations
@@ -53,7 +54,6 @@ from . import tellurics
 from . import cog
 
 from .thimblesdb import ThimblesDB
-from .star import Star
 from . import analysis
 
 from thimbles import workingdataspace as wds

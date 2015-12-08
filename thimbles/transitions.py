@@ -103,52 +103,64 @@ class Transition(ThimblesTable, Base):
         return self.pseudo_strength()
 
 
-class TransitionIndex(Base, ThimblesTable):
+class TransIndexAssoc(Base, ThimblesTable):
     _transition_id = Column(Integer, ForeignKey("Transition._id"))
     transition = relationship("Transition", foreign_keys=_transition_id)
-    index = Column(Integer)
+    #index = Column(Integer)
     _indexer_p_id = Column(Integer, ForeignKey("TransitionIndexerParameter._id"))
     
-    def __init__(self, transition, index):
+    def __init__(self, transition):
         self.transition = transition
-        self.index = index
+        #self._indexer_param = indexer_param
 
 
 class TransitionIndexer(object):
     
     def __init__(self):
-        self.transitions = []
-        self.trans_to_idx = {}
-        self._trans_idx_list = []
+        self._trans_to_idx = None
+        self._transitions = None
+        self._trans_assocs = []
+    
+    def _reset_tmaps(self):
+        self._trans_to_idx = None
+        self._transitions = None
+    
+    @property
+    def transitions(self):
+        if self._transitions is None:
+            self._transitions = [tix.transition for tix in self._trans_assocs]
+        return self._transitions
+    
+    @property
+    def trans_to_idx(self):
+        if self._trans_to_idx is None:
+            self._trans_to_idx = {self.transitions[i]:i for i in range(len(self.transitions))}
+        return self._trans_to_idx
     
     def extend_transitions(self, transitions):
-        for t in transitions:
-            t_i = len(self.transitions)
-            t_index = TransitionIndex(t, t_i)
+        for trans in transitions:
+            t_index = TransIndexAssoc(trans)
             self._add_transition_index(t_index)
     
     @collection.appender
     def _add_transition_index(self, t_index):
-        self._trans_idx_list.append(t_index)
-        t = t_index.transition
-        i = t_index.index
-        n_current = len(self.transitions)
-        if n_current < i+1:
-            self.transitions.extend([None for j in range(i+1-n_current)])
-        self.transitions[i] = t
-        self.trans_to_idx[t] = i
+        trans = t_index.transition
+        self.trans_to_idx[trans] = len(self.transitions)
+        self.transitions.append(trans)
+        self._trans_assocs.append(t_index)
     
     @collection.remover
     def _remove_transition_index(self, t_index):
-        t = t_index.transition
-        i = t_index.index
+        #t = t_index.transition
         self._trans_idx_list.remove(t_index)
-        self.transitions[i] = None
-        self.trans_to_idx.pop(t)
+        t_index.session.delete(t_index)
+        self._reset_tmaps()
+        #self.transitions[i] = None
+        #self.trans_to_idx.pop(t)
     
     @collection.iterator
     def __iter__(self):
-        for t_idx in self._trans_idx_list:
+        for t_idx in self._trans_assocs:
             yield t_idx
     
     def __getitem__(self, index):
@@ -167,13 +179,15 @@ class TransitionIndexerParameter(Parameter):
         "polymorphic_identity":"TransitionIndexerParameter",
     }
     _value = relationship(
-        "TransitionIndex", 
+        "TransIndexAssoc", 
         collection_class=TransitionIndexer,
     )
     
-    def __init__(self, transitions):
+    def __init__(self, transitions=None):
+        if transitions  is None:
+            transitions = []
         self._value.extend_transitions(transitions)
-    
+
 
 class TransitionMappedFloat(Base, ThimblesTable):
     _transition_id = Column(Integer, ForeignKey("Transition._id"))
@@ -193,14 +207,14 @@ class TransitionMappedParameter(Parameter):
     }
     _transition_map = relationship(
         "TransitionMappedFloat",
-        collection_class=attribute_mapped_collection("transition")
+        collection_class=attribute_mapped_collection("transition"),
     )
     _value = association_proxy("_transition_map", "value")
     
-    def __init__(self, mapped_values=None):
-        if mapped_values is None:
-            mapped_values = {}
-        self._value = mapped_values
+    def __init__(self, value=None):
+        if value is None:
+            value = {}
+        self._value = value
 
 
 class TransitionMappedVectorizerModel(Model):
@@ -213,13 +227,13 @@ class TransitionMappedVectorizerModel(Model):
     def __init__(
             self, 
             output_p, 
-            transition_mapped_p, 
-            indexer_p, 
+            mapped_values, 
+            indexer, 
             fill_value=0.0
     ):
         self.output_p = output_p
-        self.add_parameter("tdict", transition_mapped_p)
-        self.add_parameter("indexer", indexer_p)
+        self.add_parameter("tdict", transition_map)
+        self.add_parameter("indexer", indexer)
         self.fill_value = fill_value
     
     def __call__(self, vprep=None):
@@ -252,7 +266,7 @@ class ExemplarMap(object):
     def __init__(self):
         self.groups = {}
         self._groupings = []
-        
+    
     def get(self, index):
         return self.groups.get(index)
     
@@ -299,7 +313,9 @@ class ExemplarGroupingParameter(Parameter):
         collection_class=ExemplarMap,
     )
     
-    def __init__(self, groups):
+    def __init__(self, groups=None):
+        if groups is None:
+            groups = {}
         self._value.extend_groups(groups)
 
 transgroup_assoc = sa.Table("transgroup_assoc", Base.metadata,

@@ -675,6 +675,7 @@ global_mct = ModelComponentTemplate(
         "min_wv":FloatParameter,
         "max_wv":FloatParameter,
         "model_wvs":Parameter,
+        "molecular_weights":Parameter,
         "model_lsf":FloatParameter,
         "transition_indexer":tmb.transitions.TransitionIndexerParameter,
         "measurement_indexer":tmb.transitions.TransitionIndexerParameter,
@@ -706,7 +707,7 @@ global_mct = ModelComponentTemplate(
         ],
     },
     model_kwargs = {
-        "model_wvs":{
+        "wavelength_solution":{
             "npts":lambda x: int(np.log(opts["modeling.max_wv"]/opts["modeling.min_wv"])*opts["modeling.resolution"])+1
         }
     },
@@ -730,7 +731,7 @@ global_mct = ModelComponentTemplate(
         ],
     }
 )
-component_templates.register_template("global", "default", global_mct)
+component_templates.register_template("global", "ew_base", global_mct)
 
 def dirac_vec(n, i):
     vec = np.zeros(n, dtype=float)

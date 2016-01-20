@@ -336,6 +336,7 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
                          given and return the current spectrum between
                          those wavelength bounds.
           "rebin"        apply a flux preserving rebinning procedure.
+          "lsf-convolved" attempt to do a differential convolution and rebinning of the input spectrum.
         
         trim_edges: bool
           if True instead of returning the flux at the wavelengths

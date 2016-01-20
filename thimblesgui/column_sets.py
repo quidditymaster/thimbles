@@ -1,6 +1,6 @@
 
 from thimblesgui.active_collections import ItemMappedColumn, repr_column
-from thimbles.contexts import ContextualizationEngine, contextualizers
+from thimbles.contexts import contextualizers
 import thimbles as tmb
 from . import object_creation_dialogs
 
@@ -144,15 +144,8 @@ wvboundc = ItemMappedColumn(
     getter=lambda x: extract_bound(x.wv),
     value_converter=lambda x: "{:8.0f} < wv < {:8.0f}".format(*x),
 )
-star_contextualizer = ContextualizationEngine(
-    table_spec = tmb.star.Star,
-    tag_filter_factory = lambda query, name : query.filter(tmb.star.Star.name == name),
-    extractors={
-        "star": lambda x: x,
-    },
-)
-contextualizers.register(spine_name="stars", context_engine = star_contextualizer)
 
+star_contextualizer = contextualizers.spines["stars"]
 starc = ItemMappedColumn(
     "star",
     getter=lambda x:x.source,
@@ -161,11 +154,9 @@ starc = ItemMappedColumn(
     setter=lambda x, y: setattr(x, "source", y),
 )
 
+
 Aperture = tmb.spectrographs.Aperture
-aperture_contextualizer = ContextualizationEngine(
-    table_spec = Aperture,
-    tag_filter_factory = lambda query, name : query.filter(Aperture.name == name),
-)
+aperture_contextualizer = contextualizers["apertures"]
 aperturec = ItemMappedColumn(
     "aperture",
     getter=lambda x:x.aperture,
@@ -176,10 +167,7 @@ aperturec = ItemMappedColumn(
 
 
 Order = tmb.spectrographs.Order
-order_contextualizer = ContextualizationEngine(
-    table_spec=Order,
-    tag_filter_factory = lambda query, number : query.filter(Order.number == number),
-)
+order_contextualizer = contextualizers["orders"]
 orderc = ItemMappedColumn(
     "order",
     getter=lambda x:x.order,
@@ -190,10 +178,6 @@ orderc = ItemMappedColumn(
 
 
 Chip = tmb.spectrographs.Chip
-chip_contextualizer = ContextualizationEngine(
-    table_spec = Order,
-    tag_filter_factory = lambda query, name : query.filter(Chip.name == name),
-)
 chipc = ItemMappedColumn(
     "chip",
     getter=lambda x:x.chip,
@@ -203,10 +187,7 @@ chipc = ItemMappedColumn(
 )
 
 Exposure = tmb.observations.Exposure
-exposure_contextualizer = ContextualizationEngine(
-    table_spec = Order,
-    tag_filter_factory = lambda query, name : query.filter(Exposure.name == name),
-)
+exposure_contextualizer = contextualizers["exposures"]
 exposurec = ItemMappedColumn(
     "exposure",
     getter=lambda x:x.exposure,

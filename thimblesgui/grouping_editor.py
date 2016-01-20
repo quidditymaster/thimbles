@@ -396,52 +396,7 @@ class SpeciesSelectorWidget(QtGui.QWidget):
         self.speciesChanged.emit(self.zvals)
 
 
-class BaseExpressionWidget(QtGui.QWidget):
-    expression = None
-    expressionChanged = Signal()
-    
-    def __init__(self, sqla_base=None, label="base expression", parent=None):
-        super(BaseExpressionWidget, self).__init__(parent)
-        if sqla_base is None:
-            sqla_base = Base
-        self.sqla_base = sqla_base
-        
-        layout = QtGui.QHBoxLayout()
-        self.setLayout(layout)
-        #self.text_box = QtGui.QPlainTextEdit()
-        self.label = QtGui.QLabel(label)
-        layout.addWidget(self.label)
-        self.expression_le = QtGui.QLineEdit(parent=self)
-        layout.addWidget(self.expression_le)
-        self.parse_btn = QtGui.QPushButton("parse")
-        layout.addWidget(self.parse_btn)
-        
-        self.expression_le.editingFinished.connect(self.parse_text)
-        self.parse_btn.clicked.connect(self.parse_text)
-    
-    def parse_text(self):
-        text = self.expression_le.text().strip()
-        if text == "":
-            self.expression = None
-            self.expression_le.setStyleSheet(_parse_success_style)
-            self.expressionChanged.emit()
-        else:
-            try:
-                text.replace("\n", " ")
-                expr = eval(text, {}, self.sqla_base._decl_class_registry)
-                self.expression = expr
-                self.expression_le.setStyleSheet(_parse_success_style)
-                self.expressionChanged.emit()
-            except Exception as e:
-                print(e)
-                self.expression_le.setStyleSheet(_parse_error_style)
-    
-    def keyPressEvent(self, event):
-        ekey = event.key()
-        print("key event in arbfilt {}".format(ekey))
-        if (ekey == Qt.Key_Enter) or (ekey == Qt.Key_Return):
-            return
-        super(BaseExpressionWidget, self).keyPressEvent(event)
+
 
 class TransitionConstraints(QtGui.QWidget):
     constraintsChanged = Signal(list)
@@ -769,100 +724,18 @@ class TransitionScatterPlot(XYExpressionResolver):
         self.ax.set_ylim(ymin-y_pad*dy, ymax+y_pad*dy)
 
 
-class ListMappedColumn(object):
-    
-    def __init__(
-            self,
-            header,
-            getter,
-            setter=None,
-            value_converter=None,
-            string_converter=None,
-            qt_flag=None,
-    ):
-        self.header = header
-        self.getter = getter
-        self.setter = setter
-        if value_converter is None:
-            value_converter = lambda x: "{:10.3f}".format(x)
-        self.value_converter = value_converter
-        if string_converter is None:
-            string_converter = float
-        self.string_converter = string_converter
-        if qt_flag is None:
-            qt_flag = Qt.ItemIsSelectable | Qt.ItemIsEnabled
-            if not setter is None:
-                qt_flag |= Qt.ItemIsEditable
-        self.qt_flag = qt_flag
-    
-    def get(self, data_obj, role):
-        if role == Qt.DisplayRole:
-            return self.value_converter(self.getter(data_obj))
-    
-    def set(self, data_obj, value, role):
-        if role == Qt.EditRole:
-            self.setter(data_obj, self.string_converter(value))
-
-
-class MappedListModel(QtCore.QAbstractTableModel):
-    
-    def __init__(self, mapped_list, columns):
-        super(MappedListModel, self).__init__()
-        self._data = mapped_list
-        self.column_map = columns
-    
-    @Slot(list)
-    def set_mapped_list(self, value):
-        self.beginResetModel()
-        self._data = value
-        self.endResetModel()
-    
-    def rowCount(self, parent=QModelIndex()):
-        return len(self._data)
-    
-    def columnCount(self, parent=QModelIndex()):
-        return len(self.column_map)
-    
-    def headerData(self, section, orientation, role):
-        if role == Qt.DisplayRole:
-            if orientation == Qt.Horizontal:
-                return self.column_map[section].header
-            if orientation == Qt.Vertical:
-                return section
-    
-    def flags(self, index):
-        col = index.column()
-        return self.column_map[col].qt_flag
-    
-    def data(self, index, role=Qt.DisplayRole):
-        row, col = index.row(), index.column()
-        data_obj = self._data[row]
-        col_obj = self.column_map[col]
-        return col_obj.get(data_obj, role)
-    
-    def setData(self, index, value, role=Qt.EditRole):
-        row, col = index.row(), index.column()
-        data_obj = self._data[row]
-        col_obj = self.column_map[col]
-        try:
-            col_obj.set(data_obj, value, role)
-            return True
-        except Exception as e:
-            print(e)
-            return False
-
 
 class TransitionListModel(MappedListModel):
     
     def __init__(self, transitions=None):
         if transitions is None:
             transitions = []
-        wv = ListMappedColumn("Wavelength", lambda x: x.wv)
-        #z = ListMappedColumn("Z", lambda x: x.ion.z)
-        #charge = ListMappedColumn("Ion Charge", lambda x: x.ion.charge)
-        symbol = ListMappedColumn("Symbol", lambda x: "{} {}".format(x.ion.symbol, "I"*(x.ion.charge+1)), value_converter=lambda x: x)
-        ep = ListMappedColumn("Excitation\nPotential", lambda x: x.ep)
-        loggf = ListMappedColumn("log(gf)", lambda x: x.loggf)
+        wv = ItemMappedColumn("Wavelength", lambda x: x.wv)
+        #z = ItemMappedColumn("Z", lambda x: x.ion.z)
+        #charge = ItemMappedColumn("Ion Charge", lambda x: x.ion.charge)
+        symbol = ItemMappedColumn("Symbol", lambda x: "{} {}".format(x.ion.symbol, "I"*(x.ion.charge+1)), value_converter=lambda x: x)
+        ep = ItemMappedColumn("Excitation\nPotential", lambda x: x.ep)
+        loggf = ItemMappedColumn("log(gf)", lambda x: x.loggf)
         cols = [wv, symbol, ep, loggf]
         super(TransitionListModel, self).__init__(transitions, cols)
 
@@ -1438,7 +1311,6 @@ def edit_grouping_standard(standard_name, tdb, spectra):
 
 
 if __name__ == "__main__":
-    
     qap = QtGui.QApplication([])
     
     #wvspan = WavelengthSpan(5000.0, 5500.0)

@@ -23,7 +23,7 @@ class ThimblesTable(object):
 
 class ThimblesDB(object):
     """a wrapper for a database containing our data and our fit-models and parameters
-
+    
     path: string
       the location of the database
       if the empty string is passed as the path and the dialect is

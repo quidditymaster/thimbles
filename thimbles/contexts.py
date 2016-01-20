@@ -95,9 +95,10 @@ class ContextualizationRegistry(object):
         value.set_context_registry(self)
         self.spines[index] = value
 
+
 contextualizers = ContextualizationRegistry()
 global_ce = ContextualizationEngine(
-    table_spec=tmb.analysis.SharedParameterSpace,
+    table_spec=[tmb.analysis.SharedParameterSpace],
     filter_factory=lambda q: q.filter(tmb.analysis.SharedParameterSpace.name == "global"),
 )
 contextualizers["global"] = global_ce
@@ -130,7 +131,7 @@ order_contextualizer = ContextualizationEngine(
 contextualizers["orders"] = order_contextualizer
 
 chip_contextualizer = ContextualizationEngine(
-    table_spec = Order,
+    table_spec = [Order],
     tag_filter_factory = lambda query, name : query.filter(Chip.name == name),
     extractors = {
         "chip": lambda x: x,
@@ -162,10 +163,13 @@ contextualizers["spectra"] = spectrum_contextualizer
 
 
 source_spectra_pairs = ContextualizationEngine(
-    table_spec = [Spectrum, Source]
+    table_spec = [Spectrum, Source],
     extractors = {
         "spectrum" : lambda x: x[0],
         "source" : lambda x: x[1],
+        "exposure" : lambda x: x[0].exposure,
+        "aperture" : lambda x: x[0].aperture,
+        "chip": lambda x: x[0].chip
     }
 )
 contextualizers["source spectrum pairs"] = source_spectra_pairs

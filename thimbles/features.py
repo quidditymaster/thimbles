@@ -151,9 +151,9 @@ class TransitionWavelengthVectorModel(Model):
         "polymorphic_identity":"TransitionWavelengthVectorModel"
     }    
     
-    def __init__(self, output_p, indexer_p):
+    def __init__(self, output_p, indexer):
         self.output_p = output_p
-        self.add_parameter("indexer", indexer_p)
+        self.add_parameter("indexer", indexer)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
@@ -161,21 +161,23 @@ class TransitionWavelengthVectorModel(Model):
         t_wvs = np.array([t.wv for t in indexer.transitions])
         return t_wvs
 
+
 class IonWeightVectorModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__={
         "polymorphic_identity":"IonWeightVectorModel"
     }
     
-    def __init__(self, output_p, indexer_p):
+    def __init__(self, output_p, indexer):
         self.output_p = output_p
-        self.add_parameter("indexer", indexer_p)
+        self.add_parameter("indexer", indexer)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
         indexer = vdict[self.inputs["indexer"]]
         weights = np.array([t.ion.weight for t in indexer.transitions])
         return weights
+
 
 class GammaModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)

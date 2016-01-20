@@ -101,7 +101,7 @@ class MatrixMultiplierModel(Model):
         "polymorphic_identity":"MatrixMultiplierModel",
     }
     
-    def __init__(self, output_p, matrix_p, vector_p):
+    def __init__(self, output_p, matrix, vector):
         self.output_p = output_p
         self.add_parameter("matrix", matrix_p)
         self.add_parameter("vector", vector_p)
@@ -170,7 +170,7 @@ class PixelPolynomialModel(Model):
         vdict = self.get_vdict(vprep)
         coeffs = vdict[self.inputs["coeffs"]]
         return np.polyval(coeffs, self.get_x())
-            
+
 
 class LogisticModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)

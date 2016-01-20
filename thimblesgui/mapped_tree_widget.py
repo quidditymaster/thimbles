@@ -78,7 +78,7 @@ class NodeColumn(object):
             return isset
 
 
-class MappedTreeModel(QtCore.QAbstractItemModel):
+class MappedObjectTreeModel(QtCore.QAbstractItemModel):
     
     def __init__(
             self, 

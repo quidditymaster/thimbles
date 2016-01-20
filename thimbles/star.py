@@ -2,7 +2,6 @@ from .sqlaimports import *
 from .thimblesdb import Base, ThimblesTable
 from .modeling import Parameter, FloatParameter
 from .sources import Source
-from .contexts import ContextualizationEngine
 
 class Star(Source):
     _id = Column(Integer, ForeignKey("Source._id"), primary_key=True)

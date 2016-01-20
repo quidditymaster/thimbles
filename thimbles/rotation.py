@@ -17,16 +17,16 @@ class BroadeningMatrixModel(Model):
     def __init__(
             self, 
             output_p, 
-            model_wvs_p, 
-            vmacro_p, 
-            vsini_p, 
-            ldark_p, 
+            model_wvs, 
+            vmacro, 
+            vsini, 
+            ldark, 
     ):
         self.output_p = output_p
-        self.add_parameter("model_wvs", model_wvs_p)
-        self.add_parameter("vsini", vsini_p)
-        self.add_parameter("vmacro", vmacro_p)
-        self.add_parameter("ldark", ldark_p)
+        self.add_parameter("model_wvs", model_wvs)
+        self.add_parameter("vsini", vsini)
+        self.add_parameter("vmacro", vmacro)
+        self.add_parameter("ldark", ldark)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)

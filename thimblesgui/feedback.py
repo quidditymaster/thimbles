@@ -9,13 +9,13 @@ DATE: Fri Oct  3 15:45:21 2014
 
 # import modules 
 
-
 import os 
 import sys 
 import re 
 import time
 from collections import OrderedDict
-from PySide import QtCore,QtGui
+#from PySide import QtCore,QtGui
+from PyQt4 import QtCore, QtGui
 
 # ########################################################################### #
 
@@ -43,17 +43,16 @@ class FeedbackForm (QtGui.QDialog):
         # use whoami system command
         sysout = os.popen3("whoami")
         username = sysout[1].read().rstrip()
-
+        
         # if the user has a u0123456 University of Utah Id then transform that to their name
         if re.search("u\d\d\d\d\d\d\d",username) is not None:
             grep_keyword = 'Name: '
-    	    sysout = os.popen3("finger "+username+" | grep "+grep_keyword)
+            sysout = os.popen3("finger "+username+" | grep "+grep_keyword)
             finger_out = sysout[1].read().rstrip() #  stdin, stdout, stderr = sysout    
             i = finger_out.find(grep_keyword)
             if i >= 0:
                 i += len(grep_keyword)
                 username = finger_out[i:].strip().lower()
-                
         return username
     
     def _init_feedback_type (self):        

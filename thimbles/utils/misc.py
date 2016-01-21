@@ -854,7 +854,6 @@ def irls(
         max_iter=20,
         resid_delta_thresh=1e-8,
         x_delta_thresh=1e-8,
-        damp = 1e-5,
         return_fit_dict=False,
         **reweighting_kwargs
 ):
@@ -914,11 +913,12 @@ def irls(
     delta_x = None
     
     if A_issparse:
-        solver = lambda x, y: scipy.sparse.linalg.bicg(x, y, damp=damp)
+        solver = lambda x, y: scipy.sparse.linalg.bicg(x, y)
         dotter = lambda x, y: x*y
     else:
         A = np.asarray(A)
-        solver = np.linalg.lstsq
+        #solver = np.linalg.lstsq
+        solver = np.linalg.spsolve
         dotter = np.dot
     
     for iter_idx in range(max_iter):

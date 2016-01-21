@@ -11,7 +11,12 @@ from sqlalchemy.orm.collections import collection
 from sqlalchemy.orm.collections import attribute_mapped_collection
 from sqlalchemy.ext.associationproxy import association_proxy
 
-import latbin
+try:
+    import latbin
+    _with_latbin = True
+except ImportError:
+    _with_latbin = False
+
 
 class Damping(ThimblesTable, Base):
     stark = Column(Float)

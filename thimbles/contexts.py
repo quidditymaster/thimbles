@@ -112,6 +112,16 @@ star_contextualizer = ContextualizationEngine(
 )
 contextualizers["stars"] = star_contextualizer
 
+SourceGrouping = tmb.sources.SourceGrouping
+grouping_contextualizer = ContextualizationEngine(
+    table_spec=[SourceGrouping],
+    tag_filter_factory=lambda query, name: query.filter(SourceGrouping.name == name),
+    extractors = {
+        "group": lambda x: x
+    },
+)
+contextualizers["source_groupings"] = grouping_contextualizer
+
 aperture_contextualizer = ContextualizationEngine(
     table_spec = Aperture,
     tag_filter_factory = lambda query, name : query.filter(tmb.spectrographs.Aperture.name == name),

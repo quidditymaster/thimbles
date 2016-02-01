@@ -142,10 +142,13 @@ class TransitionIndexer(object):
             self._trans_to_idx = {self.transitions[i]:i for i in range(len(self.transitions))}
         return self._trans_to_idx
     
+    def add_transition(self, transition):
+        t_index = TransIndexAssoc(transition)
+        self._add_transition_index(t_index)        
+    
     def extend_transitions(self, transitions):
         for trans in transitions:
-            t_index = TransIndexAssoc(trans)
-            self._add_transition_index(t_index)
+            self.add_transition(trans)
     
     @collection.appender
     def _add_transition_index(self, t_index):

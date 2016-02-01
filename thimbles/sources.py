@@ -45,20 +45,33 @@ class Source(Base, ThimblesTable, HasParameterContext):
         SourceAlias(name=name, context=self, parameter=parameter, is_compound=is_compound)
 
 
+###
+class GroupingAlias(ParameterAliasMixin, ThimblesTable, Base):
+    _context_id = Column(Integer, ForeignKey("SourceGrouping._id"))
+    context= relationship("SourceGrouping", foreign_keys=_context_id, back_populates="context")
+
+
 grouping_assoc = sa.Table(
-    "source_group_assoc", 
+    "source_grouping_assoc", 
     Base.metadata,
     Column("source_id", Integer, ForeignKey("Source._id")),
-    Column("group_id", Integer, ForeignKey("SourceGroup._id")),
+    Column("group_id", Integer, ForeignKey("SourceGrouping._id")),
 )
 
-class SourceGroup(Base, ThimblesTable):
+class SourceGrouping(Base, ThimblesTable, HasParameterContext):
     name = Column(String)
     sources = relationship("Source", secondary=grouping_assoc)
+    context = relationship("GroupingAlias", collection_class=NamedParameters)
+    info = Column(PickleType)
     
-    def __init__(self, name="", sources=None):
+    def __init__(self, name=None, sources=None, info=None):
         self.name = name
         if sources is None:
             sources = []
         self.sources = sources
-
+        if info is None:
+            info = {}
+        self.info = info
+    
+    def add_parameter(self, name, parameter, is_compound=False):
+        GroupingAlias(name=name, context=self, parameter=parameter, is_compound=is_compound)

@@ -239,7 +239,8 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
             info = {}
         self.info = info
         
-        self.slice = slice
+        self.chip = chip
+        self.aperture = aperture
         self.exposure = exposure
         self.source = source
     

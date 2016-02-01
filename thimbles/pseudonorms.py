@@ -41,10 +41,11 @@ def adjusted_median(
     assumed to be gaussian in shape.
     
     a quadratic tail of contaminants is fit for and removed if
-    the sense of the deviation it corrects for matches the 
-    expected sign of the contaminants and if not this correction
-    term is neglected.
+    the sense of its deviation matches the expected sign of the 
+    contaminants and if not this correction term is neglected.
     """
+    
+    
     if mask is None:
         mask = np.ones(len(values), dtype=bool)
     mask = np.asarray(mask, dtype=bool)
@@ -102,7 +103,7 @@ def sorting_norm(
         max_frac=0.97,
         degree=None,
         n_split=None,
-        n_samples=15, 
+        n_samples=15,
         mask = None,
         h_mask_radius=-3.5,
         apply_h_mask = True,
@@ -114,26 +115,32 @@ def sorting_norm(
     assert min_frac > 0.0
     assert max_frac < 1.0
     
+    if hasattr(spectrum, "flux"):
+        flux = spectrum.flux
+    else:
+        flux = spectrum
+    
     if mask is None:
         if hasattr(spectrum, "ivar"):
             mask = spectrum.ivar > 0
         else:
             mask = np.ones(npts, dtype=bool)
         
-        if hasattr(spectrum, "wvs"):
-            wavelengths = spectrum.wvs
-            if apply_h_mask:
-                mask*= tmb.hydrogen.get_H_mask(
-                    wavelengths, h_mask_radius)
+        secder = np.abs(scipy.gradient(scipy.gradient(flux)))
+        secder_rank = secder.argsort().argsort()
+        mask *= secder_rank < int(npts*0.75)+1
+    
+    if hasattr(spectrum, "wvs"):
+        wavelengths = spectrum.wvs
+        if apply_h_mask:
+            mask*= tmb.hydrogen.get_H_mask(
+                wavelengths, h_mask_radius)
+        else:
+            raise ValueError("A spectrum object must be supplied in order to apply an H mask!")
     
     npts_eff = int(np.sum(mask))
     if n_split is None:
         n_split = max(1, int(np.sqrt(npts)//4))
-    
-    if hasattr(spectrum, "flux"):
-        flux = spectrum.flux
-    else:
-        flux = spectrum
         
     pts_per = int(npts/(n_split+1))
     split_idxs = np.arange(pts_per, npts, pts_per)[:-1]

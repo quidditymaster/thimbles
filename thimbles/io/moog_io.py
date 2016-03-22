@@ -16,11 +16,13 @@ def float_or_nan(val):
     except ValueError:
         return np.nan
 
-def read_moog_linelist(fname):
+def read_moog_linelist(fname, ion_dict=None):
     file = open(fname)
     lines = file.readlines()
     file.close()
     ldat = []
+    if ion_dict is None:
+        ion_dict = {}
     for line in lines:
         line = line.split("#")[0]
         moog_cols = [line[i*10:(i+1)*10].strip() for i in range(7)]
@@ -36,7 +38,13 @@ def read_moog_linelist(fname):
         damp=None
         if len(moog_cols) >= 5:
             damp = Damping(empirical = moog_cols[4])
-        trans = Transition(wv, species, ep, loggf, damp=damp)
+        trial_ion = tmb.abundances.as_ion(species)
+        ion_tup = (trial_ion.z, trial_ion.charge, trial_ion.isotope)
+        cur_ion = ion_dict.get(ion_tup)
+        if cur_ion is None:
+            cur_ion = trial_ion
+            ion_dict[ion_tup] = cur_ion
+        trans = Transition(wv, cur_ion, ep, loggf, damp=damp)
         ldat.append(trans)
         #ldat["moog_damp"].append(moog_cols[4])
         #ldat["D0"].append(moog_cols[5])

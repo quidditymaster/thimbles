@@ -86,7 +86,31 @@ class Ion(ThimblesTable, Base):
     @property
     def symbol(self):
         return "{} {}".format(self.molecule, "I"*(self.charge+1))
-    
+
+
+def as_ion(ion):
+    if not isinstance(ion, Ion):
+        if isinstance(ion, (tuple, list)):
+            if len(ion) == 2:
+                speciesnum, charge = ion
+                isotope = 0
+            elif len(ion) == 3:
+                    speciesnum, charge, isotope = ion
+            else:
+                raise ValueError("Ion specification {} not understood\n possible formats include\n (z, charge)\n (z, charge, isotope), species_float".format(ion))
+        else:
+            speciesnum = int(ion)
+            charge = int(round(10*(ion-speciesnum)))
+            if speciesnum > 100:
+                iso_mult = 1e5
+            else:
+                iso_mult = 1e3
+            species_leftover = ion-speciesnum-0.1*charge
+            isotope = int(round(iso_mult*species_leftover))
+        ion = Ion(speciesnum, charge, isotope)
+    return ion
+
+
 class IonIndex(Base, ThimblesTable):
     _ion_id = Column(Integer, ForeignKey("Ion._id"))
     ion = relationship("Ion", foreign_keys=_ion_id)

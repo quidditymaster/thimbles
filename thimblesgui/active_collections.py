@@ -302,7 +302,7 @@ class ActiveCollectionView(QtGui.QWidget):
     def make_menu(self):
         menu_bar = QtGui.QMenuBar(parent=self)
         self.menu_bar = menu_bar
-        data_menu = self.menu_bar.addMenu("data")
+        data_menu = self.menu_bar.addMenu("manage")
         data_menu.addAction(self.load_act)
         data_menu.addAction(self.query_act)
         data_menu.addAction(self.add_all_act)
@@ -356,3 +356,34 @@ class ActiveCollectionView(QtGui.QWidget):
         #q = qd.query
         #print(q)
         #print("on edit query")
+
+
+class TransitionCollection(ActiveCollection):
+    
+    def __init__(
+            name,
+            db,
+    ):
+        super().__init__(
+            name=name,
+            db=db,             
+            default_columns=base_transition_columns,
+            defautl_read_func="tmb.io.read_linelist",
+            default_query=default_tq,
+        )
+
+class TransitionCollectionView(ActiveCollectionView):
+    
+    def __init__(
+            self,
+            active_collection,
+            selection,
+            #columns = None,
+            #selection_channel=None,
+            parent=None
+    ):
+        super().__init__(
+            active_collection,
+            selection,
+            parent
+        )

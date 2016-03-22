@@ -2,7 +2,7 @@ from thimblesgui import QtGui, Qt
 from thimblesgui.expressions import PythonExpressionLineEdit
 import thimbles as tmb
 from thimbles.analysis import component_templates
-from thimbles.contexts import contextualizers#, ContextualizationEngine
+from thimbles.contexts import model_spines as contextualizers#, ContextualizationEngine
 
 class ModelComponentTemplateApplicationDialog(QtGui.QDialog):
     

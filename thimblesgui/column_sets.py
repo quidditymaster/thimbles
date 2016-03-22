@@ -1,6 +1,6 @@
 
 from thimblesgui.active_collections import ItemMappedColumn, repr_column
-from thimbles.contexts import contextualizers
+from thimbles.contexts import model_spines
 import thimbles as tmb
 from . import object_creation_dialogs
 
@@ -11,6 +11,13 @@ namec = ItemMappedColumn(
     string_converter = lambda x: x,
     value_converter=lambda x: x,
 )
+
+def none_safe_float_str(val):
+    if val is None:
+        return "None"
+    else:
+        return "{:8.3f}".format(val)
+
 
 #columns for stars
 teffc = ItemMappedColumn(
@@ -32,6 +39,13 @@ metalicityc = ItemMappedColumn(
     getter=lambda x: x.metalicity,
     value_converter=lambda x: "{: 8.3f}".format(x),
     setter=lambda x, y: setattr(x, "metalicity", y),
+    string_converter=float,
+)
+massc = ItemMappedColumn(
+    "Mass",
+    getter=lambda x: x.mass,
+    value_converter=none_safe_float_str,
+    setter=lambda x, y: setattr(x, "mass", y),
     string_converter=float,
 )
 vmicroc = ItemMappedColumn(
@@ -63,7 +77,7 @@ ldarkc = ItemMappedColumn(
     string_converter=float,
 )
 
-star_columns = [namec, teffc, loggc, metalicityc, vmicroc, vmacroc, vsinic, ldarkc]
+star_columns = [namec, teffc, loggc, metalicityc, vmicroc, vmacroc, vsinic, ldarkc, massc]
 
 
 #columns for electronic transitions
@@ -145,7 +159,7 @@ wvboundc = ItemMappedColumn(
     value_converter=lambda x: "{:8.0f} < wv < {:8.0f}".format(*x),
 )
 
-star_contextualizer = contextualizers.spines["stars"]
+star_contextualizer = model_spines["stars"]
 starc = ItemMappedColumn(
     "star",
     getter=lambda x:x.source,
@@ -156,7 +170,7 @@ starc = ItemMappedColumn(
 
 
 Aperture = tmb.spectrographs.Aperture
-aperture_contextualizer = contextualizers["apertures"]
+aperture_contextualizer = model_spines["apertures"]
 aperturec = ItemMappedColumn(
     "aperture",
     getter=lambda x:x.aperture,
@@ -167,7 +181,7 @@ aperturec = ItemMappedColumn(
 
 
 Order = tmb.spectrographs.Order
-order_contextualizer = contextualizers["orders"]
+order_contextualizer = model_spines["orders"]
 orderc = ItemMappedColumn(
     "order",
     getter=lambda x:x.order,
@@ -187,7 +201,7 @@ chipc = ItemMappedColumn(
 )
 
 Exposure = tmb.observations.Exposure
-exposure_contextualizer = contextualizers["exposures"]
+exposure_contextualizer = model_spines["exposures"]
 exposurec = ItemMappedColumn(
     "exposure",
     getter=lambda x:x.exposure,

@@ -27,7 +27,7 @@ from thimblesgui.object_creation_dialogs import NewStarDialog
 from thimblesgui.loading_dialog import LoadDialog
 from thimblesgui.column_sets import star_columns, full_transition_columns, base_transition_columns, spectrum_columns
 from thimblesgui.mct_dialog import ModelComponentTemplateApplicationDialog as MCTApplicationDialog
-from thimbles.contexts import contextualizers
+from thimbles.contexts import model_spines as contextualizers
 
 from thimbles import ThimblesDB
 gui_resource_dir = os.path.join(os.path.dirname(__file__),"resources")

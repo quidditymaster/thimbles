@@ -141,10 +141,8 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
         elif ivar is None:
             if var is None: #neither is specified
                 var = tmb.utils.misc.smoothed_mad_error(flux)
-        else: #ivar is specified
-            var = tmb.utils.misc.inv_var_2_var(ivar)
-        var = tmb.utils.misc.clean_variances(var)
-        ivar = tmb.utils.misc.var_2_inv_var(var)
+            ivar = tmb.utils.misc.var_2_inv_var(var)
+        ivar = tmb.utils.misc.clean_inverse_variances(ivar)
         
         if not (wavelengths.coordinates[-1] > wavelengths.coordinates[0]):
             raise ValueError("wavelengths must increase with increasing pixel index")
@@ -337,8 +335,10 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
                          given and return the current spectrum between
                          those wavelength bounds.
           "rebin"        apply a flux preserving rebinning procedure.
-          "lsf-convolved" attempt to do a differential convolution and rebinning of the input spectrum.
-        
+          "lsf-convolved" convolve by the lsf of the sampling spectrum 
+                         then apply rebinning.
+          "lsf-matched"  Attempt a differential convolution such that the
+                         resultant spectrum has a total lsf matching the output.                         then apply a rebinning.
         trim_edges: bool
           if True instead of returning the flux at the wavelengths
           specified in the sampling argument instead only return
@@ -351,6 +351,8 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
         """
         if isinstance(sampling, Spectrum):
             wavelengths = sampling.wvs
+        elif isinstance(sampling, tmb.coordinatization.Coordinatization):
+            wavelengths = sampling.coordinates
         else:
             wavelengths = np.asarray(sampling)
         
@@ -384,9 +386,12 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
         elif mode == "interpolate":
             tmat = self.wv_soln.interpolant_sampling_matrix(wavelengths)
             out_flux = tmat*self.flux
-            out_var = tmat.transpose()*tmat*self.var
-            out_ivar = tmb.utils.misc.var_2_inv_var(out_var)
-            sampled_spec = Spectrum(wavelengths, out_flux, out_ivar)
+            var_mat = scipy.sparse.dia_matrix((self.var, 0), shape=(len(self), len(self)))
+            out_covar = tmat*var_mat*tmat.transpose()
+            #out_var = (tmat*tmat.transpose())*self.var
+            out_var = np.array(out_covar.sum(axis=1)).reshape((-1,))
+            #out_ivar = tmb.utils.misc.var_2_inv_var(out_var)
+            sampled_spec = Spectrum(wavelengths, out_flux, var=out_var)
             sampling_matrix = tmat
         elif mode =="rebin":
             in_wvs = self.wvs
@@ -410,7 +415,7 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
             out_inv_var  = 1.0/(covar*np.ones(covar_shape[0]))
             sampled_spec = Spectrum(wavelengths, out_flux, out_inv_var)
             sampling_matrix = transform
-        elif mode == "lsf-convolved":
+        elif mode == "lsf-convolved" or mode == "lsf-matched":
             if not isinstance(sampling, Spectrum):
                 raise ValueError("lsf-convolved sampling mode requires a Spectrum object as first argument.")
             in_wvs = self.wvs
@@ -419,10 +424,15 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
             lsf_cdf = sampling.cdf
             cdf_type = sampling.cdf_type
             cdf_kwargs = sampling.cdf_kwargs
+            if mode == "lsf-matched":
+                lsf_in = self.lsf
+                assert self.cdf_type == cdf_type
+            elif mode == "lsf-convolved":
+                lsf_in = np.zeros(len(self))
             transform = resampling.resampling_matrix(
                 in_wvs,
                 out_wvs,
-                lsf_in = self.lsf,
+                lsf_in = lsf_in,
                 lsf_out = out_lsf,
                 lsf_cdf = lsf_cdf,
                 cdf_kwargs=cdf_kwargs,

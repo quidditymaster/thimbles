@@ -4,25 +4,79 @@ import scipy.sparse
 def lqal_factory(
         sigma,
         crossover = 2.5,
-        asymptotic_slope = 2.5**2,
+        asymptotic_slope = None,
 ):
     """
     makes a locally quadratic asymptoticaly linear weighting function
     """
     sigma_weights = 1.0/sigma**2
+    if asymptotic_slope is None:
+        asymptotic_slope = 2.0*crossover
     def wfunc(resids):
         z = np.abs(resids/sigma)
         #abs_z = np.clip(np.abs(z), z_min, z_max)
         rel_weights = np.where(z < crossover, 1.0, 1.0+(z-crossover)/asymptotic_slope)
-        weights = sigma_weights/rel_weights
+        weights = np.sqrt(sigma_weights/rel_weights)
         return weights
     return wfunc
 
 
+def dense_irls_1d(
+        design_matrix,
+        target,
+        weighting_function=None,
+        n_iter = 10,
+):
+    assert len(target.shape) == 1
+    
+    if weighting_function is None:
+        weighting_function = lqal_factory(1.0)
+    
+    cur_x = np.zeros(design_matrix.shape[1])
+    for iter_idx in range(n_iter):
+        resids = target - np.dot(design_matrix, cur_x)
+        resid_weights = weighting_function(resids)
+        dmat = design_matrix*resid_weights.reshape((-1, 1))
+        cur_x = np.linalg.lstsq(dmat, target*resid_weights)[0]
+    
+    return cur_x
+
+def dense_irls(
+        design_matrix,
+        target,
+        *args,
+        **kwargs
+):
+    target = np.asarray(target)
+    target_shape = target.shape
+    if len(target_shape) == 1:
+        target = target.reshape((-1, 1))
+    n_targ = target.shape[1]
+    
+    fit_dict = {
+        "coeffs":np.zeros((design_matrix.shape[1], n_targ)),
+    }
+    for col_idx in range(n_targ):
+        res = dense_irls_1d(design_matrix, target[:, col_idx], *args, **kwargs)
+        fit_dict["coeffs"][:, col_idx] = res
+    
+    return fit_dict
+
+def dense_irls(
+        design_matrix,
+        target,
+        *args,
+        **kwargs
+):
+    target = np.asarray(target)
+    if len(target.shape) == 1:
+        return dense_irls_1d(design_matrix, target, *args, **kwargs)
+    
+
 def irls(
         design_matrix,
         data,
-        weighting_function,
+        weighting_function=None,
         start_x=None,
         regularization_matrix=None,
         regularization_weighter=None,
@@ -45,11 +99,11 @@ def irls(
     if regularization_weighter is None:
         regularization_weighter = lqal_factory(1.0)   
     
-    if regularity_target is None:
+    if (regularity_target is None) and (not (regularization_matrix is None)):
         if len(data.shape) == 2:
             regularity_target = np.zeros((regularization_matrix.shape[0], data.shape[1]))
-        else:
-            regularity_target = np.zeros((regularization_matrix.shape[0]))
+        #else:
+        #    regularity_target = np.zeros((regularization_matrix.shape[0]))
     
     if m_issparse:
         solver = lambda x, y: scipy.sparse.linalg.bicg(x, y)[0]

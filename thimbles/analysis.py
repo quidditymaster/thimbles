@@ -1,4 +1,5 @@
 import os
+from copy import copy
 
 import numpy as np
 import scipy.sparse
@@ -492,63 +493,110 @@ def component_template_gv(mct):
     gv.append("}")
     return "\n".join(gv)
 
+class ParameterSpec(object):
+    
+    def __init__(
+            self,
+            factory,
+            kwargs=None,
+            push_to=None,
+    ):
+        self.factory = factory
+        if kwargs is None:
+            kwargs = {}
+        self.kwargs = kwargs
+        self.push_to = push_to
+    
+    @property
+    def is_fetched(self):
+        return isinstance(self.factory, str)
+    
+    def evaluate_kwargs(self, contexts):
+        pkwargs = copy(self.kwargs)
+        for pk in pkwargs:
+            raw_arg = pkwargs[pk]
+            if hasattr(raw_arg, "__call__"):
+                pkwargs[pk] = raw_arg(contexts)
+        return pkwargs
+    
+    def fetch(self, contexts):
+        if self.is_fetched:
+            context_name, ct_param_name = self.factory.split(".")
+            param = contexts[context_name][ct_param_name]
+        else:
+            pkwargs = self.evaluate_kwargs(contexts)
+            param = self.factory(**pkwargs)
+        return param
+    
+    def push(self, param, contexts):
+        if not self.push_to is None:
+            ctext_name, param_name = self.push_to.split(".")
+            if "[" == param_name[0]:
+                is_compound=True
+            else:
+                is_compound=False
+            ctext = contexts[ctext_name]
+            ctext.add_parameter(param_name, param, is_compound=is_compound)
+
+
+class ModelSpec(object):
+    
+    def __init__(
+            self,
+            factory,
+            inputs,
+            output,
+            kwargs=None,
+    ):
+        self.factory=factory
+        self.inputs = inputs
+        self.output = output
+        if kwargs is None:
+            kwargs = {}
+        self.kwargs = kwargs
+    
+    def evaluate_kwargs(self, contexts):
+        pkwargs = copy(self.kwargs)
+        for pk in pkwargs:
+            raw_arg = pkwargs[pk]
+            if hasattr(raw_arg, "__call__"):
+                pkwargs[pk] = raw_arg(contexts)
+        return pkwargs
+    
+    def link(self, parameters, contexts):
+        pkwargs = self.evaluate_kwargs(contexts)
+        inputs = self.inputs
+        for input_name in inputs:
+            param_name = inputs[input_name]
+            if isinstance(param_name, list):
+                plist = []
+                for pname in param_name:
+                    plist.append(parameters[pname])
+                pkwargs[input_name] = plist
+            else:
+                pkwargs[input_name] = parameters[param_name]
+        
+        output_p = parameters[self.output]
+        return self.factory(output_p=output_p, **pkwargs)
+
+
 class ModelComponentTemplate(object):
     
     def __init__(
             self,
-            #what parameter class to use for each parameter node
-            #{"parameter_name":ParameterClass} or {parameter_name":[ParameterClass]} in the case of compound parameters
-            #e.g. {"coeffs":PickleParameter, "lsf":Parameter}
-            parameter_classes,
-            
-            #extra arguments to pass to the parameter factory
-            #{"parameter_name":{"kw":val}}
-            #e.g. {"rv":{"value":32.1}}
-            parameter_kwargs,
-            
-            #what model class to use for each model edge
-            #{"model_edge_name":ModelClass}
-            #e.g. {"lsf_poly":PixelPolynomialModel}
-            model_classes,
-            
-            #how to connect model inputs to parameters
-            #{"model_name":[["parameter_name", "model_input_name", is_compound], ...] 
-            #e.g. {"lsf_poly":[["coeffs", "coeffs", False]]
-            input_edges,
-            
-            #extra non-Parameter class arguments to pass models
-            #{"model_name":{"kwarg_name": values}
-            #e.g. {"model_wvs":{"npts":4096}}
-            model_kwargs,
-            
-            #how to connect model outputs to parameters
-            #{"model_name":"parameter_name"}
-            #e.g. {"lsf_poly":"lsf"}
-            output_edges, 
-            
-            #how to find pre-existing parameters in external contexts
-            #{parameter_name:["context_name", "parameter_name_within_context"]}
-            #e.g. {"lsf":["spectrum", "lsf"]}
-            fetched_parameters,
-            
-            #which parameters to give aliases in external contexts and what names to give them
-            #{"context_name":[["parameter_name", "external_name", is_compound]]}
-            pushed_parameters,
+            parameter_specs,
+            model_specs,
     ):
-        self.parameter_classes = parameter_classes
-        self.parameter_kwargs = parameter_kwargs
-        self.model_classes = model_classes
-        self.input_edges = input_edges
-        self.model_kwargs = model_kwargs
-        self.output_edges = output_edges
-        self.fetched_parameters = fetched_parameters
-        self.pushed_parameters = pushed_parameters
+        self.param_specs = parameter_specs
+        self.model_specs = model_specs
     
     def search_and_apply(
             self,
             context_engine,
+            tag=None,
+            db=None,
     ):
-        modeling_spine = context_engine.find()
+        modeling_spine = context_engine.find(tag=tag, db=db)
         for backbone_instance in modeling_spine:
             self.apply(backbone_instance, context_engine)
     
@@ -561,57 +609,19 @@ class ModelComponentTemplate(object):
         #{"context_name":context_instance}
         #e.g. {"spectrum": spec, "global":shared_params}
         contexts = context_engine.contextualize(backbone_instance)
-        #import pdb; pdb.set_trace()
+        
         instantiated_params = {}
-        for param_name in self.parameter_classes:
-            if param_name in self.fetched_parameters:
-                context_name, cont_pname = self.fetched_parameters[param_name]
-                fetched_p = contexts[context_name][cont_pname]
-                instantiated_params[param_name] = fetched_p
-            else:
-                pkwargs = self.parameter_kwargs.get(param_name, {})
-                for pk in pkwargs:
-                    raw_arg = pkwargs[pk]
-                    if hasattr(raw_arg, "__call__"):
-                        pkwargs[pk] = raw_arg(contexts)
-                
-                pcls = self.parameter_classes[param_name]
-                instantiated_params[param_name] = pcls(**pkwargs)
+        for param_name in self.param_specs:
+            pspec = self.param_specs[param_name]
+            param = pspec.fetch(contexts)
+            instantiated_params[param_name] = param
+            pspec.push(param, contexts)
         
-        for model_name in self.input_edges:
-            model_kwargs = {}
-            inp_edges = self.input_edges[model_name]
-            for param_name, input_name, is_compound in inp_edges:
-                inp_param = instantiated_params[param_name]
-                if is_compound:
-                    plist = model_kwargs.get(input_name, [])
-                    if isinstance(inp_param, Parameter):
-                        plist.append(inp_param)
-                    else:
-                        plist.extend(inp_param)
-                    model_kwargs[input_name] = plist
-                else:
-                    model_kwargs[input_name] = inp_param
-            extra_kwargs = self.model_kwargs.get(model_name, {})
-            for kw in extra_kwargs:
-                raw_kwarg = extra_kwargs[kw]
-                if hasattr(raw_kwarg, "__call__"):
-                    extra_kwargs[kw] = raw_kwarg(contexts)
-            model_kwargs.update(extra_kwargs)
-            mod_cls = self.model_classes[model_name]
-            outp_name = self.output_edges[model_name]
-            c_output_p = instantiated_params[outp_name]
-            mod_instance = mod_cls(output_p=c_output_p, **model_kwargs)
-        
-        for context_name in self.pushed_parameters:
-            target_context = contexts[context_name]
-            alias_list = self.pushed_parameters[context_name]
-            for param_name, alias, is_compound in alias_list:
-                cparam = instantiated_params[param_name]
-                target_context.add_parameter(
-                    alias,
-                    parameter=instantiated_params[param_name],
-                    is_compound=is_compound)
+        ###
+        for model_name in self.model_specs:
+           mspec = self.model_specs[model_name]
+           mspec.link(instantiated_params, contexts)
+
 ######
 
 class ComponentRegistry(object):
@@ -670,7 +680,12 @@ class ModelNetworkRecipe(object):
             self.incorporate_datum(datum)
         return
 
-global_mct = ModelComponentTemplate(
+class JModelComponentTemplate(object):
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+global_mct = JModelComponentTemplate(
     parameter_classes = {
         "min_wv":FloatParameter,
         "max_wv":FloatParameter,
@@ -696,8 +711,8 @@ global_mct = ModelComponentTemplate(
     },
     input_edges = {
         "wavelength_solution":[
-            ["min_wv", "min_p", False],
-            ["max_wv", "max_p", False],
+            ["min_wv", "min", False],
+            ["max_wv", "max", False],
         ],
         "wv_vectorizer":[
             ["transition_indexer", "indexer", False],
@@ -731,13 +746,14 @@ global_mct = ModelComponentTemplate(
         ],
     }
 )
-component_templates.register_template("global", "ew_base", global_mct)
+#component_templates.register_template("global", "ew_base", global_mct)
 
 def dirac_vec(n, i):
     vec = np.zeros(n, dtype=float)
     vec[i] = 1.0
+    return vec
 
-default_sampling_mct = ModelComponentTemplate(
+default_sampling_mct = JModelComponentTemplate(
     parameter_classes = {
         "lsf":None, 
         "lsf_coeffs":PickleParameter, 
@@ -784,11 +800,11 @@ default_sampling_mct = ModelComponentTemplate(
         ],
     },
 )
-component_templates.register_template(
-    "sampling",
-    "default",
-    default_sampling_mct
-)
+#component_templates.register_template(
+#    "sampling",
+#    "default",
+#    default_sampling_mct
+#)
 
 def extract_pseudonorm_coeffs(spec_context):
     spec = spec_context['spectrum']
@@ -799,7 +815,7 @@ def extract_pseudonorm_coeffs(spec_context):
     return pseudonorm_coeffs
 
 
-default_normalization_mct = ModelComponentTemplate(
+default_normalization_mct = JModelComponentTemplate(
     parameter_classes = {
         "norm":Parameter, 
         "norm_coeffs":PickleParameter, 
@@ -830,10 +846,10 @@ default_normalization_mct = ModelComponentTemplate(
         ],
     },
 )
-component_templates.register_template("normalization", "default", default_normalization_mct)
+#component_templates.register_template("normalization", "default", default_normalization_mct)
 
 
-fluxed_source_mct = ModelComponentTemplate(
+fluxed_source_mct = JModelComponentTemplate(
     parameter_classes = {
         "source_features":None,
         "continuum_shape":None,
@@ -873,10 +889,10 @@ fluxed_source_mct = ModelComponentTemplate(
         ],
     }
 )
-component_templates.register_template("source", "fluxed source", fluxed_source_mct)
+#component_templates.register_template("source", "fluxed source", fluxed_source_mct)
 
 
-bare_source_mct = ModelComponentTemplate(
+bare_source_mct = JModelComponentTemplate(
     parameter_classes = {
         "source_flux":Parameter,
     },
@@ -911,10 +927,10 @@ bare_source_mct = ModelComponentTemplate(
         ],
     }
 )
-component_templates.register_template("source", "source flux", fluxed_source_mct)
+#component_templates.register_template("source", "source flux", fluxed_source_mct)
 
 
-star_mct = ModelComponentTemplate(
+star_mct = JModelComponentTemplate(
     parameter_classes = {
         "central_features":Parameter,
         "features":Parameter,
@@ -958,7 +974,7 @@ star_mct = ModelComponentTemplate(
         "pseudostrength_model":tmb.cog.PseudoStrengthModel,
         "cog_model":tmb.cog.SaturationCurveModel,
         "saturation_model":tmb.cog.SaturationModel,
-        "feature_matrix_model":tmb.features.FeatureMatrixModel,
+        "feature_matrix_model":tmb.features.ProfileMatrixModel,
         #"primary_grouping_matrix_model":tmb.features.RelativeStrengthMatrixModel,
         "measurement_rsm_model":tmb.features.RelativeStrengthMatrixModel,
         "feature_condenser":tmb.features.CollapsedFeatureMatrixModel,
@@ -1073,10 +1089,10 @@ star_mct = ModelComponentTemplate(
         ],
     },
 )
-component_templates.register_template("stars", "default", star_mct)
+#component_templates.register_template("stars", "default", star_mct)
 
 
-plain_ew_mct = ModelComponentTemplate(
+plain_ew_mct = JModelComponentTemplate(
     parameter_classes = {
         "synthetic_ews":tmb.transitions.TransitionMappedParameter,
         "measurement_ews":Parameter,

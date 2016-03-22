@@ -45,7 +45,6 @@ def adjusted_median(
     contaminants and if not this correction term is neglected.
     """
     
-    
     if mask is None:
         mask = np.ones(len(values), dtype=bool)
     mask = np.asarray(mask, dtype=bool)
@@ -97,6 +96,22 @@ def adjusted_median(
         return coeffs[0]
 
 
+def local_structure_mask(
+        arr,
+        smooth_radius=2.0,
+        sd_weight=None,
+        acceptance_fraction=0.75,
+    ):
+    sm_arr = scipy.ndimage.filters.gaussian_filter(arr, smooth_radius)
+    if sd_weight is None:
+        sd_weight = smooth_radius**2
+    fder = scipy.gradient(sm_arr)
+    sder = scipy.gradient(fder)
+    structure_ind = np.sqrt(fder**2 + sd_weight*sder**2)
+    structure_rank = structure_ind.argsort().argsort()
+    return structure_rank < int(len(arr)*acceptance_fraction) + 1
+
+
 def sorting_norm(
         spectrum, 
         min_frac=0.75, 
@@ -125,10 +140,7 @@ def sorting_norm(
             mask = spectrum.ivar > 0
         else:
             mask = np.ones(npts, dtype=bool)
-        
-        secder = np.abs(scipy.gradient(scipy.gradient(flux)))
-        secder_rank = secder.argsort().argsort()
-        mask *= secder_rank < int(npts*0.75)+1
+        mask *= local_structure_mask(flux)
     
     if hasattr(spectrum, "wvs"):
         wavelengths = spectrum.wvs

@@ -59,13 +59,15 @@ def voigt_feature_matrix(
         local_wvs = wavelengths[lb:ub+1]
         local_wv_grad = wvs_grad[lb:ub+1]
         prof = voigt(local_wvs, ccent, csig, cgam)
-        if saturations[col_idx] > 0:
+        if saturations[col_idx] > 1e-4:
             #generate the saturated profile
             prof = np.power(10.0, -saturations[col_idx]*prof)-1.0
             #and normalize to have equivalent width == 1 angstrom
             prof /= np.sum(prof*local_wv_grad)
         if sigma_proportional:
             prof *= csig
+        #if np.sum(np.isnan(prof)) > 0:
+        #    import pdb; pdb.set_trace()    
         indexes.append(np.array([np.arange(lb, ub+1), np.repeat(col_idx, len(prof))]))
         profiles.append(prof)
     indexes = np.hstack(indexes)
@@ -74,27 +76,28 @@ def voigt_feature_matrix(
     mat = scipy.sparse.csc_matrix((profiles, indexes), shape=(npts, n_features))
     return mat
 
-class FeatureMatrixModel(Model):
+
+class ProfileMatrixModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__={
-        "polymorphic_identity":"FeatureMatrixModel",
+        "polymorphic_identity":"ProfileMatrixModel",
     }
     
     def __init__(
             self,
             output_p,
-            model_wv,
+            model_wvs,
             centers,
-            sigma,
-            gamma,
-            saturation,
+            sigmas,
+            gammas,
+            saturations,
     ):
         self.output_p = output_p
-        self.add_parameter("model_wvs", model_wv)
+        self.add_parameter("model_wvs", model_wvs)
         self.add_parameter("centers", centers)
-        self.add_parameter("sigmas", sigma)
-        self.add_parameter("gammas", gamma)
-        self.add_parameter("saturations", saturation)
+        self.add_parameter("sigmas", sigmas)
+        self.add_parameter("gammas", gammas)
+        self.add_parameter("saturations", saturations)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
@@ -186,10 +189,10 @@ class GammaModel(Model):
     }
     ref_gamma_wv = Column(Float)
     
-    def __init__(self, output_p, gamma_p, transition_wvs_p, ref_gamma_wv=5000.0):
+    def __init__(self, output_p, gamma, transition_wvs, ref_gamma_wv=5000.0):
         self.output_p = output_p
-        self.add_parameter("gamma", gamma_p)
-        self.add_parameter("transition_wvs", transition_wvs_p)
+        self.add_parameter("gamma", gamma)
+        self.add_parameter("transition_wvs", transition_wvs)
         self.ref_gamma_wv = ref_gamma_wv
     
     def __call__(self, vprep=None):
@@ -221,7 +224,7 @@ class RelativeStrengthMatrixModel(Model):
         self.add_parameter("transition_indexer", transition_indexer)
         self.add_parameter("pseudostrength", pseudostrength)
         self.add_parameter("row_indexer", row_indexer)
-        self.add_parameter("col_indexer", row_indexer)
+        self.add_parameter("col_indexer", col_indexer)
         self.add_parameter("cog", cog)
     
     def __call__(self, vprep=None):
@@ -237,7 +240,7 @@ class RelativeStrengthMatrixModel(Model):
         cog = vdict[self.inputs["cog"]]
         col_transitions = col_indexer.transitions
         for col_idx, exemplar_trans in enumerate(col_transitions):
-            global_trans_idx = transition_indexer[exemplar]
+            global_trans_idx = transition_indexer[exemplar_trans]
             exemplar_pst = pseudostrengths[global_trans_idx]
             exemplar_mult = cog(exemplar_pst)
             grouped_transitions = groups.get(exemplar_trans)
@@ -275,7 +278,7 @@ class CollapsedFeatureMatrixModel(Model):
         self.add_parameter("grouping_matrix", grouping_matrix)
     
     def __call__(self, vprep=None):
-        vdict = self.get_vdict()
+        vdict = self.get_vdict(vprep)
         fmat = vdict[self.inputs["feature_matrix"]]
         gmat = vdict[self.inputs["grouping_matrix"]]
         return fmat*gmat
@@ -286,16 +289,20 @@ class NormalizedFluxModel(Model):
         "polymorphic_identity":"NormalizedFluxModel",
     }
     
-    def __init__(self, output_p, feature_matrix_p, strengths_p):
+    def __init__(self, output_p, feature_matrix, strengths):
         self.output_p = output_p
-        self.add_parameter("feature_matrix", feature_matrix_p)
-        self.add_parameter("strengths", strengths_p)
+        self.add_parameter("feature_matrix", feature_matrix)
+        self.add_parameter("strengths", strengths)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
         fmat = vdict[self.inputs["feature_matrix"]]
         strengths = vdict[self.inputs["strengths"]]
         return 1.0-(fmat*strengths)
+    
+    def fast_deriv(self, param):
+        if param == self.inputs["strengths"]:
+            return -1.0*self.inputs["feature_matrix"].value
 
 
 class VoigtFitSingleLineSynthesis(ThimblesTable, Base):

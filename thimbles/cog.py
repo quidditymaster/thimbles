@@ -65,9 +65,10 @@ def voigt_saturation_curve(
         out_coeffs += c_coeffs*fit_coeffs[basis_idx]
     
     fit_quad = ppol.PiecewisePolynomial(out_coeffs, control_points=cpoints)
-        
+    
     cog= ppol.InvertiblePiecewiseQuadratic(fit_quad.coefficients, fit_quad.control_points, centers=fit_quad.centers, scales=fit_quad.scales)
     return cog
+
 
 class PseudoStrengthModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
@@ -86,7 +87,7 @@ class PseudoStrengthModel(Model):
             teff,
     ):
         self.output_p=output_p
-        self.add_parameter("transition_indexer", transition_indexer_p)
+        self.add_parameter("transition_indexer", transition_indexer)
         self.add_parameter("ion_correction", ion_correction)
         self.add_parameter("teff", teff)
     
@@ -113,16 +114,16 @@ class SaturationModel(Model):
     def __init__(
             self,
             output_p,
-            pseudostrength,
+            pseudostrengths,
             offset,
     ):
         self.output_p = output_p
-        self.add_parameter("pseudostrength", pseudostrength_p)
-        self.add_parameter("offset", offset_p)
+        self.add_parameter("pseudostrengths", pseudostrengths)
+        self.add_parameter("offset", offset)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
-        pseudostrengths = vdict[self.inputs["pseudostrength"]]
+        pseudostrengths = vdict[self.inputs["pseudostrengths"]]
         offset = vdict[self.inputs["offset"]]
         max_pst = np.max(pseudostrengths)
         return np.power(10.0, -(max_pst-pseudostrengths+offset))
@@ -134,15 +135,15 @@ class SaturationCurveModel(Model):
         "polymorphic_identity":"SaturationCurveModel",
     }
     
-    def __init__(self, output_p, sigma_p, gamma_p):
+    def __init__(self, output_p, sigmas, gammas):
         self.output_p = output_p
-        self.add_parameter("sigma", sigma_p)
-        self.add_parameter("gamma", gamma_p)
+        self.add_parameter("sigmas", sigmas)
+        self.add_parameter("gammas", gammas)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)
-        sigmas = vdict[self.inputs["sigma"]]
-        gammas = vdict[self.inputs["gamma"]]
+        sigmas = vdict[self.inputs["sigmas"]]
+        gammas = vdict[self.inputs["gammas"]]
         mean_gamma_ratio = np.mean(gammas/sigmas)
         return voigt_saturation_curve(mean_gamma_ratio)
 

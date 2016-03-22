@@ -30,6 +30,27 @@ class Damping(ThimblesTable, Base):
         self.rad = rad
         self.empirical = empirical
 
+def as_ion(ion):
+    if not isinstance(ion, Ion):
+        if isinstance(ion, (tuple, list)):
+            if len(ion) == 2:
+                speciesnum, charge = ion
+                isotope = 0
+            elif len(ion) == 3:
+                    speciesnum, charge, isotope = ion
+            else:
+                raise ValueError("Ion specification {} not understood\n possible formats include\n (z, charge)\n (z, charge, isotope), species_float".format(ion))
+        else:
+            speciesnum = int(ion)
+            charge = int(round(10*(ion-speciesnum)))
+            if speciesnum > 100:
+                iso_mult = 1e5
+            else:
+                iso_mult = 1e3
+            species_leftover = ion-speciesnum-0.1*charge
+            isotope = int(round(iso_mult*species_leftover))
+        ion = Ion(speciesnum, charge, isotope)
+    return ion
 
 class Transition(ThimblesTable, Base):
     wv = Column(Float)
@@ -45,26 +66,7 @@ class Transition(ThimblesTable, Base):
         self.ep = ep
         self.loggf = loggf
         
-        if not isinstance(ion, Ion):
-            if isinstance(ion, (tuple, list)):
-                if len(ion) == 2:
-                    speciesnum, charge = ion
-                    isotope = 0
-                elif len(ion) == 3:
-                    speciesnum, charge, isotope = ion
-                else:
-                    raise ValueError("Ion specification {} not understood\n possible formats are\n (z, charge)\n (z, charge, isotope)".format(ion))
-            else:
-                speciesnum = int(ion)
-                charge = int(round(10*(ion-speciesnum)))
-                if speciesnum > 100:
-                    iso_mult = 1e5
-                else:
-                    iso_mult = 1e3
-                species_leftover = ion-speciesnum-0.1*charge
-                isotope = int(round(iso_mult*species_leftover))
-            ion = Ion(speciesnum, charge, isotope)
-        self.ion = ion
+        self.ion = tmb.abundances.as_ion(ion)
         
         if damp is None:
             damp = Damping()
@@ -101,7 +103,7 @@ class Transition(ThimblesTable, Base):
             ion_correction = np.log10(ion_frac)
         else:
             ion_correction = np.log10(1.0-ion_frac)
-        return solar_ab + metalicity + self.loggf - theta*self.ep + ion_correction + np.log10(self.wv) - 3.0
+        return solar_ab + metalicity + self.loggf - theta*self.ep + ion_correction
     
     @property
     def x(self):
@@ -240,7 +242,7 @@ class TransitionMappedVectorizerModel(Model):
             fill_value=0.0
     ):
         self.output_p = output_p
-        self.add_parameter("tdict", transition_map)
+        self.add_parameter("tdict", mapped_values)
         self.add_parameter("indexer", indexer)
         self.fill_value = fill_value
     
@@ -406,7 +408,8 @@ def as_transition_group(tgroup):
 )
 def segmented_grouping_standard(
         standard_name, 
-        database, 
+        database,
+        transitions = None,
         transition_filters=None, 
         min_wv=None, 
         max_wv=None,
@@ -421,16 +424,17 @@ def segmented_grouping_standard(
      .filter(TransitionGroupingStandard.name == standard_name).all()
     if len(existing_standards) > 0:
         raise ValueError("TransitionGroupingStandard with name {} already exists".format(standard_name))
-    if transition_filters is None:
-        transition_filters = []
-    if not min_wv is None:
-        transition_filters.insert(0, Transition.wv > min_wv)
-    if not max_wv is None:
-        transition_filters.insert(0, Transition.wv < max_wv)
-    t_query = database.query(Transition)
-    for t_filter in transition_filters:
-        t_query = t_query.filter(t_filter)
-    transitions = t_query.all()
+    if transitions is None:
+        if transition_filters is None:
+            transition_filters = []
+        if not min_wv is None:
+            transition_filters.insert(0, Transition.wv > min_wv)
+        if not max_wv is None:
+            transition_filters.insert(0, Transition.wv < max_wv)
+        t_query = database.query(Transition)
+        for t_filter in transition_filters:
+            t_query = t_query.filter(t_filter)
+        transitions = t_query.all()
     split_scales=[
         ("z", 0.1),
         ("wv", wv_split),

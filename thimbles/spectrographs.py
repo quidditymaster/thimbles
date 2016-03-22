@@ -39,32 +39,53 @@ class SamplingModel(Model):
         lsf_out = vdict[self.inputs["output_lsf"]]
         return tmb.resampling.resampling_matrix(x_in, x_out, lsf_in, lsf_out)
 
+class ApertureAlias(ParameterAliasMixin, ThimblesTable, Base):
+    _context_id = Column(Integer, ForeignKey("Aperture._id"))
+    context = relationship("Aperture", foreign_keys=_context_id, back_populates="context")
 
-class Aperture(ThimblesTable, Base):
+class Aperture(ThimblesTable, Base, HasParameterContext):
     name = Column(String)
     info = Column(PickleType)
+    context = relationship("ApertureAlias", collection_class=NamedParameters)
     
     def __init__(self, name, info=None):
         self.name = name
         if info is None:
             info = {}
         self.info = info
-
+    
     def __repr__(self):
         return "Aperture: {}".format(self.name)
+    
+    def add_parameter(self, parameter_name, parameter, is_compound=False):
+        ApertureAlias(name=parameter_name, context=self, parameter=parameter, is_compound=is_compound)
+
+class OrderAlias(ParameterAliasMixin, ThimblesTable, Base):
+    _context_id = Column(Integer, ForeignKey("Order._id"))
+    context = relationship("Order", foreign_keys=_context_id, back_populates="context")
 
 class Order(ThimblesTable, Base):
     number = Column(Integer)
+    context = relationship("OrderAlias", collection_class=NamedParameters)
     
     def __init__(self, number):
         self.number = number
-
+    
     def __repr__(self):
         return "Order: {}".format(self.number)
 
-class Chip(ThimblesTable, Base):
+    def add_parameter(self, parameter_name, parameter, is_compound=False):
+        OrderAlias(name=parameter_name, context=self, parameter=parameter, is_compound=is_compound)
+        
+    
+class ChipAlias(ParameterAliasMixin, ThimblesTable, Base):
+    _context_id = Column(Integer, ForeignKey("Chip._id"))
+    context = relationship("Chip", foreign_keys=_context_id, back_populates="context")
+
+class Chip(ThimblesTable, Base, HasParameterContext):
     name = Column(String)
     info = Column(PickleType)
+    context = relationship("ChipAlias", collection_class=NamedParameters)
     
     def __init__(self, name, info=None):
         self.name = name
@@ -75,3 +96,5 @@ class Chip(ThimblesTable, Base):
     def __repr__(self):
         return "Chip: {}".format(self.name)
 
+    def add_parameter(self, parameter_name, parameter, is_compound=False):
+        ChipAlias(name=parameter_name, context=self, parameter=parameter, is_compound=is_compound)

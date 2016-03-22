@@ -17,9 +17,11 @@ class HyperGridInterpolator:
       e.g. coordinates = [ [x1, x2, x3, ... xn], [y1, y2, y3 ... ym]]
     grid_data: numpy.ndarray
       a hypercube of data with any number of dimensions. The first few
-      dimensions of the array are assumed to correspond to the coordinates.
+      dimensions of the array are assumed to correspond to the coordinate dimensions such that a change in the index of that dimesnsion of the array corresponds to a change in the coordinates of the input coordinates.
       Any remaining dimensions of the grid_data are assumed to be the intended
       array shape of the output data.
+
+    for example if we wish to interpolate a single value over two input dimensions we would input as the grid data a 2D grid of values n_x by n_y, if we wish to interpolate a 5 dimensional quantity over one dimension we would input a data grid of n_x by 5 array. etc.
     """    
     def __init__(self, coordinates, grid_data, extrapolation="nearest"):
         self.indexer = co.TensoredCoordinatization(coordinates)

@@ -288,7 +288,7 @@ class PiecewisePolynomial:
         boundary_points[1:-1] = control_points
         self.binning = Binning(boundary_points)
         self.n_polys = n_polys
-        if centers == None:
+        if centers is None:
             self.centers = np.zeros(n_polys)
             #set the centers in such a way to allow for infinite bounds
             for center_idx in range(n_polys):
@@ -301,7 +301,7 @@ class PiecewisePolynomial:
                 self.centers[center_idx] = 0.5*(lb+ub)
         else:
             self.centers = centers
-        if scales == None:
+        if scales is None:
             self.scales = np.ones(n_polys)
         else:
             self.scales = scales

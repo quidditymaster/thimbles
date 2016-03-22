@@ -91,3 +91,4 @@ def influence_graph_gv(influence_graph):
         gv.append("{} -> {};\n".format(n1id, n2id))
     gv.append("}")
     return "\n".join(gv)
+

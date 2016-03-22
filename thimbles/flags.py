@@ -72,6 +72,10 @@ class FlagSpace(object):
         return self.dict_to_int(self.default_dict)
 
 class Flags(object):
+
+    def __init__(self, flag_space, flag_int=0):
+        self.flag_space = flag_space
+        self.flag_int = flag_int
     
     def __getitem__(self, flag_name):
         return bool(self.flag_space[flag_name] & self.flag_int)
@@ -118,6 +122,22 @@ class SpectrumFlags(Flags, ThimblesTable, Base):
     flag_int= Column(Integer)    
     flag_space = spectrum_flag_space
     
+    def __init__(self, flag_int=None):
+        if flag_int is None:
+            flag_int = self.flag_space.default_int
+        self.flag_int = flag_int
+
+
+distribution_flag_space = FlagSpace()
+distribution_flag_space.add_dimension("observation", bit_index=0)
+distribution_flag_space.add_dimension("prior", bit_index=1)
+distribution_flag_space.add_dimension("convergence", bit_index=2)
+
+
+class DistributionFlags(Flags, ThimblesTable, Base):
+    flag_int = Column(Integer)
+    flag_space = distribution_flag_space
+
     def __init__(self, flag_int=None):
         if flag_int is None:
             flag_int = self.flag_space.default_int

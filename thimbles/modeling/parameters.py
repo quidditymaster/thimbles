@@ -34,10 +34,6 @@ class Parameter(ThimblesTable, Base):
         "DistributionAlias",
         collection_class = NamedContexts,
     )   
-    estimators = relationship(
-        "EstimatorAlias",
-        collection_class = NamedContexts
-    )
     
     _setting_callbacks = None
     _invalidation_callbacks = None
@@ -45,7 +41,7 @@ class Parameter(ThimblesTable, Base):
     def __init__(self, value=None):
         self._value = value
     
-    def add_callback(self, cb_name, cb_function, cb_type="set"):
+    def add_callback(self, cb_name, cb_function, cb_type="invalid"):
         """add a function to be called whenever this parameters value
         is set or invalidated depending on cb_type argument.
         """

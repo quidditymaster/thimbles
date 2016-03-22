@@ -6,6 +6,7 @@ from thimbles.modeling.models import Model, Parameter
 from thimbles.thimblesdb import HasName
 from thimbles.sqlaimports import *
 from functools import reduce
+import scipy
 
 __all__ = \
 """
@@ -59,7 +60,9 @@ class MultiplierModel(Model):
                 param_is_dependent = True
         if not param_is_dependent:
             raise ValueError("given parameter is not an input of this model!")
-        return complimentary_prod
+        out_shape = (len(complimentary_prod), len(complimentary_prod))
+        der_mat = scipy.sparse.dia_matrix((complimentary_prod, 0), shape=out_shape)
+        return der_mat
 
 
 class PickleParameter(Parameter):
@@ -103,8 +106,8 @@ class MatrixMultiplierModel(Model):
     
     def __init__(self, output_p, matrix, vector):
         self.output_p = output_p
-        self.add_parameter("matrix", matrix_p)
-        self.add_parameter("vector", vector_p)
+        self.add_parameter("matrix", matrix)
+        self.add_parameter("vector", vector)
     
     def __call__(self, vprep=None):
         vdict = self.get_vdict(vprep)

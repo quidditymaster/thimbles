@@ -49,7 +49,7 @@ class Model(ThimblesTable, Base):
     def parameters(self):
         return self.inputs.parameters
     
-    def __call__(self, vdict=None):
+    def __call__(self, override=None):
         raise NotImplementedError("Model is intended strictly as a parent class. you must subclass it and implement a __call__ method.")
     
     def fire(self):
@@ -66,7 +66,7 @@ class Model(ThimblesTable, Base):
         vdict.update(replacements)
         return vdict
     
-    def fast_deriv(self, param):
+    def fast_deriv(self, param, override):
         """
 This model should be implemented for performance sensitive or frequently used model classes.
 

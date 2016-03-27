@@ -50,15 +50,21 @@ def extract_influence_graph(nodes, direction="upstream"):
     return influence_graph
 
 
-def execute_path(path, root_value):
+def execute_path(path, root_value, override, copy_override=True):
+    if override is None:
+        override = {}
     assert isinstance(path[0], Parameter)
     assert all([isinstance(m, Model) for m in path[1::2]])
     last_output = root_value
+    if copy_override:
+        rep_d = copy(override)
+    else:
+        rep_d = override
     for p_idx in range(int(len(path)//2)):
         param = path[2*p_idx]
         model = path[2*p_idx+1]
-        rep_d = {param:last_output}
-        last_output = model(rep_d)
+        rep_d[param] = last_output
+        last_output = model(override=rep_d)
     return last_output
 
 

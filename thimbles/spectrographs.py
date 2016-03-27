@@ -31,8 +31,8 @@ class SamplingModel(Model):
         self.add_parameter("output_wvs", output_wvs)
         self.add_parameter("output_lsf", output_lsf)  
     
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
         x_in = vdict[self.inputs["input_wvs"]].coordinates
         x_out = vdict[self.inputs["output_wvs"]].coordinates
         lsf_in = vdict[self.inputs["input_lsf"]]

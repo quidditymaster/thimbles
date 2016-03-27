@@ -246,8 +246,8 @@ class TransitionMappedVectorizerModel(Model):
         self.add_parameter("indexer", indexer)
         self.fill_value = fill_value
     
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
         tdict = vdict[self.inputs["tdict"]]
         indexer = vdict[self.inputs["indexer"]]
         ntrans = len(indexer)

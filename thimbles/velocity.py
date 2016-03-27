@@ -119,18 +119,14 @@ class RVShiftModel(Model):
         for rv_p in rv_params:
             self.add_parameter("rv_params", rv_p, is_compound=True)
     
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
         wvs = vdict[self.inputs["wvs"]]
         rv_tot = sum([vdict[p] for p in self.inputs["rv_params"]])
         return wvs*(1.0-rv_tot/tmb.speed_of_light)
 
 
 class CrossCorrelationRelativeVelocityEstimator(Estimator):
-    _id = Column(Integer, ForeignKey("Estimator._id"), primary_key=True)
-    __mapper_args__={
-        "polymorphic_identity":"CrossCorrelationRelativeVelocityEstimator",
-    }
     
     def __init__(self, source,):
         rv_p = source.context["rv"]

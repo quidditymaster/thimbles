@@ -59,9 +59,12 @@ def voigt_feature_matrix(
         local_wvs = wavelengths[lb:ub+1]
         local_wv_grad = wvs_grad[lb:ub+1]
         prof = voigt(local_wvs, ccent, csig, cgam)
-        if saturations[col_idx] > 1e-4:
+        csat = saturations[col_idx]
+        if csat > -3:
+            csat = min(csat, 9.0)
             #generate the saturated profile
-            prof = np.power(10.0, -saturations[col_idx]*prof)-1.0
+            ctau = np.power(10.0, csat)
+            prof = np.power(10.0, -ctau*prof)-1.0
             #and normalize to have equivalent width == 1 angstrom
             prof /= np.sum(prof*local_wv_grad)
         if sigma_proportional:
@@ -99,8 +102,8 @@ class ProfileMatrixModel(Model):
         self.add_parameter("gammas", gammas)
         self.add_parameter("saturations", saturations)
     
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
         wv_indexer = vdict[self.inputs["model_wvs"]]
         mod_wvs = wv_indexer.coordinates
         centers = vdict[self.inputs["centers"]]
@@ -137,8 +140,8 @@ class SigmaModel(Model):
         self.add_parameter("wvs", transition_wvs)
         self.add_parameter("weights", molecular_weights)
     
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
         teff = vdict[self.inputs["teff"]]
         vmicro = vdict[self.inputs["vmicro"]]
         t_wvs = vdict[self.inputs["wvs"]]
@@ -158,8 +161,8 @@ class TransitionWavelengthVectorModel(Model):
         self.output_p = output_p
         self.add_parameter("indexer", indexer)
     
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
         indexer = vdict[self.inputs["indexer"]]
         t_wvs = np.array([t.wv for t in indexer.transitions])
         return t_wvs
@@ -175,8 +178,8 @@ class IonWeightVectorModel(Model):
         self.output_p = output_p
         self.add_parameter("indexer", indexer)
     
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
         indexer = vdict[self.inputs["indexer"]]
         weights = np.array([t.ion.weight for t in indexer.transitions])
         return weights
@@ -195,8 +198,8 @@ class GammaModel(Model):
         self.add_parameter("transition_wvs", transition_wvs)
         self.ref_gamma_wv = ref_gamma_wv
     
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
         gamma = vdict[self.inputs["gamma"]]
         t_wvs = vdict[self.inputs["transition_wvs"]]
         gammas = gamma*(t_wvs/self.ref_gamma_wv)**2
@@ -227,8 +230,8 @@ class RelativeStrengthMatrixModel(Model):
         self.add_parameter("col_indexer", col_indexer)
         self.add_parameter("cog", cog)
     
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
         row_idxs = [] #transition indexes
         col_idxs = [] #exemplar indexes
         rel_strengths = []
@@ -277,8 +280,8 @@ class CollapsedFeatureMatrixModel(Model):
         self.add_parameter("feature_matrix", feature_matrix)
         self.add_parameter("grouping_matrix", grouping_matrix)
     
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
         fmat = vdict[self.inputs["feature_matrix"]]
         gmat = vdict[self.inputs["grouping_matrix"]]
         return fmat*gmat
@@ -294,58 +297,21 @@ class NormalizedFluxModel(Model):
         self.add_parameter("feature_matrix", feature_matrix)
         self.add_parameter("strengths", strengths)
     
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
         fmat = vdict[self.inputs["feature_matrix"]]
         strengths = vdict[self.inputs["strengths"]]
         return 1.0-(fmat*strengths)
     
-    def fast_deriv(self, param):
-        if param == self.inputs["strengths"]:
-            return -1.0*self.inputs["feature_matrix"].value
+    def fast_deriv(self, param, override=None):
+        if override is None:
+            override = {}
+        strengths_param = self.inputs["strengths"]
+        if param == strengths_param:
+            feat_mat_p = self.inputs["feature_matrix"]
+            if feat_mat_p in override:
+                fmat = override[fmat]
+            else:
+                fmat = feat_mat_p.value
+            return -1.0*fmat
 
-
-class VoigtFitSingleLineSynthesis(ThimblesTable, Base):
-    """table for caching the values of running MOOG to synthesize an individual
-transition then fitting the resultant spectrum with a voigt profile to determine a sigma, gamma and equivalent width.
-    """
-    _transition_id = Column(Integer, ForeignKey("Transition._id"))
-    transition = relationshp = relationship("Transition")
-    
-    ew = Column(Float)
-    sigma = Column(Float)
-    gamma = Column(Float)
-    rms = Column(Float)
-    
-    #class attributes
-    _teff_delta = 250 #grid points in teff
-    _logg_delta = 0.5 #grid spacing in logg
-    _metalicity_delta = 0.5 #grid spacing in [Fe/H]
-    _vmicro_delta = 0.1 #grid spacing in microturbulence
-    _delta_lambda = 0.01
-    _opac_rad = 10.0
-    
-    engine_instance = mooger
-    
-    def __init__(self, transition, teff, logg, metalicity, vmicro, x_on_fe):
-        self.transtion = transition
-        abund = Abundance(self.transition.ion)
-        self.stellar_parameters = StellarParameters(teff, logg, metalicity, vmicro, abundances=[abund])
-        cent_wv = self.transition.wv
-        min_wv = cent_wv - self._opac_rad
-        max_wv = cent_wv + self._opac_rad
-        targ_npts = int((max_wv-min_wv)/self._delta_lambda)
-        targ_wvs = np.linspace(min_wv, max_wv, targ_npts)
-        synth = self.engine_instance.spectrum(
-            linelist=[self.transition],
-            stellar_params=self.stellar_parameters,
-            wavelengths=targ_wvs,
-            sampling_mode="bounded",
-            delta_wv=self._delta_lambda,
-            opac_rad=self._opac_rad,
-            central_intensity=False,
-        )
-        depths = 1.0-synth.flux
-        fres = tmb.utils.misc.unweighted_voigt_fit(synth.wvs, depths)
-        self.sigma, self.gamma, self.ew = fres
-        #import pdb; pdb.set_trace()

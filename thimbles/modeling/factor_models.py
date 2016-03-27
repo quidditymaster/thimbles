@@ -18,7 +18,6 @@ IdentityMap
 IdentityMapModel
 MatrixMultiplierModel
 MultiplierModel
-LogisticModel
 LinearIndexerModel
 InterpolationMatrixModel
 KernelWeightedMatchingInterpolatorModel
@@ -41,21 +40,26 @@ class MultiplierModel(Model):
         for param in factors:
             self.add_parameter("factors", param, is_compound=True)
     
-    def __call__(self, pvrep=None):
-        vdict = self.get_vdict(pvrep)
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
         factors = self.inputs["factors"]
         product = vdict[factors[0]]
         for param in factors[1:]:
             product = product*vdict[param]
         return product
     
-    def fast_deriv(self, param):
+    def fast_deriv(self, param, override=None):
+        if override is None:
+            override = {}
         all_factors = self.parameters
         complimentary_prod = 1.0
         param_is_dependent = False
         for factor in all_factors:
             if factor != param:
-                complimentary_prod *= factor.value
+                if not (param in override):
+                    complimentary_prod *= factor.value
+                else:
+                    complimentary_prod *= override[param]
             else:
                 param_is_dependent = True
         if not param_is_dependent:
@@ -109,15 +113,21 @@ class MatrixMultiplierModel(Model):
         self.add_parameter("matrix", matrix)
         self.add_parameter("vector", vector)
     
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
         mat = vdict[self.inputs["matrix"]]
         vec = vdict[self.inputs["vector"]]
         return mat*vec
     
-    def fast_deriv(self, param):
+    def fast_deriv(self, param, override=None):
+        if override is None:
+            override = {}
         if param == self.inputs["vector"]:
-            return self.inputs["matrix"].value
+            matrix_p = self.inputs["matrix"]
+            if matrix_p in override:
+                return override[matrix_p]
+            else:
+                return matrix_p.value
         return None
 
 
@@ -127,20 +137,22 @@ class NegativeExponentialModel(Model):
         "polymorphic_identity":"NegativeExponentialModel",
     }
     
-    def __init__(self, output_p, optical_depth):
+    def __init__(self, output_p, tau):
         self.output_p = output_p
-        self.add_parameter("optical_depth", optical_depth)
+        self.add_parameter("tau", tau)
     
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
-        op_depth = vdict[self.inputs["optical_depth"]]
-        return np.exp(-op_depth)
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
+        tau = vdict[self.inputs["tau"]]
+        return np.exp(-tau)
     
-    def fast_deriv(self, param):
-        opd_param = self.inputs["optical_depth"]
-        if param == opd_param:
-            opd_val = opd_param.value
-            val_deriv = -opd_val*np.exp(-opd_val)
+    def fast_deriv(self, param, override=None):
+        tau_param = self.inputs["tau"]
+        if param == tau_param:
+            if tau_param in override:
+                raise ValueError("overriding derivative param")
+            tau_val = tau_param.value
+            val_deriv = -tau_val*np.exp(-tau_val)
             return scipy.sparse.dia_matrix((val_deriv, 0), shape=(len(opd_val), len(opd_val)))
         return None
 
@@ -166,33 +178,22 @@ class PixelPolynomialModel(Model):
     
     def get_x(self, pixels=None):
         if pixels is None:
-            pixels = np.arange(self.npts)
+            pixels = np.arange(self.npts, dtype=float)
         return (pixels-0.5*self.npts)/(0.5*self.npts)
     
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
         coeffs = vdict[self.inputs["coeffs"]]
         return np.polyval(coeffs, self.get_x())
-
-
-class LogisticModel(Model):
-    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
-    __mapper_args__ = {
-        "polymorphic_identity":"LogisticModel",
-    }
     
-    def __init__(self, output_p, x_p, slope_p=None):
-        self.output_p = output_p
-        self.add_parameter("x", x_p)
-        if slope_p is None:
-            slope_p = FloatParameter(1.0)
-        self.add_parameter("slope", slope_p)
-    
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
-        x = vdict[self.inputs["x"]]
-        slope = vdict[self.inputs["slope"]]
-        return 1.0/(1.0 + np.exp(-slope*x))
+    def fast_deriv(self, param, override=None):
+        coeff_p = self.inputs["coeffs"]
+        if param is coeff_p:
+            xvals = self.get_x()
+            vdict = self.get_vdict(override)
+            coeff_val = vdict[coeff_p]
+            vander_mat = scipy.sparse.csr_matrix(np.vander(xvals, len(coeff_val)))
+            return vander_mat
 
 
 class InterpolationMatrixModel(Model):
@@ -200,17 +201,18 @@ class InterpolationMatrixModel(Model):
     __mapper_args__ = {
         "polymorphic_identity":"InterpolationMatrixModel",
     }
-
-    def __init__(self, output_p, coord_p, indexer_p):
-        self.output_p = output_p
-        self.add_parameter("coords", coord_p)
-        self.add_parameter("indexer", indexer_p)
     
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
+    def __init__(self, output_p, coords, indexer):
+        self.output_p = output_p
+        self.add_parameter("coords", coord)
+        self.add_parameter("indexer", indexer)
+    
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
         coords = vdict[self.inputs["coords"]]
         indexer = vdict[self.inputs["indexer"]]
         return indexer.interpolant_sampling_matrix(coords)
+
 
 class LinearIndexerModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
@@ -226,8 +228,8 @@ class LinearIndexerModel(Model):
         self.min_coord = min_coord
         self.max_coord = max_coord
     
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
         indexed = vdict[self.inputs["indexed"]]
         return tmb.coordinatization.LinearCoordinatization(min=self.min_coord, max=self.max_coord, npts=len(indexed))
 
@@ -244,8 +246,8 @@ class KernelWeightedMatchingInterpolatorModel(Model):
     def __init__(
             self, 
             output_p, 
-            x_p, 
-            y_p, 
+            x, 
+            y, 
             kernel_sigma=1.0, 
             kernel_gamma=0.1, 
             matching_tolerance=6.0
@@ -257,8 +259,8 @@ class KernelWeightedMatchingInterpolatorModel(Model):
         self.kernel_sigma = kernel_sigma
         self.matching_tolerance = matching_tolerance
     
-    def __call__(self, vprep):
-        vdict = self.get_vdict(vprep)
+    def __call__(self, override):
+        vdict = self.get_vdict(override)
         x = vdict[self.inputs["x"]]
         y = vdict[self.inputs["y"]]
         kernel = lambda x:np.exp(-0.5*(x/kernel_sigma)**2)/(1.0+(x/kernel_gamma)**2)
@@ -299,6 +301,6 @@ def IdentityMapModel(Model):
         "polymorphic_identity":"IdentityMatrixModel",
     }
     
-    def __call__(self, vprep):
+    def __call__(self, override=None):
         return IdentityMap()
     

@@ -91,8 +91,8 @@ class PseudoStrengthModel(Model):
         self.add_parameter("ion_correction", ion_correction)
         self.add_parameter("teff", teff)
     
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
         transition_indexer = vdict[self.inputs["transition_indexer"]]
         transitions = transition_indexer.transitions
         ion_correction = vdict[self.inputs["ion_correction"]]
@@ -101,7 +101,7 @@ class PseudoStrengthModel(Model):
         for t in transitions:
             uncor_pst = t.pseudo_strength(teff=teff)
             ion_cor = ion_correction.get(t.ion, self.fallback_correction)
-            adj_pst.append(uncor_pst-ion_cor)
+            adj_pst.append(uncor_pst+ion_cor)
         return np.array(adj_pst)
 
 
@@ -114,19 +114,25 @@ class SaturationModel(Model):
     def __init__(
             self,
             output_p,
-            pseudostrengths,
             offset,
+            saturation_curve,
+            pseudostrengths,
     ):
         self.output_p = output_p
-        self.add_parameter("pseudostrengths", pseudostrengths)
         self.add_parameter("offset", offset)
+        #self.add_parameter("strength_matrix", strength_matrix)
+        self.add_parameter("saturation_curve", saturation_curve)
+        self.add_parameter("pseudostrengths", pseudostrengths)
     
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
-        pseudostrengths = vdict[self.inputs["pseudostrengths"]]
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
+        pst = vdict[self.inputs["pseudostrengths"]]
+        sat_curve = vdict[self.inputs["saturation_curve"]]
         offset = vdict[self.inputs["offset"]]
-        max_pst = np.max(pseudostrengths)
-        return np.power(10.0, -(max_pst-pseudostrengths+offset))
+        
+        saturations = sat_curve.inverse(sat_curve(pst) - offset)
+        
+        return saturations 
 
 
 class SaturationCurveModel(Model):
@@ -140,13 +146,9 @@ class SaturationCurveModel(Model):
         self.add_parameter("sigmas", sigmas)
         self.add_parameter("gammas", gammas)
     
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
         sigmas = vdict[self.inputs["sigmas"]]
         gammas = vdict[self.inputs["gammas"]]
         mean_gamma_ratio = np.mean(gammas/sigmas)
         return voigt_saturation_curve(mean_gamma_ratio)
-
-
-
-    

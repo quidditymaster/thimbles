@@ -28,8 +28,8 @@ class BroadeningMatrixModel(Model):
         self.add_parameter("vmacro", vmacro)
         self.add_parameter("ldark", ldark)
     
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
         model_wv_indexer = vdict[self.inputs["model_wvs"]]
         vsini = vdict[self.inputs["vsini"]]
         vmacro = vdict[self.inputs["vmacro"]]

@@ -29,9 +29,11 @@ class Distribution(ThimblesTable, Base, HasParameterContext):
         "polymorphic_on":distribution_class
     }
     context = relationship("DistributionAlias", collection_class=NamedParameters)
+    level = Column(Integer)
     
-    def __init__(self, parameters=None):
+    def __init__(self, parameters=None, level=0):
         HasParameterContext.__init__(self, context_dict=parameters)
+        self.level = level
     
     def add_parameter(self, name, parameter, is_compound=False):
         DistributionAlias(name=name, context=self, parameter=parameter, is_compound=is_compound)
@@ -45,8 +47,14 @@ class NormalDistribution(Distribution):
     mean = Column(PickleType)
     ivar = Column(PickleType)
     
-    def __init__(self, mean=None, ivar=None, parameters=None):
-        Distribution.__init__(self, parameters=parameters)
+    def __init__(
+            self,
+            mean=None,
+            ivar=None,
+            parameters=None,
+            level=0,
+    ):
+        Distribution.__init__(self, parameters=parameters, level=level)
         if not mean is None:
             self.mean = np.asarray(mean)
         if not ivar is None:

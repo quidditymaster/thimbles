@@ -27,8 +27,8 @@ class TelluricShiftMatrixModel(Model):
         self.add_parameter("rv", rv_p)
         self.add_parameter("delta_helio", delta_helio_p)
     
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
         model_wvs_indexer = vdict[self.inputs["model_wvs"]]
         model_wvs = model_wvs_indexer.coordinates
         rv = vdict[self.inputs["rv"]]
@@ -39,21 +39,3 @@ class TelluricShiftMatrixModel(Model):
         smat = model_wvs_indexer.interpolant_sampling_matrix(overlay_wvs)
         return smat
 
-class TransmissionModel(Model):
-    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
-    __mapper_args__={
-        "polymorphic_identity":"TelluricTransmissionModel",
-    }
-    
-    def __init__(
-            self, 
-            output_p,
-            opacity_p
-    ):
-        self.output_p = output_p
-        self.add_parameter("opacity", opacity_p)        
-    
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
-        opac = vdict[self.inputs["opacity"]]
-        return np.exp(-opac)

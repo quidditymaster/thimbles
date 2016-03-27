@@ -142,8 +142,8 @@ class ArbitraryCoordinatizationModel(Model):
         self.output_p = output_p
         self.add_parameter("coords", coords_p)
     
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
         coords = vdict[self.inputs["coords"]]
         return ArbitraryCoordinatization(coords)
 
@@ -315,8 +315,8 @@ class LinearCoordinatizationModel(Model):
         self.add_parameter("min", min_p)
         self.add_parameter("max", max_p)
     
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
         min = vdict[self.inputs["min"]]
         max = vdict[self.inputs["max"]]
         return LinearCoordinatization(min=min, max=max, npts=self.npts)
@@ -431,8 +431,8 @@ class LogLinearCoordinatizationModel(Model):
         self.add_parameter("min", min)
         self.add_parameter("max", max)
     
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
         min = vdict[self.inputs["min"]]
         max = vdict[self.inputs["max"]]
         return LogLinearCoordinatization(min=min, max=max, npts=self.npts)
@@ -516,8 +516,8 @@ class TensoredCoordinatizationModel(Model):
         for cp in coord_params:
             self.add_parameter("coords", cp, is_compound=True)
     
-    def __call__(self, vprep=None):
-        vdict = self.get_vdict(vprep)
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
         coord_ps = [vdict[p] for p in self.inputs["coords"]]
         return TensoredCoordinatization(coord_ps)
 
@@ -661,4 +661,3 @@ class TensoredCoordinatization(object):
             cmat = scipy.sparse.coo_matrix((mat_data, (row_idxs, col_idxs)), shape=(nrows, nrows))
             curvature_mats.append(cmat)
         return curvature_mats
-

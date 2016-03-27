@@ -237,9 +237,9 @@ class MoogEngine(RadiativeTransferEngine):
         f.close()
         self._exec_moog()
         summary_fname = os.path.join(self.working_dir, out_fname + ".sum")
-        result = tmb.io.moog_io.read_moog_synth_summary(summary_fname)
-        resampled = result.sample(wavelengths, mode=sampling_mode)
-        return resampled
+        result_spectra = tmb.io.moog_io.read_moog_synth_summary(summary_fname)
+        resampled_spectra = [result.sample(wavelengths, mode=sampling_mode) for result in result_spectra]
+        return resampled_spectra
     
     def continuum(self, stellar_params):
         self._not_implemented()

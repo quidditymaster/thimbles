@@ -1,4 +1,3 @@
-
 import numpy as np
 import matplotlib as mpl
 mpl.use("qt4Agg")
@@ -15,169 +14,204 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--grid-dir", required=True)
 parser.add_argument("--grid-manifest")
-parser.add_argument("--output-dir", required=True)
-parser.add_argument("--gamma-iter", default=20, type=int)
+parser.add_argument("--output", required=True)
 
 
-def extract_ews(fluxes, wvs):
-    return scipy.integrate.simps(1.0-fluxes, x=wvs, axis=1)
-
-def get_doppler_widths(teffs, vmicros, transition):
-    wv = transition["wv"]
-    mol_weight = tmb.ptable.ix[(transition["z"], 0)]["weight"]
-    twidth = tmb.utils.misc.thermal_width(teffs, wv, mol_weight)
-    vwidth = (vmicros/tmb.speed_of_light)*wv
-    return np.sqrt(vwidth**2 + twidth**2)
-
-def params_from_pgrid(fname):
-    flux = pd.read_hdf(fname, "flux")
-    transition = pd.read_hdf(fname, "transition")
-    params = pd.read_hdf(fname, "params")
-    wvs = pd.read_hdf(fname, "wvs").values
+def fit_cog(
+        params,
+        transition,
+        gamma_model,
+        diagnostic_plot=False
+):
+    tew_adj = np.linspace(-1.5, 0.5, 25)
+    log_gamma = gamma_model(params.mean(), transition)
+    n_delta_gam = 11
+    delta_lgams = np.linspace(-0.5, 0.5, n_delta_gam)
     
-    params["ew"] = extract_ews(flux, wvs)
-    params["doppler_width"] = get_doppler_widths(params["teff"], params["vmicro"], transition)
-    params["tew"] = params["ew"]/params["doppler_width"]
-    params["xonh"] = params["met"] + params["xonfe"]
+    opt_esum = np.inf
+    opt_gamma_adj_idx = 0
+    opt_ew_adj_idx = 0
+    opt_x_shift = 0
     
-    return flux, transition, params, wvs
-
-
-def fit_gamma(
-    flux,
-    params,
-    transition,
-    wvs,
-    gamma_model,
-    n_iter=25,
-    log_rate=100,
-):  
-    tl_gb = params.groupby(["teff", "logg"])
-    tl_groups = tl_gb.groups
+    mean_dop_width = np.mean(params["doppler_width"])
     
-    gammas = []
-    avg_params = tl_gb.mean()
-    avg_std = tl_gb.std()
-    tl_tuples = list(avg_params.index)
-    for tl_tup in tl_tuples:
-        tl_idxs = tl_groups[tl_tup]
-        reshaped_ews = params["ew"].ix[tl_idxs].values.reshape((-1, 1))
-        cteff, clogg = tl_tup
-        depths = 1.0 - flux.ix[tl_idxs]
+    for gam_idx in range(n_delta_gam):
+        gamma = np.power(10.0, log_gamma + delta_lgams[gam_idx])
+        gamma_ratio = gamma/mean_dop_width
+        cog = tmb.cog.voigt_saturation_curve(gamma_ratio)
         
-        sigma = avg_params.ix[tl_tup]["doppler_width"]
-        gamma = gamma_model(clogg)
-        for iter_idx in range(n_iter):
-            prof = tmb.profiles.voigt(wvs, transition["wv"], sigma, gamma)
-            gamma_eps = 0.1*gamma
-            p_minus = tmb.profiles.voigt(wvs, transition["wv"], sigma, gamma-gamma_eps)
-            p_plus = tmb.profiles.voigt(wvs, transition["wv"], sigma, gamma+gamma_eps)
-            gamma_deriv = (p_plus - p_minus)/gamma_eps
-            
-            depth_model = prof.reshape((1, -1))*reshaped_ews
-            resids = depths - depth_model
-            mean_resid = np.mean(resids, axis=0)
-            if False:#iter_idx % 50 == 0:
-                plt.plot(mean_resid)
-                plt.ylim(-0.005, 0.005)
-                plt.show()
-            
-            gamma_adj = np.sum(mean_resid*gamma_deriv)/np.sum(gamma_deriv**2)
-            gamma = gamma + gamma_adj
-            gamma = np.abs(gamma)
-            #put in a weak prior for zero gamma
-            data_weight = len(depths)
-            gamma *= data_weight/(data_weight + 0.01)
-        gammas.append(gamma)
+        cog_delta_sums = []
+        bshifts = []
+        ltew = np.log10(params["tew"])
+        xonh = params["xonh"]
+        for adj_idx in range(len(tew_adj)):
+            shift = np.median(params["xonh"] - cog.inverse(ltew-tew_adj[adj_idx]))
+            bshifts.append(shift)
+            cog_pred = cog(xonh - shift) + tew_adj[adj_idx]
+            deltas = ltew - cog_pred
+            cog_delta_sums.append(np.sum(deltas**2))
+        
+        best_idx = np.argmin(cog_delta_sums)
+        if cog_delta_sums[best_idx] < opt_esum:
+            opt_gamma_adj_idx = gam_idx
+            opt_ew_adj_idx = best_idx
+            opt_esum = cog_delta_sums[best_idx]
+            opt_x_shift = bshifts[best_idx]
     
-    #build the aggregated dataframe
-    data_dict =dict(
-        teff=[tl_tup[0] for tl_tup in tl_tuples],
-        logg=[tl_tup[1] for tl_tup in tl_tuples],
-        gamma=gammas,
-        )
-    nrows = len(gammas)
-    for cname in avg_params.columns:
-        data_dict[cname] = avg_params[cname].values
-        data_dict[cname + "_std"] = avg_std[cname].values
-    for attr_name in transition.index:
-        data_dict[attr_name] = np.repeat(transition[attr_name], nrows)
-    agg_df = pd.DataFrame(data_dict)
-    return agg_df
-
-def fit_cog(params, transition, gamma_model, diagnostic_plot=False):
-    tew_adj = np.linspace(-2.0, 2.0, 50)
-    gamma_ratio = gamma/np.mean(params["doppler_width"])
-    cog = tmb.cog.voigt_saturation_curve(gamma_ratio)
+    best_ew_adj = tew_adj[opt_ew_adj_idx]
+    best_gam_adj = delta_lgams[opt_gamma_adj_idx]
+    best_gam = np.power(10.0, log_gamma + best_gam_adj)
     
-    cog_delta_sums = []
-    bshifts = []
-    ltew = np.log10(params["tew"])
-    xonh = params["xonh"]
-    for adj_idx in range(len(tew_adj)):
-        shift = np.median(params["xonh"] - cog.inverse(ltew-tew_adj[adj_idx]))
-        bshifts.append(shift)
-        cog_pred = cog(xonh - shift) + tew_adj[adj_idx]
-        deltas = ltew - cog_pred
-        cog_delta_sums.append(np.sum(deltas**2))
-    
-    best_idx = np.argmin(cog_delta_sums)
-    best_adj = tew_adj[best_idx]
-    best_shift = bshifts[best_idx]
     if diagnostic_plot:
+        gamma_ratio = best_gam/mean_dop_width
+        cog = tmb.cog.voigt_saturation_curve(gamma_ratio)
         plt.scatter(xonh, ltew, c=params["met"], s=80, alpha=0.7)
         cbar = plt.colorbar()
         cbar.set_label("photospheric [Fe/H]", fontsize=16)
         x = np.linspace(np.min(xonh)-0.5, np.max(xonh)+0.5, 101)
-        plt.plot(x, cog(x-best_shift)+best_adj)
+        plt.plot(x, cog(x-opt_x_shift)+best_ew_adj)
         plt.xlabel("[X/H]", fontsize=16)
         plt.ylabel("$log(EW)-log(W_{doppler})$", fontsize=16)
         plt.show()
     
-    return best_shift, best_adj
+    return best_ew_adj, best_gam,  opt_x_shift
 
 
 if __name__ == "__main__":
     import os
     args = parser.parse_args()
     grid_dir = args.grid_dir
-    output_dir = args.output_dir
+    output = args.output
     if args.grid_manifest is None:
-        pgrid_files = [fname for fname in os.listdir(grid_dir) if fname[-6:] == ".pgrid"]
+        pgrid_files = [fname for fname in os.listdir(grid_dir) if fname[-8:] == ".ews.hdf"]
     else:
         pgrid_files = [fname.strip() for fname in open(args.grid_manifest, "r").readlines()]
     
-    gamma_model = lambda x: 0.2
-    for pg_file in pgrid_files:
-        fpath = os.path.join(grid_dir, pg_file)
-        output_path = os.path.join(output_dir, pg_file + ".ews.hdf") 
-        print("processing", pg_file)
-        print("extracting ews")
-        flux, transition, params, wvs = params_from_pgrid(fpath)
-        print("beginning gamma iterations")
-        gamma_res = fit_gamma(flux, params, transition, wvs, gamma_model=gamma_model)
-        params.to_hdf(output_path, "ews")
-        gamma_res.to_hdf(output_path, "gammas")
+    #fit gammas
+    gamma_df_list = []
+    for fname in pgrid_files:
+        fpath = os.path.join(grid_dir, fname)
+        gamma_df_list.append(pd.read_hdf(fpath, "gammas"))
     
-    #gammas.append(cgam)
-    #bshift, badj = fit_cog(params.ix[mask], transition, gamma=cgam)
-    #shifts.append(bshift)
-    #adjs.append(badj)
-
-if False:
-    fit_matrix = np.vander(loggs, 2)
-    lgams = np.log(gammas)
-    nan_mask = np.isnan(lgams)
-    weights = np.logical_not(nan_mask).astype(float)
-    lgams = np.where(nan_mask, 0, lgams)
-    weights *= np.exp(lgams)
-    l_coeffs = np.linalg.lstsq(fit_matrix*weights.reshape((-1, 1)), lgams*weights)[0]
+    gamma_df = pd.concat(gamma_df_list)
+    #free up the unconcatenated dfs
+    del gamma_df_list
     
-    lin_x = np.linspace(-1, 4, 100)
-    lin_fm = np.vander(lin_x, 2)
-    mod_y = np.dot(lin_fm, l_coeffs)
-    plt.scatter(loggs, np.log(gammas))
-    plt.plot(lin_x, mod_y)
-    plt.xlabel("Log(g)", fontsize=16)
-    plt.ylabel("log($\gamma$)", fontsize=16)
+    log_tew_avgs = np.log10(gamma_df["tew"])
+    #mask out very saturated and very weak averge features
+    qmask =  (log_tew_avgs > -0.3)
+    qmask &= (log_tew_avgs < 0.4) 
+    qmask &= gamma_df["tew_std"] < 1.3
+    qmask &= gamma_df["logg"] <= 5.0
+    
+    mdf = gamma_df[qmask]
+    #fit_matrix generation
+    lgams = np.log10(mdf["gamma"])
+    logg = mdf["logg"]
+    
+    def make_fit_matrix(
+            params,
+            degrees,
+            offsets=None,
+    ):
+        if offsets is None:
+            offsets = {}
+        npts = len(params)
+        n_coeffs = sum(degrees.values())+1
+        fit_mat = np.zeros((npts, n_coeffs))
+        col_idx = 1
+        fit_mat[:, 0] = 1.0
+        
+        coeff_interpretations = [("constant", 0)]
+        for col_name in sorted(degrees.keys()):
+            max_power = degrees[col_name]
+            if col_name[0] == "@":
+                eval_ns = {"params":params}
+                col_vals = eval(col_name[1:], eval_ns)
+            else:
+                col_vals = params[col_name]
+            offset = offsets.get(col_name, 0)
+            deltas = col_vals-offset
+            for power in range(1, max_power+1):
+                fit_mat[:, col_idx] = deltas**power
+                col_idx += 1
+                coeff_interpretations.append((col_name, power))
+        return fit_mat, coeff_interpretations
+    
+    sp_tups = list(zip(mdf["z"].values, mdf["charge"].values))
+    sp_tup_set = sorted(list(set(sp_tups)))
+    #unique_species = np.unique(mdf["z"].values)
+    species_indexer = {}
+    for tup_idx, tup in enumerate(sp_tup_set):
+        species_indexer[tup] = tup_idx
+    
+    resid_mask = np.ones(len(logg), dtype=bool)
+    fit_mat, coeff_interpretations = make_fit_matrix(
+        mdf,
+        degrees={
+            "logg":1,
+            "ep":1,
+            #'@5040.0*params["ep"]/params["teff"]':1,
+            #'@5040.0/params["teff"]':2
+        },
+    )# species=sp_tups, species_indexer=species_indexer, logg_order=3)
+    for i in range(5):
+        fit_params = np.linalg.lstsq(fit_mat[resid_mask], lgams[resid_mask])[0]
+        
+        mod_gam = np.dot(fit_mat, fit_params)
+        resids = (lgams-mod_gam).values
+        
+        med_resid = np.median(np.abs(resids))
+        #crop out the points with high residuals
+        resid_mask = np.abs(resids) < 3.0*med_resid
+    
+    fig, axes = plt.subplots(1, 4)
+    msub=mdf[resid_mask]
+    mresids = resids[resid_mask]
+    gsize = (10, 25)
+    axes[0].hexbin(msub.logg, mresids, gridsize=gsize)
+    axes[0].set_ylabel("Residual log(Gamma)", fontsize=16)
+    axes[0].set_xlabel("log(g)", fontsize=16)
+    axes[1].hexbin(msub.ep, mresids, gridsize=gsize)
+    axes[1].set_xlabel("E.P", fontsize=16)
+    axes[2].hexbin(msub.met, mresids, gridsize=gsize)
+    axes[2].set_xlabel("Photospheric [Fe/H]")
+    axes[3].hexbin(np.log10(msub["gamma"]), mresids, gridsize=gsize)
+    axes[3].set_xlabel("log(Gamma)", fontsize=16)
     plt.show()
+    
+    plt.hist(resids, 100)
+    plt.show()
+    
+    def gamma_model(params, transition):
+        cur_gam = fit_params[0]
+        coeff_idx = 1
+        for cname, power in coeff_interpretations[1:]:
+            try:
+                cvals = params[cname]
+            except KeyError:
+                cvals = transition[cname]
+            cur_gam += fit_params[coeff_idx]*cvals**power
+            coeff_idx += 1
+        modgam = cur_gam
+        return modgam
+    
+    for fname in pgrid_files:
+        fpath = os.path.join(grid_dir, fname)
+        ew_params = pd.read_hdf(fpath, "ews")
+        
+        #transition = pd.read_hdf(fpath, "transition")
+        cep = float(fname.split("_")[3])
+        transition = pd.Series({"ep":cep})
+        
+        tlgb = ew_params.groupby(["teff", "logg"])
+        groups = tlgb.groups
+        
+        fc_accum = []
+        for tl_tup in groups:
+            fcres = fit_cog(ew_params.ix[groups[tl_tup]], transition, gamma_model=gamma_model, diagnostic_plot=True)
+            print(fcres)
+            fc_accum.append(fcres)
+
+        fc_accum = np.array(fc_accum)
+        

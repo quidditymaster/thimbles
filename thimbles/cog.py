@@ -22,7 +22,7 @@ def voigt_saturation_curve(
     
     #build the integration points
     x = np.zeros(n_integ+1)
-    x[1:] = np.power(10.0, np.linspace(-2, 4, n_integ))
+    x[1:] = np.power(10.0, np.linspace(-1.5, 3, n_integ))
     
     #build the opacity profile
     opac_profile = voigt(x, 0.0, 1.0, gamma_ratio)
@@ -30,12 +30,9 @@ def voigt_saturation_curve(
     #carry out the saturated profile integrations
     log_rews = np.zeros(n_sat)
     for sat_idx in range(n_sat):
-        flux_deltas = 1.0-np.exp(-sats[sat_idx]*opac_profile)
+        flux_deltas = 1.0-np.power(10.0, -sats[sat_idx]*opac_profile)
         cur_rew = 2.0*integrate.trapz(flux_deltas, x=x)
         log_rews[sat_idx] = np.log10(cur_rew)
-    
-    #find the derivative of the saturation curve
-    #slope = scipy.gradient(log_rews)/scipy.gradient(log_sats)
     
     if asymptotic_extend:
         #add slope 1 points at the bottom and slope 1/2 points at top
@@ -66,7 +63,12 @@ def voigt_saturation_curve(
     
     fit_quad = ppol.PiecewisePolynomial(out_coeffs, control_points=cpoints)
     
-    cog= ppol.InvertiblePiecewiseQuadratic(fit_quad.coefficients, fit_quad.control_points, centers=fit_quad.centers, scales=fit_quad.scales)
+    cog= ppol.InvertiblePiecewiseQuadratic(
+        fit_quad.coefficients,
+        fit_quad.control_points,
+        centers=fit_quad.centers,
+        scales=fit_quad.scales
+    )
     return cog
 
 
@@ -120,7 +122,6 @@ class SaturationModel(Model):
     ):
         self.output_p = output_p
         self.add_parameter("offset", offset)
-        #self.add_parameter("strength_matrix", strength_matrix)
         self.add_parameter("saturation_curve", saturation_curve)
         self.add_parameter("pseudostrengths", pseudostrengths)
     

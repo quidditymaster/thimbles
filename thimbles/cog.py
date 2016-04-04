@@ -30,8 +30,8 @@ def voigt_saturation_curve(
     #carry out the saturated profile integrations
     log_rews = np.zeros(n_sat)
     for sat_idx in range(n_sat):
-        flux_deltas = 1.0-np.power(10.0, -sats[sat_idx]*opac_profile)
-        cur_rew = 2.0*integrate.trapz(flux_deltas, x=x)
+        flux_deltas = 1.0-np.exp(-sats[sat_idx]*opac_profile)
+        cur_rew = 2.0*integrate.simps(flux_deltas, x=x)
         log_rews[sat_idx] = np.log10(cur_rew)
     
     if asymptotic_extend:
@@ -49,7 +49,7 @@ def voigt_saturation_curve(
         cpoints = np.linspace(min_saturation-0.2, max_saturation+0.2, n_segments)
     else:
         cpoints = np.linspace(min_saturation, max_saturation, n_segements+2)
-        cpoints = cpoints[:-1]
+        cpoints = cpoints[1:-1]
     
     constrained_ppol = ppol.RCPPB(poly_order=2, control_points=cpoints)
     linear_basis = constrained_ppol.get_basis(log_sats)

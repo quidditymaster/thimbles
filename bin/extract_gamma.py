@@ -17,8 +17,6 @@ parser.add_argument("--grid-dir", required=True)
 parser.add_argument("--grid-manifest")
 parser.add_argument("--output-dir", required=True)
 parser.add_argument("--gamma-iter", default=50, type=int)
-parser.add_argument("--sigma-clip", type=float, default=2.5)
-
 
 def extract_ews(fluxes, wvs):
     return scipy.integrate.simps(1.0-fluxes, x=wvs, axis=1)
@@ -43,6 +41,31 @@ def params_from_pgrid(fname):
     
     return flux, transition, params, wvs
 
+def make_depth_model(model_params, ews, wvs):
+    sigma, gamma, log_stretch = model_params
+    
+    cog = tmb.cog.voigt_saturation_curve(np.abs(gamma/sigma))
+    log_taus = cog.inverse(np.log10(ews) + log_stretch)
+    
+    opac_profile = tmb.profiles.voigt(wvs, np.median(wvs), sigma, gamma)
+    #prof_center_depth = opac_profile[len(opac_profile)//2]
+    #rel_depths = central_depths/(prof_center_depth*ews)
+    #rel_depths = np.clip(rel_depths, 0, 0.99)
+    #import pdb; pdb.set_trace()
+    #log_taus = cog.inverse(np.log10(1.0-rel_depths))
+    #log_taus = np.where(rel_depths > 0.85, -.0, -1.0)
+    #log_taus = np.repeat(-2.0, len(rel_depths))
+    
+    op_depths = np.power(10.0, log_taus.reshape((-1, 1)))*opac_profile #-taus.reshape((-1, 1))*opac_prof
+    profiles = 1.0 - np.power(10.0, -op_depths)
+    normalizations = scipy.integrate.simps(profiles, axis=1, x=wvs)
+    profiles /= normalizations.reshape((-1, 1))
+    depth_model = profiles*ews.reshape((-1, 1))
+    return depth_model
+
+def get_resids(model_params, ews, wvs, depths):
+    dmod = make_depth_model(model_params, ews, wvs)
+    return (depths-dmod).reshape((-1,))
 
 def fit_gamma(
         flux,
@@ -50,75 +73,66 @@ def fit_gamma(
         transition,
         wvs,
         gamma_model,
-        n_iter=20,
-        n_mask_iter=3,
-        sigma_clip=2.5,
-        log_rate=100,
-):  
+        min_log_gamma_ratio=-3,
+        max_log_gamma_ratio=1,
+        n_steps=101,
+):
     tl_gb = params.groupby(["teff", "logg"])
     tl_groups = tl_gb.groups
     
-    gammas = []
-    avg_params = tl_gb.mean()
+    dwvs = scipy.gradient(wvs)
+    #gammas = []
+    profile_param_results = []
     avg_param_list = []
     avg_std = []#tl_gb.std()
-    tl_tuples = list(avg_params.index)
+    tl_tuples = list(tl_groups.keys())
+    
+    trial_gamma_ratios = np.power(10.0, np.linspace(min_log_gamma_ratio, max_log_gamma_ratio, n_steps))
+    cog_set = [tmb.cog.voigt_saturation_curve(tgr) for tgr in trial_gamma_ratios]
+    
     for tl_tup in tl_tuples:
         tl_idxs = tl_groups[tl_tup]
-        ew_vals_full = params["ew"].ix[tl_idxs].values
+        ew_vals = params["ew"].ix[tl_idxs].values
         cteff, clogg = tl_tup
-        depths = 1.0 - flux.ix[tl_idxs]
+        depths = (1.0 - flux.ix[tl_idxs]).values
         
-        sigma = avg_params.ix[tl_tup]["doppler_width"]
-        gamma = gamma_model(clogg)
+        sigma = np.mean(params["doppler_width"].ix[tl_idxs])
+        opt_res = scipy.optimize.leastsq(get_resids, [0.9*sigma, 0.1*sigma, 0.5], args=(ew_vals, wvs, depths))
+        #import pdb; pdb.set_trace()
         
-        mask = np.ones(len(depths), dtype=bool)
-        for mask_iter in range(n_mask_iter):
-            ew_vals = ew_vals_full[mask]
-            depth_vals = depths[mask]
-            for iter_idx in range(n_iter):
-                prof = tmb.profiles.voigt(wvs, transition["wv"], sigma, gamma)
-                gamma_eps = 0.1*gamma
-                p_minus = tmb.profiles.voigt(wvs, transition["wv"], sigma, gamma-gamma_eps)
-                p_plus = tmb.profiles.voigt(wvs, transition["wv"], sigma, gamma+gamma_eps)
-                gamma_deriv = (p_plus - p_minus)/gamma_eps
-                
-                depth_model = prof.reshape((1, -1))*ew_vals.reshape((-1, 1))
-                resids = depth_vals - depth_model
-                
-                mean_resid = np.mean(resids, axis=0)
-                gamma_adj = np.sum(mean_resid*gamma_deriv)/np.sum(gamma_deriv**2)
-                gamma = gamma + gamma_adj
-                gamma = np.abs(gamma)
-                if gamma == 0:
-                    gamma = 1e-1*np.random.random()
-                #put in a weak prior for zero gamma
-                data_weight = len(depth_vals)
-                gamma *= data_weight/(data_weight + 0.01)
-            full_mod = prof.reshape((1, -1))*ew_vals_full
-            full_resids = depths - full_mod
-            sq_resids_sums = np.sum(full_resids**2, axis=1)
-            abs_resid_sums = np.abs(sq_resid_sums)
-            med_sqr = np.median(abs_resid_sums)
-            if mask_iter < n_mask_iter-1:
-                mask = abs_resid_sums <= sigma_clip*med_sqr
-        avg_param_list.append(np.mean(params.ix[tl_idxs][mask]))
-        avg_std.append(np.std(params.ix[tl_idxs][mask]))
+        best_params = opt_res[0]
+        best_params[:2] = np.abs(best_params[:2])
+        print("teff, logg", tl_tup)
+        print("best_params", opt_res[0])
+        profile_param_results.append(best_params)
+        
+        avg_param_list.append(np.mean(params.ix[tl_idxs]))
+        avg_std.append(np.std(params.ix[tl_idxs]))
+        
+        #import pdb; pdb.set_trace()
+        if False:#iter_idx % 50 == 0:
+            fig, axes = plt.subplots(2)
+            depth_model = make_depth_model(best_params, ew_vals, wvs)
             
-            if False:#iter_idx % 50 == 0:
-                plt.plot(mean_resid)
-                plt.ylim(-0.005, 0.005)
-                plt.show()
-        
-        gammas.append(gamma)
+            for i in range(len(depths)):
+                axes[0].plot(depths[i], color="k")
+                axes[0].plot(depth_model[i], color="r", alpha=0.8)
+                axes[1].plot(depths[i]-depth_model[i])
+            plt.show()
+    
     avg_params = pd.DataFrame(avg_param_list)
     avg_std = pd.DataFrame(avg_std)
-        
+    
     #build the aggregated dataframe
+    sigmas = [bp[0] for bp in profile_param_results]
+    gammas = [bp[1] for bp in profile_param_results]
+    stretches = [bp[2] for bp in profile_param_results]
     data_dict =dict(
         teff=[tl_tup[0] for tl_tup in tl_tuples],
         logg=[tl_tup[1] for tl_tup in tl_tuples],
+        sigma=sigmas,
         gamma=gammas,
+        stretch=stretches,
         )
     nrows = len(gammas)
     for cname in avg_params.columns:
@@ -146,7 +160,8 @@ if __name__ == "__main__":
         print("extracting ews")
         flux, transition, params, wvs = params_from_pgrid(fpath)
         print("beginning gamma iterations")
-        gamma_res = fit_gamma(flux, params, transition, wvs, gamma_model=gamma_model, n_iter=args.gamma_iter)
+        gamma_res = fit_gamma(flux, params, transition, wvs, gamma_model=gamma_model)
+        #import pdb; pdb.set_trace()
         params.to_hdf(output_path, "ews")
         gamma_res.to_hdf(output_path, "gammas")
         transition.to_hdf(output_path, "transition")

@@ -55,7 +55,7 @@ def running_ccorr(
     return acorr_out
 
 
-def running_acorr(arr, avg=None, window_sigma=5, ncorr=21, mode="reflect"):
+def running_acorr(arr, avg=None, weights=None, window_sigma=5, ncorr=21, mode="reflect"):
     """
     generate a running auto-correlation estimate.
     
@@ -78,15 +78,28 @@ def running_acorr(arr, avg=None, window_sigma=5, ncorr=21, mode="reflect"):
     if hasattr(avg, "__call__"):
         avg = avg(arr)
     diff = arr - avg
+    if weights is None:
+        weights = np.ones(npts, dtype=float)
     acorr_out = np.zeros((npts, 2*ncorr+1))
-    acorr_out[:, ncorr] = gauss_filter(diff**2, sigma=window_sigma, mode=mode)
+    
+    #make central weighted correlation estimate
+    weighted_corr = gauss_filter(weights*diff**2, sigma=window_sigma, mode=mode)
+    weight_correction = gauss_filter(weights, sigma=window_sigma, mode=mode)
+    weight_correction = np.where(weight_correction > 0, weight_correction, 1.0)
+    acorr_out[:, ncorr] = weighted_corr/weight_correction
     for i in range(1, ncorr+1):
-        diff_prod = gauss_filter(diff[i:]*diff[:-i], sigma=window_sigma, mode=mode)
+        #geometric mean 1/(1/w1 + 1/w2) == w1*w2/(w1+w2)
+        avg_weights = (weights[i:]*weights[:-i])/(weights[i:] + weights[:-i])
+        weighted_diff_prod = gauss_filter(diff[i:]*diff[:-i]*avg_weights, sigma=window_sigma, mode=mode)
+        weight_correction = gauss_filter(avg_weights, sigma=window_sigma, mode=mode)
+        weight_correction = np.where(weight_correction > 0, weight_correction, 1.0)
+        diff_prod = weighted_diff_prod/weight_correction
+        
         lb_out = i//2
         ub_out = npts-i//2
         if i % 2 == 1:
             if (i-1) % 4 == 1:
-                acorr_out[lb_out:ub_out-1, ncorr-i] = diff_prod 
+                acorr_out[lb_out:ub_out-1, ncorr-i] = diff_prod
                 acorr_out[lb_out+1:ub_out, ncorr+i] = diff_prod
             else:
                 acorr_out[lb_out+1:ub_out, ncorr-i] = diff_prod 

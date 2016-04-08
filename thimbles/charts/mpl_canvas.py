@@ -12,28 +12,15 @@ class MatplotlibCanvas(FigureCanvas):
       number of rows
     ncols: int
       number of columns
-    sharex: ["none" | "rows" | "columns" | "all"]
+    sharex: [axis instance | "none" | "rows" | "columns" | "all"]
       determines which plots in the grid share x axes.
+      axis instance : share x with given axis
       "none" no x axis sharing
       "rows" x axis shared by all plots in a row.
       "columns" x axis shared by all plots in a column
       "all" the x axis is shared between all plots
     sharey: ["none" | "rows" | "columns" | "all"]
       same as sharex for y axis sharing.
-    
-    Attributes
-    ----------
-    fig : the handler for the matplotlib figure
-    axes : the main axes object for the figure
-    
-    Methods
-    -------
-    
-    Notes
-    -----
-    __1)__ S. Tosi, ``Matplotlib for Python Developers''
-        Ed. Packt Publishing
-        http://www.packtpub.com/matplotlib-python-development/book
     
     """
     
@@ -73,7 +60,9 @@ class MatplotlibCanvas(FigureCanvas):
             for row_idx in range(ncols):
                 x_share_ax = None
                 y_share_ax = None
-                if sharex == "none":
+                if not isinstance(sharex, str):
+                    x_share_ax = sharex
+                elif sharex == "none":
                     x_share_ax = None
                 elif sharex == "rows":
                     if row_idx == 0:
@@ -89,6 +78,9 @@ class MatplotlibCanvas(FigureCanvas):
                     x_share_ax = self.axes[0]
                 else:
                     raise Exception("don't recognize this sharex behavior")
+
+                if not isinstance(sharey, str):
+                    y_share_ax = sharey
                 if sharey == "none":
                     y_share_ax = None
                 elif sharey == "rows":

@@ -85,7 +85,7 @@ class ChunkedLineChart(object):
     def update(self):
         self._initialize_plots()
         self.lines.set_segments(self.get_line_pts())
-        self.ax._tmb_redraw=True
+        self.ax.figure._tmb_redraw=True
     
     def set_x(self, x):
         self.set_data(x, self.y)

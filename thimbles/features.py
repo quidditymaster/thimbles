@@ -168,6 +168,23 @@ class TransitionWavelengthVectorModel(Model):
         return t_wvs
 
 
+class TransitionEPVectorModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"TransitionEPVectorModel"
+    }
+    
+    def __init__(self, output_p, indexer):
+        self.output_p = output_p
+        self.add_parameter("indexer", indexer)
+    
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
+        indexer = vdict[self.inputs["indexer"]]
+        t_ep = np.array([t.ep for t in indexer.transitions])
+        return t_ep
+
+
 class IonWeightVectorModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__={
@@ -190,20 +207,46 @@ class GammaModel(Model):
     __mapper_args__={
         "polymorphic_identity":"GammaModel"
     }
-    ref_gamma_wv = Column(Float)
     
-    def __init__(self, output_p, gamma, transition_wvs, ref_gamma_wv=5000.0):
+    def __init__(
+            self,
+            output_p,
+            logg,
+            teff,
+            transition_ep,
+            coeff_dict,
+    ):
         self.output_p = output_p
-        self.add_parameter("gamma", gamma)
-        self.add_parameter("transition_wvs", transition_wvs)
-        self.ref_gamma_wv = ref_gamma_wv
+        self.add_parameter("logg", logg)
+        self.add_parameter("teff", teff)
+        self.add_parameter("transition_ep", transition_ep)
+        self.add_parameter("coeff_dict", coeff_dict)
     
     def __call__(self, override=None):
         vdict = self.get_vdict(override)
-        gamma = vdict[self.inputs["gamma"]]
-        t_wvs = vdict[self.inputs["transition_wvs"]]
-        gammas = gamma*(t_wvs/self.ref_gamma_wv)**2
-        return gammas
+        logg = vdict[self.inputs["logg"]]
+        teff = vdict[self.inputs["teff"]]
+        ep_vals = vdict[self.inputs["transition_ep"]]
+        coeff_dict = vdict[self.inputs["coeff_dict"]]
+        
+        const_log_gam = coeff_dict["offset"]
+        
+        logg_coeffs = coeff_dict["logg"]
+        for i in range(len(logg_coeffs)):
+            const_log_gam += logg_coeffs[i]*logg**(i+1)
+        
+        teff_coeffs = coeff_dict["teff"]
+        for i in range(len(teff_coeffs)):
+            const_log_gam += teff_coeffs[i]*teff**(i+1)
+        
+        
+        log_gammas = np.repeat(const_log_gam, len(ep_vals))
+        
+        ep_coeffs = coeff_dict["ep"]
+        for i in range(len(ep_coeffs)):
+            log_gammas += ep_coeffs[i]*ep_vals**(i+1)
+        
+        return np.power(10.0, log_gammas)
 
 
 class RelativeStrengthMatrixModel(Model):

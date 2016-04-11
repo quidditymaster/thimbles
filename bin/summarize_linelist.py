@@ -9,12 +9,12 @@ import latbin
 parser = argparse.ArgumentParser()
 parser.add_argument("linelist")
 parser.add_argument("--k-max", default=200, type=int)
-parser.add_argument("--delta-log-wv", default=0.1, type=float)
+parser.add_argument("--delta-log-wv", default=0.025, type=float)
 parser.add_argument("--delta-ep", default=0.4, type=float)
-parser.add_argument("--delta-pseudo-strength", default=0.2, type=float)
-parser.add_argument("--teff", default=5000.0, type=float)
+parser.add_argument("--delta-pseudo-strength", default=0.6, type=float)
+parser.add_argument("--teff", default=5500.0, type=float)
 parser.add_argument("--match-isotopes", action="store_true")
-parser.add_argument("--output-fname", default="transition_skeleton.ln")
+parser.add_argument("--output", required=True)
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -63,4 +63,4 @@ if __name__ == "__main__":
     for sp_key in sorted(line_summaries):
         output_transitions.extend(line_summaries[sp_key])
     
-    tmb.io.linelist_io.write_linelist(args.output_fname, output_transitions, file_type="moog")
+    tmb.io.linelist_io.write_linelist(args.output, output_transitions, file_type="moog")

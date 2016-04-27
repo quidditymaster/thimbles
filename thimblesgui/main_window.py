@@ -34,7 +34,48 @@ gui_resource_dir = os.path.join(os.path.dirname(__file__),"resources")
 
 # ########################################################################### #
 
+class TargetCollectionDialog(QtGui.QDialog):
+    collection = None
+    behavior = None
+    
+    def __init__(
+            self,
+            collections,
+            parent
+    ):
+        super(TargetCollectionDialog, self).__init__(parent=parent)
+        self.collections = collections
+        layout = QtGui.QGridLayout()
+        names_label = QtGui.QLabel("collection")
+        layout.addWidget(names_label, 0, 0, 1, 1)
+        
+        names_cbox = QtGui.QComboBox()
+        layout.addWidget(names_cbox)
+        for collection_name in collections:
+            names_cbox.addItem(collection_name)
+        
+        self.names_cbox = names_cbox
+        layout.addWidget(names_cbox, 0, 1, 1, 1)
+        
+        behavior_cbox = QtGui.QComboBox()
+        behavior_cbox.addItem("replace")
+        behavior_cbox.addItem("extend")
+        self.behavior_cbox = behavior_cbox
+        layout.addWidget(behavior_cbox, 1, 1, 1, 1)
+        
+        ok_btn = QtGui.QPushButton("OK")
+        ok_btn.clicked.connect(self.on_ok)
+        layout.addWidget(ok_btn, 2, 1, 1, 1)
+        
+        self.setLayout(layout)
+    
+    def on_ok(self):
+        coll_name = self.names_cbox.currentText()
+        self.collection = self.collections[coll_name]
+        self.behavior=self.behavior_cbox.currentText()
+        self.accept()
 
+            
 class ThimblesMainWindow(QtGui.QMainWindow):
     
     def __init__(self, app):
@@ -46,10 +87,12 @@ class ThimblesMainWindow(QtGui.QMainWindow):
         self.make_collections()
         self.selection = tmbg.selection.GlobalSelection(
             channels=[
-            "source",
-            "spectrum",
-            "transition",
-        ],)
+                "star",
+                "spectrum",
+                "transition",
+                "parameter",
+            ],
+        )
         tmb.wds.gui = self
         tmb.wds.gui_selection = self.selection
         tmb.wds.db = self.db
@@ -65,18 +108,6 @@ class ThimblesMainWindow(QtGui.QMainWindow):
         global_params = gp_result[0]
         contextualizers.add_global("global", global_params)
         
-        #self.modeling_pattern = tmb.analysis.ModelingPattern(
-        #    model_templates = tmb.analysis.model_component_recipes["spectral default"],
-        #    context_extractors = {
-        #        "global": lambda x : self.global_params,
-        #        "spectrum": lambda x: x,
-        #        "exposure": lambda x: x.exposure,
-        #        "order":lambda x: x.order,
-        #        "chip": lambda x: x.chip,
-        #        "aperture": lambda x: x.aperture,
-        #    },
-        #)
-        
         self.make_actions()
         self.make_menus()
         self.make_tool_bar()
@@ -86,44 +117,32 @@ class ThimblesMainWindow(QtGui.QMainWindow):
     def make_collections(self):
         self.collections = {}
         
-        spectra_collection = ActiveCollection(
-            name="spectra",
-            db=self.db,
-            default_columns=spectrum_columns,
-            default_query="db.query(Spectrum)",
-            default_read_func="tmb.io.read_spec",
-        )
+        spectra_collection = ActiveCollection(name="spectra")
         self.collections["spectra"] = spectra_collection
         
-        star_collection = ActiveCollection(
-            name="stars",
-            db=self.db,
-            default_columns=star_columns,
-            default_read_func="tmb.io.read_spec",
-            default_query="db.query(Star).offset(0).limit(50)",
-        )
+        star_collection = ActiveCollection(name="stars",)
         self.collections["stars"] = star_collection
-
+        
         default_tq = "db.query(Transition).join(Ion).filter(Transition.wv > 2000).filter(Transition.wv < 20000).offset(0).limit(1000)"
-        transition_collection = ActiveCollection(
-            name="transitions",
-            db=self.db,
-            default_columns=base_transition_columns,
-            default_read_func="tmb.io.read_linelist",
-            default_query=default_tq,
-        )
+        transition_collection = ActiveCollection(name="transitions",)
         self.collections["transitions"] = transition_collection
     
     def make_actions(self):
-        #QtGui.QAction(QtGui.QIcon(":/images/new.png"), "&Attach Database", self)
-        self.apply_mct_act = QtGui.QAction("apply MCT", self)
-        self.apply_mct_act.setStatusTip("generate component models for an appropriate set of contexts")
-        self.apply_mct_act.triggered.connect(self.on_apply_mct)
+        self.load_act = QtGui.QAction("&Load", self)
+        self.load_act.setStatusTip("read data from file")
+        self.load_act.triggered.connect(self.on_load)
         
-        self.save_act = QtGui.QAction("&Save", self)
-        self.save_act.setShortcut("Ctrl+s")
-        self.save_act.setStatusTip("commit state to database")
-        self.save_act.triggered.connect(self.on_save)
+        #QtGui.QAction(QtGui.QIcon(":/images/new.png"), "&Attach Database", self)
+        
+        #DB actions
+        self.query_db_act = QtGui.QAction("&Query", self)
+        self.query_db_act.setToolTip("Load Results of a Database Query into a named Collection")
+        self.query_db_act.triggered.connect(self.on_query_db)
+        
+        self.commit_act = QtGui.QAction("&Commit", self)
+        #self.save_act.setShortcut("Ctrl+s")
+        self.commit_act.setStatusTip("commit state to database")
+        self.commit_act.triggered.connect(self.on_commit)
         
         self.quit_act = QtGui.QAction("&Quit", self)
         self.quit_act.setShortcut("Ctrl+Q")
@@ -142,22 +161,29 @@ class ThimblesMainWindow(QtGui.QMainWindow):
         menu_bar = self.menuBar()
         
         self.file_menu = menu_bar.addMenu("&File")
-        self.file_menu.addAction(self.save_act)
+        #self.load_menu = self.file_menu.addMenu("&Load")
+        self.db_menu = menu_bar.addMenu("&DB")
+        self.context_menu = menu_bar.addMenu("&Context")
+        
+        self.file_menu.addAction(self.load_act)
         self.file_menu.addAction(self.quit_act)
         
-        self.context_menu = menu_bar.addMenu("&Context")
+        self.db_menu.addAction(self.query_db_act)
+        self.db_menu.addAction(self.commit_act)
+        
         source_menu = self.context_menu.addMenu("Sources")
         source_menu.addAction(self.new_star_act)
         
-        self.modeling_menu = menu_bar.addMenu("&Modeling")
-        self.modeling_menu.addAction(self.apply_mct_act)
+        #self.modeling_menu = menu_bar.addMenu("&Modeling")
+        #self.modeling_menu.addAction(self.apply_mct_act)
         
         self.help_menu = self.menuBar().addMenu("&Help")
         self.help_menu.addAction(self.about_act)
     
     def make_tool_bar(self):
-        self.file_tool_bar = self.addToolBar("File")
-        self.file_tool_bar.addAction(self.save_act)
+        pass
+        #self.file_tool_bar = self.addToolBar("File")
+        #self.file_tool_bar.addAction(self.commit_act)
     
     def make_status_bar(self):
         self.statusBar().showMessage("Ready")
@@ -171,20 +197,23 @@ class ThimblesMainWindow(QtGui.QMainWindow):
     def make_dock_widgets(self):
         self.star_widget = ActiveCollectionView(
             active_collection = self.collections["stars"],
+            columns=star_columns,
             selection=self.selection,
-            selection_channel="source",
+            selection_channel="star",
         )
         self.setCentralWidget(self.star_widget)
         
         self.spectra_widget = ActiveCollectionView(
             active_collection = self.collections["spectra"],
             selection=self.selection,
+            columns=spectrum_columns,
             selection_channel="spectrum",
         )
         self.attach_as_dock("spectra", self.spectra_widget, Qt.BottomDockWidgetArea)
         
         self.transition_widget = ActiveCollectionView(
             active_collection = self.collections["transitions"],
+            columns=base_transition_columns,
             selection=self.selection,
             selection_channel="transition",
         )
@@ -212,6 +241,14 @@ class ThimblesMainWindow(QtGui.QMainWindow):
         self.wd = tmbg.dialogs.WarningDialog(msg)
         self.wd.warn()
     
+    def get_target_collection(self):
+        tcd = TargetCollectionDialog(
+            collections=self.collections,
+            parent=self,
+        )
+        tcd.exec_()
+        return tcd.collection, tcd.behavior
+    
     def on_about(self):
         about_msg =\
 """
@@ -229,18 +266,41 @@ Thimbles was developed in the Cosmic Origins group at the University of Utah.
 """
         QtGui.QMessageBox.about(self, "about Thimbles GUI", about_msg)
     
-    def on_apply_mct(self):
-        mctad = MCTApplicationDialog(parent=self)
-        mctad.exec_()
-        #spectra = self.collections["spectra"]
-        #self.modeling_pattern.incorporate_data(spectra)
-    
     def on_new_star(self):
         new_star = NewStarDialog.get_new(parent=self)
         if not new_star is None:
             self.db.add(new_star)
     
-    def on_save(self):
+    def on_query_db(self):
+        pass
+    
+    def on_load(self):
+        collection, behavior = self.get_target_collection()
+        if collection is None:
+            return
+
+        coll_name = collection.name.lower()
+        if "spect" in coll_name:
+            rfunc_expr="tmb.io.read_spec"
+        elif ("transition" in coll_name) or ("line" in coll_name):
+            rfunc_expr = "tmb.io.read_linelist"
+        else:
+            rfunc_expr = ""
+        ld = tmbg.loading_dialog.LoadDialog(
+            rfunc_expr=rfunc_expr,
+            parent=self,
+        )
+        ld.exec_()
+        if not ld.result is None:
+            if behavior == "replace":
+                collection.set(ld.result)
+            elif behavior == "extend":
+                collection.extend(ld.result)
+    
+    def on_load_ll(self):
+        pass
+    
+    def on_commit(self):
         self.db.commit()
         save_msg = "committed to {}".format(self.db.path)
         self.statusBar().showMessage(save_msg)

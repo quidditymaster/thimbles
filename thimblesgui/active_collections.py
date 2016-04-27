@@ -71,6 +71,8 @@ class QueryDialog(QtGui.QDialog):
             self.active_collection.default_query = self._query_text
             self.accept()
 
+###
+
 class ItemMappedColumn(object):
     
     def __init__(
@@ -190,33 +192,18 @@ repr_column = ItemMappedColumn("value", getter=lambda x: x, value_converter=lamb
 
 class ActiveCollection(QtCore.QObject):
     reset = QtCore.pyqtSignal()
-    extended = QtCore.pyqtSignal()
+    extended = QtCore.pyqtSignal(list)
     
     def __init__(
             self,
             name,
-            db,
             values=None,
-            default_query=None,
-            default_columns=None,
-            default_read_func=None,
     ):
         super(ActiveCollection, self).__init__()
         self.name = name
         if values is None:
             values = []
-        self.values = values
-        self.db = db
-        if default_query is None:
-            default_query = "db.query().offset(0).limit(20)"
-        self.default_query=default_query
-        if default_columns is None:
-            default_columns = [repr_column]
-        self.default_columns = default_columns
-        self.default_read_func = default_read_func
-        
-        self.indexer = {}
-        self.set(values, )
+        self.set(values)
     
     def __getitem__(self, index):
         return self.values[index]
@@ -236,11 +223,33 @@ class ActiveCollection(QtCore.QObject):
                 self.indexer[val] = len(values)
                 self.values.append(val)
         if len(extend_vals) > 0:
-            self.extended.emit(extend_vals)
+            extend_indexes = [self.indexer[val] for val in extend_vals]
+            self.extended.emit(extend_indexes)
+
+
+class DBCollection(ActiveCollection):
+
+    def __init__(
+            self,
+            name,
+            values=None,
+            db=None,
+            default_query=None,
+            default_columns=None,
+            default_read_func=None,
+    ):
+        super().__init__(name=name, values=values)
+        self.db = db
+        if default_query is None:
+            default_query = "db.query().offset(0).limit(20)"
+        self.default_query=default_query
+        if default_columns is None:
+            default_columns = [repr_column]
+        self.default_columns = default_columns
+        self.default_read_func = default_read_func
     
     def add_all(self):
         self.db.add_all(self.values)
-
 
 class ActiveCollectionView(QtGui.QWidget):
     
@@ -254,7 +263,7 @@ class ActiveCollectionView(QtGui.QWidget):
     ):
         super(ActiveCollectionView, self).__init__(parent)
         if columns is None:
-            columns = active_collection.default_columns
+            columns = [repr_column]
         self.selection = selection
         self.selection_channel = selection_channel
         self.active_collection = active_collection

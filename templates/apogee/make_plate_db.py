@@ -11,9 +11,13 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--ra", required=True, nargs="*")
 parser.add_argument("--dec", required=True, nargs="*")
 parser.add_argument("--selection-radius", default=0.2, type=float)
+parser.add_argument("--fallback-rv", default=0.0, type=float)
 
-redux_dir = "/uufs/chpc.utah.edu/common/home/sdss00/bosswork/apogee/spectro/redux/r5"
-all_visit_fpath = "/uufs/chpc.utah.edu/common/home/sdss00/bosswork/apogee/spectro/redux/r5/allVisit-v603.fits"
+redux_dir = "/uufs/chpc.utah.edu/common/home/sdss01/apogeework/apogee/spectro/redux/r6"
+all_visit_fpath = "/uufs/chpc.utah.edu/common/home/sdss01/apogeework/apogee/spectro/redux/r6/allVisit-l30e.2.fits"
+
+#redux_dir = "/uufs/chpc.utah.edu/common/home/sdss00/bosswork/apogee/spectro/redux/r5"
+#all_visit_fpath = "/uufs/chpc.utah.edu/common/home/sdss00/bosswork/apogee/spectro/redux/r5/allVisit-v603.fits"
 
 def dms_to_dd(deg, mins=0, secs=0):
     return deg + mins/60.0 + secs/3600.0
@@ -106,7 +110,12 @@ if __name__ == "__main__":
         
         vrel_tot = crow["VREL"]
         vhelio_center = crow["VHELIO"]
-        delta_helio = vrel_tot - vhelio_center# - vrel_tot
+        delta_helio = vrel_tot - vhelio_center
+        
+        if np.isnan(delta_helio):
+            delta_helio = args.fallback_rv
+        if np.isnan(vhelio_center):
+            vhelio_center = args.fallback_rv
         
         for chip_idx in range(3):
             c_chip = chips[chip_idx]

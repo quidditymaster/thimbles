@@ -190,6 +190,7 @@ class MoogEngine(RadiativeTransferEngine):
         if linelist == "reuse":
             if not os.path.isfile(line_file):
                 raise ValueError("reuse linelist option only available if linelist pre-exists in moog working directory")
+        else:
             tmb.io.moog_io.write_moog_linelist(line_file, linelist)
         out_fname = "result.tmp"
         flux_int = 0

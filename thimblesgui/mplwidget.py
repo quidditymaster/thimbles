@@ -84,6 +84,7 @@ class MatplotlibWidget(QtGui.QWidget):
     
     def check_redraw(self):
         if self.canvas.figure._tmb_redraw:
+            print("redraw!")
             self.canvas.draw()
             self.canvas.figure._tmb_redraw=False
     
@@ -105,4 +106,4 @@ class MatplotlibWidget(QtGui.QWidget):
     
     def axis(self, row, column):
         return self.canvas.axis(row, column)
-    
+

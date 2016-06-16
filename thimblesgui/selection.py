@@ -11,8 +11,9 @@ class SelectionChannel(QtCore.QObject):
         super(SelectionChannel, self).__init__()
     
     def select(self, obj):
-        self.obj = obj
-        self.changed.emit()
+        if obj != self.obj:
+            self.obj = obj
+            self.changed.emit()
 
 
 class GlobalSelection(QtCore.QObject):

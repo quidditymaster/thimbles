@@ -55,7 +55,7 @@ if __name__ == "__main__":
             eps/args.delta_ep,
             rel_strengths/args.delta_rel_strength,
         ]).transpose()
-        alat = latbin.ALattice(3)
+        alat = latbin.ALattice(3, scale=0.77)
         
         binned_centers = alat.bin(scaled_ll).mean()
         

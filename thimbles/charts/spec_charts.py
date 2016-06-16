@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+from matplotlib.collections import LineCollection
 
 import thimbles as tmb
 from thimbles.charts import MatplotlibCanvas
@@ -12,6 +13,136 @@ Option("color", default=spec_color, parent=spectra_mpl_kwargs)
 Option("linewidth", default=2.0, parent=spectra_mpl_kwargs)
 #Option("linestyle", default="steps-mid", parent=spectra_mpl_kwargs)
 Option("linestyle", default="-", parent=spectra_mpl_kwargs)
+
+
+class MarkerAnnotation(object):
+    _annotation_initialized = False
+    
+    def __init__(
+            self,
+            locator_func=None,
+            annotation_func=None,
+            annotation_offset=None,
+            ax=None,
+    ):
+        if ax is None:
+            fig, ax = plt.subplots()
+        self.ax = ax
+        self.transition=transition
+        self.annotation_func = annotation_func
+        if locator_func is None:
+            locator_func = lambda x: x.wv
+        self.locator_func = locator_func
+        if line_kwargs is None:
+            line_kwargs = {}
+        self.line_kwargs = line_kwargs
+        if not transition is None:
+            self.update()
+    
+    def get_line_pts(self):
+        x=self.locator_func(self.transition)
+        return [[x, x], [self.marker_top, self.marker_bottom]]
+    
+    def update(self):
+        if not self._annotation_initialized:
+            if self.annotation_func is None:
+                self.annotation = self.ax.annotate(
+                    self.annotation_func(self.transition),
+                    xy = (trans_wv, self.marker_top),
+                )
+        else:
+            pass
+        if not self._self._line_initialized:
+            x, y = self.get_line_pts()
+            self.line = self.ax.plot(x, y, **self.line_kwargs)
+
+
+def make_effective_sparse_coordinatizer():
+    pass
+
+class ExemplarWidthEffectChart(object):
+    
+    def __init__(
+            star,
+            exemplar,
+            exemplar_indexer,
+            exemlar_map,
+            transition_indexer,
+            flux_ax = None,
+            resid_ax= None,
+    ):
+        self.star = star
+        self.exemplar = exemplar
+        self.exemplar_indexer = exemplar_indexer
+        self.transition_indexer = transition_indexer
+        
+        if flux_ax is None and resid_ax is None:
+            fig, axes = plt.subplots(sharex=True)
+            flux_ax = axes[0]
+            resid_ax = axes[1]
+        self.flux_ax = flux_ax
+        self.resid_ax = resid_ax
+        
+        spectra = star.spectroscopy
+        flux_params = [spec["obs_flux"] for spec in spectra]
+        mod_flux = [fp.value for fp in flux_params]
+        obs_flux = [spec.flux for spec in spectra]
+        obs_var = [spec.var for spec in spectra]
+        obs_wvs = [spec.wvs for spec in spectra]
+        norms = [spec["norm"].value for spec in spectra]
+        
+        ew_param = star["thermalized_widths_vec"]
+        derivative_matrices = tmb.modeling.derivatives.driv(flux_params, [ew_param], combine_matrices=False)
+        
+        strength_matrix = star["strength_matrix"].value
+        
+        
+        
+        self.flux_markers = tmb.charts.VerticalMarkerChart(ax=self.flux_ax)
+        self.resid_markers = tmb.charts.VerticalMarkerChart(ax=self.resid_ax)
+
+
+class SpectraChart(object):
+    _plots_initialized = False
+    
+    def __init__(
+            self,
+            spectra,
+            bounds,
+            ax,
+            line_kwargs = None,
+    ):
+        self.spectra = spectra
+        self.bounds = bounds
+        self.ax=ax
+        if line_kwargs is None:
+            line_kwargs = {}
+        self.lines = LineCollection(segments=self.get_segments(), **line_kwargs)
+        self.ax.add_collection(self.lines)
+    
+    def get_segments(self):
+        segments = []
+        for spec in self.spectra:
+            bspec = spec.sample(self.bounds, mode="bounded")
+            if bspec is None:
+                continue
+            seg = np.stack((bspec.wvs, bspec.flux), axis=1)
+            segments.append(seg)
+        return segments
+    
+    def update(self):
+        print("update called")
+        self.lines.set_segments(self.get_segments())
+        self.ax.figure._tmb_redraw=True
+    
+    def set_bounds(self, bounds):
+        self.bounds = bounds
+        self.update()
+    
+    def set_spectra(self, spectra):
+        self.spectra = spectra
+        self.update()
+
 
 class SpectrumChart(object):
     _plots_initialized = False

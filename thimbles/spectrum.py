@@ -413,7 +413,7 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
             covar_shape = covar.shape
             #marginalize over the covariance
             out_inv_var  = 1.0/(covar*np.ones(covar_shape[0]))
-            sampled_spec = Spectrum(wavelengths, out_flux, out_inv_var)
+            sampled_spec = Spectrum(out_wvs, out_flux, out_inv_var)
             sampling_matrix = transform
         elif mode == "lsf-convolved" or mode == "lsf-matched":
             if not isinstance(sampling, Spectrum):

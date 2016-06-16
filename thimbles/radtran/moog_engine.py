@@ -187,7 +187,10 @@ class MoogEngine(RadiativeTransferEngine):
         #write out the linelist in moog format
         line_name = "templines.ln.tmp"
         line_file = os.path.join(self.working_dir, line_name)
-        tmb.io.moog_io.write_moog_linelist(line_file, linelist)
+        if linelist == "reuse":
+            if not os.path.isfile(line_file):
+                raise ValueError("reuse linelist option only available if linelist pre-exists in moog working directory")
+            tmb.io.moog_io.write_moog_linelist(line_file, linelist)
         out_fname = "result.tmp"
         flux_int = 0
         if central_intensity:

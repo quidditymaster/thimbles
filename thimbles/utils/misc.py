@@ -198,10 +198,10 @@ def local_gaussian_fit(
     chopped_y = y_values[lb:ub+1]
     #make sure there are no negative numbers
     chopped_y = np.where(chopped_y > 0, chopped_y, 0.0)
+    chopped_var = y_variance[lb:ub+1]
+    inv_noise_mat = np.diag(chopped_y/chopped_var, 0) #factor of y for log transform
     chopped_y = np.log(chopped_y)
     
-    chopped_var = y_variance[lb:ub+1]
-    inv_noise_mat = np.diag(chopped_y/chopped_var, 0)
     poly_covar = np.linalg.pinv(np.dot(np.dot(xmatrix.transpose(), inv_noise_mat), xmatrix))
     
     poly_var = np.abs(np.dot(poly_covar, np.ones(3)))

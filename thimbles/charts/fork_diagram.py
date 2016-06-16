@@ -141,8 +141,79 @@ class ForkDiagram(object):
     def set_handle_indexes(self, handle_indexes):
         pass
 
+##
 
-class TransitionsChart(object):
+class VerticalMarkerChart(object):
+    _initialize_plot = True
+    
+    def __init__(
+            self,
+            obj_list,
+            locator_func,
+            marker_max=1.0,
+            marker_min=0.0,
+            depths = None,
+            normalize_depths=False,
+            picker=None,
+            meta_data_label=None,
+            line_kwargs=None,
+            ax=None,
+    ):
+        self.obj_list = obj_list
+        self.locator_func = locator_func
+        self.marker_max=marker_max
+        self.marker_min = marker_min
+        self.depths = depths
+        self.normalize_depths=normalize_depths
+        self.picker=picker
+        self.meta_data_label=meta_data_label
+        
+        if line_kwargs is None:
+            line_kwargs = {}
+        self.line_kwargs = line_kwargs
+        if ax is None:
+            fig, ax = plt.subplots()
+        self.ax = ax
+
+        self.update()
+    
+    def set_obj_list(self, obj_list):
+        self.obj_list = obj_list
+        self.update()
+    
+    def get_pts(self):
+        x = np.array([self.locator_func(obj) for obj in self.obj_list])
+        if self.depths is None:
+            depths = np.ones(x.shape)
+        
+        if self.normalize_depths:
+            max_depth = np.max(depths)
+            if max_depth > 0:
+                depths /= max_depth
+        
+        y_bottom = self.marker_min + (self.marker_max-self.marker_min)*(1-depths)
+        pts = np.zeros((len(x), 2, 2))
+        pts[:, 0, 0] = x
+        pts[:, 1, 0] = x
+        pts[:, 0, 1] = y_bottom
+        pts[:, 1, 1] = self.marker_max
+        return pts
+        
+    def update(self):
+        pts = self.get_pts()
+        if self._initialize_plot:
+            self.lines = mpl.collections.LineCollection(pts, picker=self.picker, **self.line_kwargs)
+            self.ax.add_collection(self.lines)
+            self._initialize_plot = False
+        else:
+            self.lines.set_segments(pts)
+        
+        if not self.meta_data_label is None:
+            self.lines._md = {self.meta_data_label:self.obj_list}
+        self.ax._tmb_redraw=True
+
+
+class TransitionSetMarkerChart(object):
     _handles_initialized=False
     _fans_initialized=False
     _tines_initialized=False
@@ -153,6 +224,7 @@ class TransitionsChart(object):
             lmax=None,
             lmin=None,
             l_nub=0.02,
+            locator_func=None,
             grouping_dict=None,
             tine_min=0.0,
             tine_max=1.0,
@@ -172,6 +244,9 @@ class TransitionsChart(object):
         self.lmax=lmax
         self.lmin=lmin
         self.l_nub = l_nub
+        if locator_func is None:
+            locator_func = wv_locator_func
+        self.locator_func = locator_func
         if grouping_dict is None:
             grouping_dict = {}
         self.grouping_dict=grouping_dict
@@ -208,11 +283,17 @@ class TransitionsChart(object):
         dat[:, 1, 1] = self.tine_max + (self.handle_max-self.tine_max)*self.fan_fraction
         return dat
     
+    def get_transition_positions(self):
+        return np.array([self.locator_func(trans) for trans in self.transitions])
+    
     def get_tine_pts(self):
         dat = np.zeros((len(self.transitions), 2, 2))
-        dat[:, 0, 0] = self.transition_wvs
-        dat[:, 1, 0] = self.transition_wvs
+        trans_locs = self.get_transition_positions()
+        dat[:, 0, 0] = self.trans_locs
+        dat[:, 1, 0] = self.trans_locs
+        #find the bottom of the tine
         dat[:, 0, 1] = self.tine_min*self.tine_lengths+self.tine_max*(1.0-self.tine_lengths)
+        #find the top of the tine
         dat[:, 1, 1] = self.tine_max
         return dat
     
@@ -267,7 +348,7 @@ class TransitionsChart(object):
                     fan_top_wvs.append(handle_wvs[-1])
                     grouping_vec[trans_idx]=group_idx
             self.transitions = transitions
-            self.transition_wvs = twvs
+            #self.transition_wvs = twvs
             self.tine_lengths = tlens
             self.group_to_idx = group_to_idx
             self.group_list = group_list
@@ -310,6 +391,4 @@ class TransitionsChart(object):
             else:
                 self.tines.set_visible(False)
         self.ax._tmb_redraw=True
-    
-    def set_bounds(self, bounds):
-        pass
+

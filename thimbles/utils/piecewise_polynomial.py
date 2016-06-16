@@ -371,7 +371,7 @@ class InvertiblePiecewiseQuadratic(PiecewisePolynomial):
     def inverse(self, yvals):
         output = np.zeros(yvals.shape)
         poly_idxs = self.y_binning.get_bin_index(yvals)
-        output[np.isnan(poly_idxs)] = self.fill_value
+        output[poly_idxs < 0] = self.fill_value
         for p_idx in range(self.n_polys):
             pmask = poly_idxs == p_idx
             a, b, c = self.poly_list[p_idx].poly.coeffs

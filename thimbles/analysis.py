@@ -1,5 +1,6 @@
 import os
 from copy import copy
+import re
 
 import numpy as np
 import scipy.sparse
@@ -500,12 +501,14 @@ class ParameterSpec(object):
             factory,
             kwargs=None,
             push_to=None,
+            factory_context_arg=False,
     ):
         self.factory = factory
         if kwargs is None:
             kwargs = {}
         self.kwargs = kwargs
         self.push_to = push_to
+        self.factory_context_arg=factory_context_arg
     
     @property
     def is_fetched(self):
@@ -522,17 +525,28 @@ class ParameterSpec(object):
     def fetch(self, contexts):
         if self.is_fetched:
             context_name, ct_param_name = self.factory.split(".")
-            param = contexts[context_name][ct_param_name]
+            compound_match = re.match("(.*)\[(\d*)\]$", ct_param_name)
+            if not compound_match is None:
+                ct_param_name, param_index = compound_match.groups()
+                param_index = int(param_index)
+                param = contexts[context_name][ct_param_name][param_index]
+            else:
+                param = contexts[context_name][ct_param_name]
         else:
             pkwargs = self.evaluate_kwargs(contexts)
-            param = self.factory(**pkwargs)
+            if self.factory_context_arg:
+                arg = (contexts,)
+            else:
+                arg = tuple()
+            param = self.factory(*arg, **pkwargs)
         return param
     
     def push(self, param, contexts):
         if not self.push_to is None:
             ctext_name, param_name = self.push_to.split(".")
-            if "[" == param_name[0]:
-                is_compound=True
+            if ("[" == param_name[0])and ("]" == param_name[-1]):
+                is_compound = True
+                param_name = param_name[1:-1]
             else:
                 is_compound=False
             ctext = contexts[ctext_name]
@@ -586,16 +600,20 @@ class ModelComponentTemplate(object):
             self,
             parameter_specs,
             model_specs,
+            application_spine,
     ):
         self.param_specs = parameter_specs
         self.model_specs = model_specs
+        self.spine = application_spine
     
     def search_and_apply(
             self,
-            context_engine,
+            db,
+            context_engine=None,
             tag=None,
-            db=None,
     ):
+        if context_engine is None:
+            context_engine = self.spine
         modeling_spine = context_engine.find(tag=tag, db=db)
         for backbone_instance in modeling_spine:
             self.apply(backbone_instance, context_engine)
@@ -641,44 +659,27 @@ class ComponentRegistry(object):
 
 component_templates = ComponentRegistry()
 
-class ModelNetworkRecipe(object):
+class ModelNetworkTemplate(object):
     
     def __init__(
             self,
-            #a list of model components and their unique context specification
-            #[[context_identity_tuple, template_instance,]]
-            model_templates,
-            context_extractor,
+            components,
     ):
-        self.model_templates = model_templates
-        self.extractor = context_extractors
-        self.incorporated_context_tuples = set()
+        self.components = components
     
-    def get_data_context(self, data_instance):
-        contexts = {}
-        for cont_name in self.context_extractors:
-            cext = self.context_extractors[cont_name]
-            contexts[cont_name] = cext(data_instance)
-        return contexts
-    
-    def incorporate_datum(
+    def initialize_network(
             self,
-            data_instance,
+            db,
+            context_engine=None,
+            tag=None
     ):
-        data_contexts = self.get_data_context(data_instance)
-        for context_id_tuple, mct in self.model_templates:
-            cur_context_tup = tuple([data_contexts[cname] for cname in context_id_tuple])
-            if not (cur_context_tup in self.incorporated_context_tuples):
-                mct.apply_to_contexts(data_contexts)
-                self.incorporated_context_tuples.add(cur_context_tup)
-    
-    def incorporate_data(
-            self,
-            data_list,
-    ):
-        for datum in data_list:
-            self.incorporate_datum(datum)
-        return
+        for mct in self.components:
+            mct.search_and_apply(
+                db=db,
+                context_engine=context_engine,
+                tag=tag
+            )
+
 
 class JModelComponentTemplate(object):
 

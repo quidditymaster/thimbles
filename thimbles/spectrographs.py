@@ -37,7 +37,8 @@ class SamplingModel(Model):
         x_out = vdict[self.inputs["output_wvs"]].coordinates
         lsf_in = vdict[self.inputs["input_lsf"]]
         lsf_out = vdict[self.inputs["output_lsf"]]
-        return tmb.resampling.resampling_matrix(x_in, x_out, lsf_in, lsf_out)
+        
+        return tmb.resampling.resampling_matrix(x_in=x_in, x_out=x_out, lsf_in=lsf_in, lsf_out=lsf_out)
 
 class ApertureAlias(ParameterAliasMixin, ThimblesTable, Base):
     _context_id = Column(Integer, ForeignKey("Aperture._id"))

@@ -79,7 +79,7 @@ class PseudoStrengthModel(Model):
     }
     
     #class attributes
-    fallback_correction = 8.0
+    fallback_correction = -3.0
     
     def __init__(
             self,
@@ -107,6 +107,34 @@ class PseudoStrengthModel(Model):
         return np.array(adj_pst)
 
 
+class SaturationOffsetModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"SaturationOffsetModel",
+    }
+
+    def __init__(
+            self,
+            output_p,
+            teff,
+            coeff_dict,
+    ):
+        self.output_p=output_p
+        self.add_parameter("teff", teff)
+        self.add_parameter("coeff_dict", coeff_dict)
+    
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
+        teff = vdict[self.inputs["teff"]]
+        coeff_dict = vdict[self.inputs["coeff_dict"]]
+        offset = coeff_dict["offset"]
+        
+        teff_coeffs = coeff_dict["teff"]        
+        for i in range(len(teff_coeffs)):
+            offset = teff_coeffs[i]*teff**(i+1)
+        return offset
+
+    
 class SaturationModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__={
@@ -130,9 +158,7 @@ class SaturationModel(Model):
         pst = vdict[self.inputs["pseudostrengths"]]
         sat_curve = vdict[self.inputs["saturation_curve"]]
         offset = vdict[self.inputs["offset"]]
-        
-        saturations = sat_curve.inverse(sat_curve(pst) - offset)
-        
+        saturations = sat_curve.inverse(sat_curve(pst) + offset)
         return saturations 
 
 

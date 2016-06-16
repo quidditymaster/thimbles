@@ -30,7 +30,7 @@ def dense_irls_1d(
     assert len(target.shape) == 1
     
     if weighting_function is None:
-        weighting_function = lqal_factory(1.0)
+        weighting_function = lqal_factory(0.05*np.std(target))
     
     cur_x = np.zeros(design_matrix.shape[1])
     for iter_idx in range(n_iter):

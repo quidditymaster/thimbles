@@ -127,3 +127,5 @@ class MatplotlibCanvas(FigureCanvas):
     
     def unlock(self):
         self._lock.release()
+
+

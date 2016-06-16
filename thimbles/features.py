@@ -60,10 +60,10 @@ def voigt_feature_matrix(
         local_wv_grad = wvs_grad[lb:ub+1]
         prof = voigt(local_wvs, ccent, csig, cgam)
         csat = saturations[col_idx]
-        if csat > -3:
+        if False:#csat > -3:
             csat = min(csat, 9.0)
             #generate the saturated profile
-            ctau = np.power(10.0, csat)
+            #ctau = csat#np.power(10.0, csat)
             prof = np.power(10.0, -ctau*prof)-1.0
             #and normalize to have equivalent width == 1 angstrom
             prof /= np.sum(prof*local_wv_grad)

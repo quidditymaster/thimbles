@@ -115,7 +115,7 @@ class NamedParameters(object):
             if is_compound:
                 self.groups[pname].append(param)
             else:
-                print("WARNING: redundant non-compound InputAlias objects for model {} and parameter {}\n former alias is unreachable by name but will still show up in the .parameters collection".format(param_alias.model, param))
+                raise ValueError("Redundant non-compound InputAlias objects for model {} and parameter {}\n".format(param_alias.model, param))
                 self.groups[pname] = param
         self.param_to_index[param] = len(self.parameters)
         self.parameters.append(param)

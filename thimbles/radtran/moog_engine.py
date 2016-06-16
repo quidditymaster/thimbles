@@ -241,6 +241,8 @@ class MoogEngine(RadiativeTransferEngine):
         self._exec_moog()
         summary_fname = os.path.join(self.working_dir, out_fname + ".sum")
         result_spectra = tmb.io.moog_io.read_moog_synth_summary(summary_fname)
+        #clean up the spectrum so that we won't read an old file after a crash
+        os.system("rm {}".format(summary_fname))
         resampled_spectra = [result.sample(wavelengths, mode=sampling_mode) for result in result_spectra]
         return resampled_spectra
     

@@ -56,8 +56,7 @@ synth_template= "synth\n" +opts["moog.par_template"] + common_par_components +\
 
 
 class MoogEngine(RadiativeTransferEngine):
-    """an abstract class specifying the API for wrapping radiative transfer
-    codes.
+    """A wrapper class for running MOOG radiative transfer code.
     """
     
     def __init__(self, working_dir=None, photosphere_engine=None):

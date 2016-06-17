@@ -184,12 +184,16 @@ class Spectrum(ThimblesTable, Base, HasParameterContext):
                 coords_p=coord_param,
             )
         elif isinstance(obs_wvs_indexer, (LinearCoordinatization, LogLinearCoordinatization)):
+            if isinstance(obs_wvs_indexer, LinearCoordinatization):
+                model_factory = LinearCoordinatizationModel
+            elif isinstance(obs_wvs_indexer, LogLinearCoordinatization):
+                model_factory = LogLinearCoordinatizationModel
             min_p = FloatParameter(obs_wvs_indexer.min)
             max_p = FloatParameter(obs_wvs_indexer.max)
-            LinearCoordinatizationModel(
+            model_factory(
                 output_p=obs_wvs_p, 
-                min_p=min_p, 
-                max_p=max_p, 
+                min=min_p, 
+                max=max_p, 
                 npts=obs_wvs_indexer.npts
             )
         

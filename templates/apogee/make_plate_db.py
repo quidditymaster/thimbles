@@ -93,6 +93,7 @@ if __name__ == "__main__":
             star_info["phot"] = extract_info(crow, phot_cols)
             star_info["phot_err"] = extract_info(crow, phot_errs)
             star_info["misc"] = extract_info(crow, star_info_cols)
+            star_info["ap_starflags"] = crow["STARFLAGS"] 
             csource = tmb.star.Star(name=csource_name, ra=cra, dec=cdec, info=star_info)
             sources[csource_name] = csource
         

@@ -11,7 +11,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--ra", required=True, nargs="*")
 parser.add_argument("--dec", required=True, nargs="*")
 parser.add_argument("--selection-radius", default=0.2, type=float)
-parser.add_argument("--fallback-rv", default=0.0, type=float)
+parser.add_argument("--fallback-rv", default=-999.9, type=float)
+parser.add_argument("--output", required=True)
 
 redux_dir = "/uufs/chpc.utah.edu/common/home/sdss01/apogeework/apogee/spectro/redux/r6"
 all_visit_fpath = "/uufs/chpc.utah.edu/common/home/sdss01/apogeework/apogee/spectro/redux/r6/allVisit-l30e.2.fits"
@@ -144,3 +145,10 @@ if __name__ == "__main__":
                 print("{} spectra processed".format(len(spectra)))
         
         hdul.close()
+    
+    if os.path.isfile(args.output):
+        print("WARNING: db of output name already detected stars may be duplicated")
+    db = tmb.ThimblesDB(args.output)
+    db.add_all(spectra)
+    db.commit()
+    db.close()

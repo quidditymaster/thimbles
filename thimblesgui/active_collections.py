@@ -1,11 +1,11 @@
 
-from thimblesgui import QtCore, QtGui, Qt
+from thimblesgui import QtCore, QtWidgets, QtGui, Qt
 from thimblesgui.object_creation_dialogs import NewObjectDialog
 from thimblesgui.loading_dialog import LoadDialog
 import thimbles as tmb
 QModelIndex = QtCore.QModelIndex
 
-class QueryDialog(QtGui.QDialog):
+class QueryDialog(QtWidgets.QDialog):
     _global_namespace = tmb.wds.__dict__
     _query = None
     _query_valid = False
@@ -17,21 +17,21 @@ class QueryDialog(QtGui.QDialog):
     ):
         super().__init__(parent=parent)
         
-        layout = QtGui.QGridLayout()
+        layout = QtWidgets.QGridLayout()
         self.setLayout(layout)
-        self.query_edit = QtGui.QTextEdit()
+        self.query_edit = QtWidgets.QTextEdit()
         self.query_edit.setPlainText(query_expr)
         self.query_edit.textChanged.connect(self.on_editing)
         layout.addWidget(self.query_edit, 0, 0, 1, 3)
         
-        self.status_label = QtGui.QLabel("query unprocessed")
+        self.status_label = QtWidgets.QLabel("query unprocessed")
         layout.addWidget(self.status_label, 1, 0, 1, 3)
         
-        self.parse_btn = QtGui.QPushButton("parse query")
+        self.parse_btn = QtWidgets.QPushButton("parse query")
         self.parse_btn.clicked.connect(self.parse)
         layout.addWidget(self.parse_btn, 2, 2, 1, 1)
         
-        self.run_btn = QtGui.QPushButton("run query")
+        self.run_btn = QtWidgets.QPushButton("run query")
         self.run_btn.clicked.connect(self.on_run)
         layout.addWidget(self.run_btn, 2, 3, 1, 1)
     
@@ -230,7 +230,7 @@ class ActiveCollection(QtCore.QObject):
             self.end_extend.emit()
             self.changed.emit()
 
-class ActiveCollectionView(QtGui.QWidget):
+class ActiveCollectionView(QtWidgets.QWidget):
     
     def __init__(
             self,
@@ -247,10 +247,10 @@ class ActiveCollectionView(QtGui.QWidget):
         self.selection_channel = selection_channel
         self.active_collection = active_collection
         
-        layout = QtGui.QVBoxLayout()
+        layout = QtWidgets.QVBoxLayout()
         self.layout = layout
         
-        self.table_view = QtGui.QTableView()
+        self.table_view = QtWidgets.QTableView()
         data_model = MappedListModel(active_collection, columns=columns)
         self.data_model = data_model
         #connect to the data model signals
@@ -290,10 +290,10 @@ class ActiveCollectionView(QtGui.QWidget):
         global_selection = self.get_global_selection()
         if local_selection != global_selection:
             local_idx = self.active_collection.indexer.get(global_selection)
-            qsel = QtGui.QItemSelection()
+            qsel = QtCore.QItemSelection()
             if not local_idx is None:
                 start_qidx = self.data_model.index(local_idx, 0)
                 end_qidx = self.data_model.index(local_idx, self.data_model.columnCount() -1)
                 self.table_view.scrollTo(start_qidx)
                 qsel.select(start_qidx, end_qidx)
-            self.local_selection_model.select(qsel, QtGui.QItemSelectionModel.SelectCurrent)
+            self.local_selection_model.select(qsel, QtCore.QItemSelectionModel.SelectCurrent)

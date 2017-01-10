@@ -9,10 +9,10 @@ import thimbles as tmb
 from thimbles.options import opts
 
 from thimblesgui.main_window import ThimblesMainWindow
-from thimblesgui import QtCore, QtGui, Qt
+from thimblesgui import QtCore, QtWidgets, QtGui, Qt
 gui_resource_dir = os.path.join(os.path.dirname(tmbg.__file__),"resources")
 
-class ThimblesMainApplication(QtGui.QApplication):
+class ThimblesMainApplication(QtWidgets.QApplication):
     
     def __init__ (self):
         super(ThimblesMainApplication,self).__init__([])
@@ -23,7 +23,7 @@ class ThimblesMainApplication(QtGui.QApplication):
         if opts["GUI.show_splash"]:
             spl_path = os.path.join(gui_resource_dir, "splash_screen.png")
             self.spl_pic = QtGui.QPixmap(spl_path)
-            self.splash = QtGui.QSplashScreen(self.spl_pic, Qt.WindowStaysOnTopHint)
+            self.splash = QtWidgets.QSplashScreen(self.spl_pic, Qt.WindowStaysOnTopHint)
             self.splash.setMask(self.spl_pic.mask())
             self.splash.show()
             self.processEvents()

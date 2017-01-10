@@ -4,7 +4,7 @@ import scipy
 import matplotlib as mpl
 from matplotlib.collections import LineCollection
 
-from thimblesgui import QtCore, QtGui, Qt
+from thimblesgui import QtCore, QtGui, QtWidgets, Qt
 from thimblesgui.mplwidget import MatplotlibWidget
 from thimblesgui.prevnext import PrevNext
 from thimblesgui.selection_charts import TransitionMarkerChart
@@ -192,7 +192,7 @@ class ExemplarForkDiagram(object):
         self.ax.figure._tmb_redraw=True
 
 
-class WidthsEditor(QtGui.QMainWindow):
+class WidthsEditor(QtWidgets.QMainWindow):
     
     def __init__(
             self,
@@ -257,7 +257,7 @@ class WidthsEditor(QtGui.QMainWindow):
             nrows=1,
             parent=self,
             sharex=self.flux_ax,
-            mpl_toolbar=True,
+            mpl_toolbar=False,
         )
         self.resid_ax = self.resid_plot_widget.ax
         self.setCentralWidget(self.flux_plot_widget)
@@ -440,7 +440,7 @@ class WidthsEditor(QtGui.QMainWindow):
         return self.coordinate_map(transition.wv)
     
     def attach_as_dock(self, dock_name, widget, dock_area):
-        dock = QtGui.QDockWidget(dock_name, self)
+        dock = QtWidgets.QDockWidget(dock_name, self)
         dock.setAllowedAreas(Qt.AllDockWidgetAreas)
         dock.setWidget(widget)
         self.addDockWidget(dock_area, dock)

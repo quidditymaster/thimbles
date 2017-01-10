@@ -1,6 +1,6 @@
 
 import thimblesgui as tmbg
-from thimblesgui import QtGui, QtCore, Qt
+from thimblesgui import QtGui, QtWidgets, QtCore, Qt
 QModelIndex = QtCore.QModelIndex
 
 import numpy as np
@@ -382,10 +382,10 @@ if __name__ == "__main__":
         
     qap = QtGui.QApplication([])
     
-    #qw = QtGui.QWidget()
+    #qw = QtWidgets.QWidget()
     #build the model tree
     #layout = QtGui.QHBoxLayout()
-    qw = QtGui.QMainWindow()
+    qw = QtWidgets.QMainWindow()
     #qw.setLayout(layout)
     top_node = ObjectTree(line_obj)
     

@@ -13,7 +13,7 @@ import scipy
 import scipy.optimize
 
 #internal imports
-from thimblesgui import QtCore, QtGui, Qt
+from thimblesgui import QtCore, QtWidgets, QtGui, Qt
 from thimbles.options import opts
 from thimbles.tasks import task_registry
 from thimbles import workingdataspace as wds
@@ -42,7 +42,7 @@ gui_resource_dir = os.path.join(os.path.dirname(__file__),"resources")
 
 # ########################################################################### #
 
-class TargetCollectionDialog(QtGui.QDialog):
+class TargetCollectionDialog(QtWidgets.QDialog):
     collection = None
     behavior = None
     
@@ -56,11 +56,11 @@ class TargetCollectionDialog(QtGui.QDialog):
         collection_dict = {coll.name:coll for coll in collections}
         self.collections = collection_dict
         
-        layout = QtGui.QGridLayout()
-        names_label = QtGui.QLabel("collection")
+        layout = QtWidgets.QGridLayout()
+        names_label = QtWidgets.QLabel("collection")
         layout.addWidget(names_label, 0, 0, 1, 1)
         
-        names_cbox = QtGui.QComboBox()
+        names_cbox = QtWidgets.QComboBox()
         layout.addWidget(names_cbox)
         for collection_name in collection_dict:
             names_cbox.addItem(collection_name)
@@ -68,13 +68,13 @@ class TargetCollectionDialog(QtGui.QDialog):
         self.names_cbox = names_cbox
         layout.addWidget(names_cbox, 0, 1, 1, 1)
         
-        behavior_cbox = QtGui.QComboBox()
+        behavior_cbox = QtWidgets.QComboBox()
         for behavior_opt in behavior_options:
             behavior_cbox.addItem(behavior_opt)
         self.behavior_cbox = behavior_cbox
         layout.addWidget(behavior_cbox, 1, 1, 1, 1)
         
-        ok_btn = QtGui.QPushButton("OK")
+        ok_btn = QtWidgets.QPushButton("OK")
         ok_btn.clicked.connect(self.on_ok)
         layout.addWidget(ok_btn, 2, 1, 1, 1)
         
@@ -87,7 +87,7 @@ class TargetCollectionDialog(QtGui.QDialog):
         self.accept()
 
 
-class NewCollectionDialog(QtGui.QDialog):
+class NewCollectionDialog(QtWidgets.QDialog):
     new_collection = None
     
     def __init__(
@@ -99,17 +99,17 @@ class NewCollectionDialog(QtGui.QDialog):
         super().__init__(parent=parent)
         collection_dict = {coll.name:coll for coll in current_collections}
         self.collections = collection_dict
-        layout = QtGui.QGridLayout()
-        names_label = QtGui.QLabel("collection name")
+        layout = QtWidgets.QGridLayout()
+        names_label = QtWidgets.QLabel("collection name")
         layout.addWidget(names_label, 0, 0, 1, 1)
         
-        self.names_le = QtGui.QLineEdit()
+        self.names_le = QtWidgets.QLineEdit()
         layout.addWidget(self.names_le, 0, 1, 1, 1)
         
-        self.status_label = QtGui.QLabel("")
+        self.status_label = QtWidgets.QLabel("")
         layout.addWidget(self.status_label, 1, 0, 1, 1)
         
-        ok_btn = QtGui.QPushButton("OK")
+        ok_btn = QtWidgets.QPushButton("OK")
         ok_btn.clicked.connect(self.on_ok)
         layout.addWidget(ok_btn, 2, 1, 1, 1)
         
@@ -147,7 +147,7 @@ class ParameterEvalCascadeWorker(QtCore.QThread):
             self.increment.emit(param_idx)
 
 
-class ParameterCalculationProgressBar(QtGui.QDialog):
+class ParameterCalculationProgressBar(QtWidgets.QDialog):
     
     def __init__(
             self,
@@ -157,16 +157,16 @@ class ParameterCalculationProgressBar(QtGui.QDialog):
     ):
         super().__init__(parent=parent)
         #self.parameters = parameters
-        layout = QtGui.QVBoxLayout()
-        label = QtGui.QLabel(label, parent=self)
+        layout = QtWidgets.QVBoxLayout()
+        label = QtWidgets.QLabel(label, parent=self)
         layout.addWidget(label)
-        self.progress = QtGui.QProgressBar(minimum=0, maximum=len(parameters)-1, parent=self)
+        self.progress = QtWidgets.QProgressBar(minimum=0, maximum=len(parameters)-1, parent=self)
         layout.addWidget(self.progress)
         self.setLayout(layout)
         print("making me")
         self.calculate()
 
-class YBoundsWidget(QtGui.QWidget):
+class YBoundsWidget(QtWidgets.QWidget):
     
     def __init__(
             self,
@@ -176,17 +176,17 @@ class YBoundsWidget(QtGui.QWidget):
             max=1.1
     ):
         super().__init__(parent=parent)
-        layout = QtGui.QHBoxLayout()
+        layout = QtWidgets.QHBoxLayout()
         self.ax = ax
         
-        self.min_le = QtGui.QLineEdit(str(min))
+        self.min_le = QtWidgets.QLineEdit(str(min))
         self.min_le.setFixedWidth(70)
-        self.max_le = QtGui.QLineEdit(str(max))
+        self.max_le = QtWidgets.QLineEdit(str(max))
         self.max_le.setFixedWidth(70)
         layout.addWidget(self.min_le)
         layout.addWidget(self.max_le)
         
-        self.max_le.editingFinished.connect(self.on_bounds_changed)
+        self.min_le.editingFinished.connect(self.on_bounds_changed)
         self.max_le.editingFinished.connect(self.on_bounds_changed)
         self.setLayout(layout)
         self.on_bounds_changed()
@@ -200,13 +200,13 @@ class YBoundsWidget(QtGui.QWidget):
         self.ax.figure._tmb_redraw = True
 
 
-class ActiveFluxDisplay(QtGui.QWidget):
+class ActiveFluxDisplay(QtWidgets.QWidget):
     
     def __init__(self, parent):
         super().__init__(parent=parent)
         self.wv_span = WavelengthSpan([15100, 15200])
         
-        layout = QtGui.QGridLayout()
+        layout = QtWidgets.QGridLayout()
         self.span_widget = FlatWavelengthSpanWidget(
             wv_span=self.wv_span,
             step_frac=0.5,
@@ -237,7 +237,7 @@ class ActiveFluxDisplay(QtGui.QWidget):
         self.ax.set_xlim(*self.wv_span.bounds)
 
         
-class ThimblesMainWindow(QtGui.QMainWindow):
+class ThimblesMainWindow(QtWidgets.QMainWindow):
     
     def __init__(self, app):
         super(ThimblesMainWindow, self).__init__()
@@ -337,49 +337,49 @@ class ThimblesMainWindow(QtGui.QMainWindow):
         self.spectra_chart.set_bounds(bounds)
     
     def make_actions(self):
-        self.new_collection_act = QtGui.QAction("&New Collection", self)
+        self.new_collection_act = QtWidgets.QAction("&New Collection", self)
         self.new_collection_act.setStatusTip("Make a new named collection")
         self.new_collection_act.triggered.connect(self.on_new_collection)
         
-        self.load_act = QtGui.QAction("&Load", self)
+        self.load_act = QtWidgets.QAction("&Load", self)
         self.load_act.setStatusTip("read data from file")
         self.load_act.triggered.connect(self.on_load)
         
-        #QtGui.QAction(QtGui.QIcon(":/images/new.png"), "&Attach Database", self)
+        #QtWidgets.QAction(QtWidgets.QIcon(":/images/new.png"), "&Attach Database", self)
         
         #DB actions
-        self.query_db_act = QtGui.QAction("&Query", self)
+        self.query_db_act = QtWidgets.QAction("&Query", self)
         self.query_db_act.setToolTip("Load Results of a Database Query into a named Collection")
         self.query_db_act.triggered.connect(self.on_query_db)
         
-        self.commit_act = QtGui.QAction("&Commit", self)
+        self.commit_act = QtWidgets.QAction("&Commit", self)
         #self.save_act.setShortcut("Ctrl+s")
         self.commit_act.setStatusTip("commit state to database")
         self.commit_act.triggered.connect(self.on_commit)
         
-        self.quit_act = QtGui.QAction("&Quit", self)
+        self.quit_act = QtWidgets.QAction("&Quit", self)
         self.quit_act.setShortcut("Ctrl+Q")
         self.quit_act.setStatusTip("Quit Thimbles")
         self.quit_act.triggered.connect(self.close)
         
-        self.new_star_act = QtGui.QAction("&New Star", self)
+        self.new_star_act = QtWidgets.QAction("&New Star", self)
         self.new_star_act.setStatusTip("Create a New Star object")
         self.new_star_act.triggered.connect(self.on_new_star)
         
-        self.about_act = QtGui.QAction("&About", self)
+        self.about_act = QtWidgets.QAction("&About", self)
         self.about_act.setStatusTip("About Thimbles")
         self.about_act.triggered.connect(self.on_about)
         
-        self.view_widths_act = QtGui.QAction("widths", self)
+        self.view_widths_act = QtWidgets.QAction("widths", self)
         self.view_widths_act.triggered.connect(self.on_view_widths)
         
-        self.view_spectroscopy_act = QtGui.QAction("spectroscopy", self)
+        self.view_spectroscopy_act = QtWidgets.QAction("spectroscopy", self)
         self.view_spectroscopy_act.triggered.connect(self.on_view_spectroscopy)
         
-        self.edit_normalization_act = QtGui.QAction("Normalization", self)
+        self.edit_normalization_act = QtWidgets.QAction("Normalization", self)
         self.edit_normalization_act.triggered.connect(self.on_edit_normalization)
         
-        self.broadcast_star_spectroscopy_act = QtGui.QAction("star->spectra", self)
+        self.broadcast_star_spectroscopy_act = QtWidgets.QAction("star->spectra", self)
         self.broadcast_star_spectroscopy_act.triggered.connect(self.on_broadcast_star_spectroscopy)
     
     
@@ -426,7 +426,7 @@ class ThimblesMainWindow(QtGui.QMainWindow):
         self.statusBar().showMessage("Ready")
     
     def attach_as_dock(self, dock_name, widget, dock_area):
-        dock = QtGui.QDockWidget(dock_name, self)
+        dock = QtWidgets.QDockWidget(dock_name, self)
         dock.setAllowedAreas(Qt.AllDockWidgetAreas)
         dock.setWidget(widget)
         self.addDockWidget(dock_area, dock)
@@ -471,28 +471,32 @@ class ThimblesMainWindow(QtGui.QMainWindow):
         )
         self.attach_as_dock("exemplars", exemplar_list_view, Qt.RightDockWidgetArea)
         
-        #dock = QtGui.QDockWidget("working data space", self)
+        #dock = QtWidgets.QDockWidget("working data space", self)
         #dock.setAllowedAreas(Qt.AllDockWidgetAreas)
         #self.wds_widget = ObjectTreeWidget(wds, parent=dock)
         #dock.setWidget(self.wds_widget)
         #self.addDockWidget(Qt.LeftDockWidgetArea, dock)
         #self.setCentralWidget(dock)
         
-        #dock = QtGui.QDockWidget("tasks", self)
+        #dock = QtWidgets.QDockWidget("tasks", self)
         #self.task_launcher = TaskLauncher(parent=dock)
         #dock.setWidget(self.task_launcher)
         #self.addDockWidget(Qt.RightDockWidgetArea, dock)
     
-    def bad_selection(self, msg=None):
+    def warning_box(self, msg):
         """indicate when operations cannot be performed because of bad user selections
         """
-        if msg == None:
-            msg = "invalid selection\n"
-        else:
-            msg = "invalid selection\n" + msg
-        self.wd = tmbg.dialogs.WarningDialog(msg)
-        self.wd.warn()
-    
+        #if msg == None:
+        #    msg = "invalid selection\n"
+        #else:
+        #    msg = "invalid selection\n" + msg
+        #self.wd = tmbg.dialogs.WarningDialog(msg)
+        #self.wd.warn()
+        #self.get_targer_collection(behaviors=[])
+        mb = QtWidgets.QMessageBox(parent=self)
+        mb.setText(msg)
+        mb.exec_()
+        
     def get_target_collection(self, behaviors, ):
         tcd = TargetCollectionDialog(
             collections=self.collection_collection.values,
@@ -517,7 +521,7 @@ THIMBLES:
 
 Thimbles was developed in the Cosmic Origins group of Inese Ivans at the University of Utah.
 """
-        QtGui.QMessageBox.about(self, "about Thimbles GUI", about_msg)
+        QtWidgets.QMessageBox.about(self, "about Thimbles GUI", about_msg)
     
     def on_broadcast_star_spectroscopy(self):
         selected_star = self.selection["star"]
@@ -537,7 +541,8 @@ Thimbles was developed in the Cosmic Origins group of Inese Ivans at the Univers
     def on_edit_normalization(self):
         selected_spec = self.selection["spectrum"]
         if selected_spec is None:
-            self.bad_selection("No spectrum selected")
+            self.warning_box("No spectrum selected")
+            return
         self._ne = NormalizationEditor(
             spectrum=selected_spec,
             parent=self,
@@ -625,7 +630,7 @@ Thimbles was developed in the Cosmic Origins group of Inese Ivans at the Univers
             self.bad_selection("No Star Selected")
         
         #calc_params = [spec["obs_flux"] for spec in selected_star.spectroscopy]
-        #progress_dialog = QtGui.QProgressDialog(
+        #progress_dialog = QtWidgets.QProgressDialog(
         #    "executing parameter cascades",
         #    "cancel? maybe?",
         #    0,

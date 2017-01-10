@@ -1,5 +1,5 @@
 
-from thimblesgui import QtGui, QtCore, Qt
+from thimblesgui import QtGui, QtWidgets, QtCore, Qt
 Signal = QtCore.Signal
 Slot = QtCore.Slot
 QModelIndex = QtCore.QModelIndex
@@ -29,7 +29,7 @@ _parse_success_style = """
     background-color: rgb(255, 255, 255);
 """
 
-class SpeciesSelectorWidget(QtGui.QWidget):
+class SpeciesSelectorWidget(QtWidgets.QWidget):
     speciesChanged = Signal(list)
     
     def __init__(self, zvals=None, parent=None):
@@ -38,14 +38,14 @@ class SpeciesSelectorWidget(QtGui.QWidget):
             zvals = []
         self._z_set = set(zvals)
         
-        layout = QtGui.QHBoxLayout()
+        layout = QtWidgets.QHBoxLayout()
         self.setLayout(layout)
-        self.label = QtGui.QLabel("Species")
+        self.label = QtWidgets.QLabel("Species")
         layout.addWidget(self.label)
-        self.species_le = QtGui.QLineEdit(parent=self)
+        self.species_le = QtWidgets.QLineEdit(parent=self)
         layout.addWidget(self.species_le)
         #self.species_le.setFixedWidth(150)
-        self.parse_btn = QtGui.QPushButton("parse")
+        self.parse_btn = QtWidgets.QPushButton("parse")
         layout.addWidget(self.parse_btn)
         
         self.parse_btn.clicked.connect(self.parse_text)
@@ -86,26 +86,26 @@ class SpeciesSelectorWidget(QtGui.QWidget):
         self.speciesChanged.emit(self.zvals)
 
 
-class TransitionConstraintsWidget(QtGui.QWidget):
+class TransitionConstraintsWidget(QtWidgets.QWidget):
     constraintsChanged = Signal(list)
     
     def __init__(self, wv_span, parent=None):
         super().__init__(parent)
         
-        layout = QtGui.QGridLayout()
+        layout = QtWidgets.QGridLayout()
         self.setLayout(layout)
         self.wv_span = wv_span
-        self.wv_span_cb = QtGui.QCheckBox()
+        self.wv_span_cb = QtWidgets.QCheckBox()
         self.wv_span_cb.setCheckState(Qt.CheckState(2))
         layout.addWidget(self.wv_span_cb, 0, 0, 1, 1)
         self.wv_span_widget = FlatWavelengthSpanWidget(wv_span, with_steppers=False, parent=self)
         layout.addWidget(self.wv_span_widget, 0, 1, 1, 1)
-        self.species_filter_cb = QtGui.QCheckBox()
+        self.species_filter_cb = QtWidgets.QCheckBox()
         self.species_filter_cb.setCheckState(Qt.CheckState(2))
         self.species_selector = SpeciesSelectorWidget(parent=self)
         layout.addWidget(self.species_filter_cb, 1, 0, 1, 1)
         layout.addWidget(self.species_selector, 1, 1, 1, 1)
-        self.expr_filter_cb = QtGui.QCheckBox()
+        self.expr_filter_cb = QtWidgets.QCheckBox()
         self.expr_filter_cb.setCheckState(Qt.CheckState(2))
         self.expr_wid = PythonExpressionLineEdit(parent=self, field_label="filter", expression="None")
         layout.addWidget(self.expr_filter_cb, 2, 0, 1, 1)
@@ -150,7 +150,7 @@ class TransitionConstraintsWidget(QtGui.QWidget):
         return constraints
 
 
-class TransitionSelectorWidget(QtGui.QWidget):
+class TransitionSelectorWidget(QtWidgets.QWidget):
     
     def __init__(
             self,
@@ -162,7 +162,7 @@ class TransitionSelectorWidget(QtGui.QWidget):
     ):
         super().__init__(parent=parent)
         self.db = db
-        layout = QtGui.QVBoxLayout()
+        layout = QtWidgets.QVBoxLayout()
         self.constraints_widget = TransitionConstraintsWidget(
             wv_span=wv_span,
             parent=self,

@@ -1,5 +1,5 @@
 
-from thimblesgui import QtGui, QtCore, Qt
+from thimblesgui import QtGui, QtWidgets, QtCore, Qt
 
 import numpy as np
 
@@ -10,7 +10,7 @@ from thimbles.charts import SpectrumChart
 from thimblesgui import MatplotlibWidget
 
 
-class FluxDisplay(QtGui.QWidget):
+class FluxDisplay(QtWidgets.QWidget):
     _span_connected = False
     
     def __init__(self, wv_span=None, parent=None):

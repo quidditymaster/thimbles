@@ -2,10 +2,12 @@
 import numpy as np
 import thimblesgui as tmbg
 
-from thimblesgui import QtGui, QtCore, Qt
+from thimblesgui import QtGui, QtWidgets, QtCore, Qt
 Signal = QtCore.Signal
 Slot = QtCore.Slot
+
 QModelIndex = QtCore.QModelIndex
+
 
 class WavelengthSpan(QtCore.QObject):
     boundsChanged = Signal(list)
@@ -62,7 +64,7 @@ class SpanWidgetBase(object):
         self.step(forward=False)
 
 
-class FlatWavelengthSpanWidget(SpanWidgetBase, QtGui.QWidget):
+class FlatWavelengthSpanWidget(SpanWidgetBase, QtWidgets.QWidget):
     
     def __init__(
             self, 
@@ -77,34 +79,34 @@ class FlatWavelengthSpanWidget(SpanWidgetBase, QtGui.QWidget):
         self.step_frac=step_frac #delta_log_wv = log(max_wv/min_wv)*step_frac
         self.wv_fmt=wv_fmt
         
-        layout = QtGui.QHBoxLayout()
+        layout = QtWidgets.QHBoxLayout()
         self.setLayout(layout)
         if with_steppers:
-            self.backward_btn = QtGui.QPushButton("<<")
+            self.backward_btn = QtWidgets.QPushButton("<<")
             layout.addWidget(self.backward_btn)
-        layout.addWidget(QtGui.QLabel("min wv"))
-        self.min_wv_le = QtGui.QLineEdit()
+        layout.addWidget(QtWidgets.QLabel("min wv"))
+        self.min_wv_le = QtWidgets.QLineEdit()
         #import pdb; pdb.set_trace()
         self.min_wv_le.setFixedWidth(90)
         min_valid = QtGui.QDoubleValidator(0.0, 1e5, 5, self.min_wv_le)
         self.min_wv_le.setValidator(min_valid)
         layout.addWidget(self.min_wv_le)
         if with_steppers:
-            layout.addWidget(QtGui.QWidget())
-            self.step_le = QtGui.QLineEdit()
+            layout.addWidget(QtWidgets.QWidget())
+            self.step_le = QtWidgets.QLineEdit()
             step_valid = QtGui.QDoubleValidator(0.0, 1.0, 3, self.step_le)
             self.step_le.setValidator(step_valid)
             self.step_le.setText("{:03.2f}".format(self.step_frac))
             self.step_le.setFixedWidth(35)
             layout.addWidget(self.step_le)
-        layout.addWidget(QtGui.QLabel("max wv"))
-        self.max_wv_le = QtGui.QLineEdit()
+        layout.addWidget(QtWidgets.QLabel("max wv"))
+        self.max_wv_le = QtWidgets.QLineEdit()
         self.max_wv_le.setFixedWidth(90)
         max_valid = QtGui.QDoubleValidator(0.0, 1e5, 5, self.max_wv_le)
         self.max_wv_le.setValidator(max_valid)
         layout.addWidget(self.max_wv_le)
         if with_steppers:
-            self.forward_btn = QtGui.QPushButton(">>")
+            self.forward_btn = QtWidgets.QPushButton(">>")
             layout.addWidget(self.forward_btn)
         
         self.refresh_bounds_text() 
@@ -126,7 +128,7 @@ class FlatWavelengthSpanWidget(SpanWidgetBase, QtGui.QWidget):
             return
         super(FlatWavelengthSpanWidget, self).keyPressEvent(event)
 
-class WavelengthSpanWidget(SpanWidgetBase, QtGui.QWidget):
+class WavelengthSpanWidget(SpanWidgetBase, QtWidgets.QWidget):
     
     def __init__(self, wv_span, step_frac=0.5, wv_fmt="{:7.2f}", parent=None):
         super(WavelengthSpanWidget, self).__init__(parent)
@@ -134,24 +136,24 @@ class WavelengthSpanWidget(SpanWidgetBase, QtGui.QWidget):
         self.step_frac=step_frac #delta_log_wv = log(max_wv/min_wv)*step_frac
         self.wv_fmt=wv_fmt
         
-        layout = QtGui.QGridLayout()
+        layout = QtWidgets.QGridLayout()
         self.setLayout(layout)
         #label row
-        layout.addWidget(QtGui.QLabel("  Min Wv"), 0, 0, 1, 1)
-        layout.addWidget(QtGui.QLabel("   Step   "), 0, 1, 1, 1)
-        layout.addWidget(QtGui.QLabel("  Max Wv"), 0, 2, 1, 1)
+        layout.addWidget(QtWidgets.QLabel("  Min Wv"), 0, 0, 1, 1)
+        layout.addWidget(QtWidgets.QLabel("   Step   "), 0, 1, 1, 1)
+        layout.addWidget(QtWidgets.QLabel("  Max Wv"), 0, 2, 1, 1)
         #btn row
-        self.backward_btn = QtGui.QPushButton("<<")
+        self.backward_btn = QtWidgets.QPushButton("<<")
         layout.addWidget(self.backward_btn, 1, 0, 1, 1)
-        self.step_le = QtGui.QLineEdit()
-        step_valid = QtGui.QDoubleValidator(0.0, 1.0, 3, self.step_le)
+        self.step_le = QtWidgets.QLineEdit()
+        step_valid = QtGuiQDoubleValidator(0.0, 1.0, 3, self.step_le)
         self.step_le.setValidator(step_valid)
         self.step_le.setText("{:03.2f}".format(self.step_frac))
         layout.addWidget(self.step_le)
-        self.forward_btn = QtGui.QPushButton(">>")
+        self.forward_btn = QtWidgets.QPushButton(">>")
         layout.addWidget(self.forward_btn, 1, 2, 1, 1)
         #wv bounds row
-        self.min_wv_le = QtGui.QLineEdit()
+        self.min_wv_le = QtWidgets.QLineEdit()
         min_valid = QtGui.QDoubleValidator(0.0, 1e5, 5, self.min_wv_le)
         self.min_wv_le.setValidator(min_valid)
         layout.addWidget(self.min_wv_le, 2, 0, 1, 1)

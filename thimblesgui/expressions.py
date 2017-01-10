@@ -1,5 +1,5 @@
 
-from thimblesgui import QtCore, QtGui, Qt
+from thimblesgui import QtCore, QtWidgets, QtGui, Qt
 import thimbles as tmb
 
 _parse_error_style = """
@@ -10,23 +10,23 @@ _parse_success_style = """
     background-color: rgb(240, 240, 240);
 """
 
-class PythonExpressionLineEdit(QtGui.QWidget):
+class PythonExpressionLineEdit(QtWidgets.QWidget):
     _global_namespace = tmb.wds.__dict__
     _is_valid = False
     _value = None
     
     def __init__(self, field_label, expression, parent=None):
         super().__init__(parent=parent)
-        layout = QtGui.QHBoxLayout()
-        self.field_label = QtGui.QLabel(field_label)
+        layout = QtWidgets.QHBoxLayout()
+        self.field_label = QtWidgets.QLabel(field_label)
         layout.addWidget(self.field_label)
-        self.ledit = QtGui.QLineEdit(expression, parent=self)
+        self.ledit = QtWidgets.QLineEdit(expression, parent=self)
         layout.addWidget(self.ledit)
-        self.parse_btn = QtGui.QPushButton("parse", parent=self)
+        self.parse_btn = QtWidgets.QPushButton("parse", parent=self)
         layout.addWidget(self.parse_btn)
         self.parse_btn.clicked.connect(self.on_parse)
         
-        self.error_label = QtGui.QLabel("")
+        self.error_label = QtWidgets.QLabel("")
         layout.addWidget(self.error_label)
         
         self.parse_btn.clicked.connect(self.on_parse)

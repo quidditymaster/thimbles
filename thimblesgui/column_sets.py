@@ -12,12 +12,15 @@ namec = ItemMappedColumn(
     value_converter=lambda x: x,
 )
 
-def none_safe_float_str(val):
-    if val is None:
-        return "None"
-    else:
-        return "{:8.3f}".format(val)
+def make_none_safe_str_func(format_str):
+    def float_converter(val):
+        if val is None:
+            return "None"
+        else:
+            return format_str.format(val)
+    return float_converter
 
+#none_safe_float_str = make_none_safe_str_func("{:8.3f}")
 
 #columns for stars
 teffc = ItemMappedColumn(
@@ -41,10 +44,11 @@ metalicityc = ItemMappedColumn(
     setter=lambda x, y: setattr(x, "metalicity", y),
     string_converter=float,
 )
+mass_formatter = make_none_safe_str_func("{:2.2f}")
 massc = ItemMappedColumn(
     "Mass",
     getter=lambda x: x.mass,
-    value_converter=none_safe_float_str,
+    value_converter=mass_formatter,
     setter=lambda x, y: setattr(x, "mass", y),
     string_converter=float,
 )
@@ -77,8 +81,32 @@ ldarkc = ItemMappedColumn(
     string_converter=float,
 )
 
-star_columns = [namec, teffc, loggc, metalicityc, vmicroc, vmacroc, vsinic, ldarkc, massc]
+ra_formatter = make_none_safe_str_func("{:8.4f}")
+rac = ItemMappedColumn(
+    "RA",
+    getter = lambda x:x.ra,
+    value_converter=ra_formatter,
+)
+dec_formatter = make_none_safe_str_func("{:8.4f}")
+decc = ItemMappedColumn(
+    "DEC",
+    getter = lambda x:x.dec,
+    value_converter=dec_formatter,
+)
 
+star_columns = [
+    namec,
+    teffc,
+    loggc,
+    metalicityc,
+    vmicroc,
+    vmacroc,
+    vsinic,
+    ldarkc,
+    massc,
+    rac,
+    decc,
+]
 
 #columns for electronic transitions
 wvc = ItemMappedColumn(

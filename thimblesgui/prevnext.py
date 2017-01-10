@@ -1,22 +1,22 @@
 
-from thimblesgui import QtCore, QtGui, Qt
+from thimblesgui import QtCore, QtWidgets, QtGui, Qt
 
-class PrevNext(QtGui.QWidget):
+class PrevNext(QtWidgets.QWidget):
     prev = QtCore.Signal()
     next = QtCore.Signal()
     
     def __init__(self, duration=1, with_play=False, parent=None):
         super(PrevNext, self).__init__(parent)
-        layout = QtGui.QGridLayout()
-        self.prev_btn = QtGui.QPushButton("prev")
-        self.next_btn = QtGui.QPushButton("next")
+        layout = QtWidgets.QGridLayout()
+        self.prev_btn = QtWidgets.QPushButton("prev")
+        self.next_btn = QtWidgets.QPushButton("next")
         self.with_play = with_play
         if with_play:
             self.duration = int(duration*1000)
-            self.duration_le = QtGui.QLineEdit("%5.3f" % duration)
+            self.duration_le = QtWidgets.QLineEdit("%5.3f" % duration)
             self.timer = QtCore.QTimer(self)
             self.timer.start(self.duration)
-            self.play_toggle_btn = QtGui.QPushButton("Play/Pause")
+            self.play_toggle_btn = QtWidgets.QPushButton("Play/Pause")
             self.play_toggle_btn.setCheckable(True)
             self.play_toggle_btn.setChecked(True)
             #layout
@@ -93,7 +93,7 @@ class PrevNext(QtGui.QWidget):
             self.play()
 
 if __name__ == "__main__":
-    qap = QtGui.QApplication([])
+    qap = QtWidgets.QApplication([])
     pn = PrevNext()#with_play=True)
     pn.show()
     qap.exec_()

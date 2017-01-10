@@ -2,12 +2,9 @@ import threading
 import numpy as np
 import matplotlib
 
-from PySide import QtCore
-from PySide import QtGui
-from PySide.QtCore import Signal, Slot
-Qt = QtCore.Qt
+from thimbgui import QtGui, QtWidgets, QtCore, Qt
 
-class FeatureFitWidget(QtGui.QWidget):
+class FeatureFitWidget(QtWidgets.QWidget):
     slidersChanged = Signal(int)
     
     def __init__(self, features, feature_idx, parent=None):

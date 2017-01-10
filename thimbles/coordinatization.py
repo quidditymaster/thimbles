@@ -309,11 +309,11 @@ class LinearCoordinatizationModel(Model):
     }
     npts = Column(Integer)
     
-    def __init__(self, output_p, min_p, max_p, npts):
+    def __init__(self, output_p, min, max, npts):
         self.output_p = output_p
         self.npts = npts
-        self.add_parameter("min", min_p)
-        self.add_parameter("max", max_p)
+        self.add_parameter("min", min)
+        self.add_parameter("max", max)
     
     def __call__(self, override=None):
         vdict = self.get_vdict(override)

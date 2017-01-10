@@ -1,11 +1,6 @@
 
 import os 
 
-#try:
-#    from PySide import QtGui
-#    from PySide import QtCore
-#    which_qt = "PySide"
-
 import matplotlib as mpl
 try:
     from PyQt4 import QtGui
@@ -13,11 +8,11 @@ try:
     mpl.use("Qt4Agg")
     which_qt = "PyQt4"
 except ImportError:
-    from PyQt5 import QtWidget as QtGui
+    from PyQt5 import QtWidgets
+    from PyQt5 import QtGui
     from PyQt5 import QtCore
     mpl.use("Qt5Agg")
     which_qt = "PyQt5"
-
 
 #mpl.rcParams['backend.qt4'] = which_qt
 Qt = QtCore.Qt

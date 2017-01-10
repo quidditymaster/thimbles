@@ -13,17 +13,17 @@ import sys
 import re 
 import time
 import numpy as np  
-from thimblesgui import QtCore, QtGui, Qt
+from thimblesgui import QtCore, QtWidgets, QtGui, Qt
 
 # ########################################################################### #
 from thimbles.options import OptionSpecificationError
 from thimbles.tasks import task_registry
 import thimbles.workingdataspace as wds
 
-class FilePathOptionEditor(QtGui.QWidget):
+class FilePathOptionEditor(QtWidgets.QWidget):
     
     def __init__(self, option, parent=None):
-        QtGui.QWidget.__init__(self, parent=parent)
+        QtWidgets.QWidget.__init__(self, parent=parent)
         self.option = option
         
         layout = QtGui.QHBoxLayout()
@@ -49,10 +49,10 @@ class FilePathOptionEditor(QtGui.QWidget):
     def set_option_value(self):
         self.option.set_runtime_str(self.file_line_edit.text())
 
-class LineOptionEditor(QtGui.QWidget):
+class LineOptionEditor(QtWidgets.QWidget):
     
     def __init__(self, option, parent=None):
-        QtGui.QWidget.__init__(self, parent=parent)
+        QtWidgets.QWidget.__init__(self, parent=parent)
         self.option = option
         runtime_str = self.option.runtime_str
         if runtime_str is None:
@@ -68,10 +68,10 @@ class LineOptionEditor(QtGui.QWidget):
         self.option.set_runtime_str(self.le.text())
 
 
-class StringRepresentation(QtGui.QWidget):
+class StringRepresentation(QtWidgets.QWidget):
     
     def __init__(self, option, parent=None):
-        QtGui.QWidget.__init__(self, parent=parent)
+        QtWidgets.QWidget.__init__(self, parent=parent)
         self.option = option
         self.label = QtGui.QLabel("", parent=self)
         
@@ -90,7 +90,7 @@ class StringRepresentation(QtGui.QWidget):
 
 
 # define default widget for a given key?
-class OptionValueSpecifierWidget(QtGui.QWidget):
+class OptionValueSpecifierWidget(QtWidgets.QWidget):
     _label_row = 0
     _label_col = 0
     _editor_row = _label_row + 1
@@ -111,7 +111,7 @@ class OptionValueSpecifierWidget(QtGui.QWidget):
     _fetch_btns_col_span = 1
     
     def __init__(self,option,parent=None):
-        QtGui.QWidget.__init__(self,parent=parent)
+        QtWidgets.QWidget.__init__(self,parent=parent)
         self.option = option  
         self.initUI()
     
@@ -202,7 +202,7 @@ def task_runner_factory(task, parent=None):
             time.sleep(0.01)
     return setup_and_run_task
 
-class RunTaskDialog(QtGui.QDialog):
+class RunTaskDialog(QtWidgets.QDialog):
     
     def __init__ (self, task, parent=None):
         self.task = task
@@ -239,7 +239,7 @@ class RunTaskDialog(QtGui.QDialog):
         self.result_name_le = QtGui.QLineEdit(self.task.result_name)
         layout.addWidget(self.result_name_le)
         
-        btn_group = QtGui.QWidget(parent=self)
+        btn_group = QtWidgets.QWidget(parent=self)
         hl = QtGui.QHBoxLayout()
         btn_group.setLayout(hl)
         
@@ -271,7 +271,7 @@ class RunTaskDialog(QtGui.QDialog):
         self.reject()
 
 
-class TaskLauncher(QtGui.QWidget):
+class TaskLauncher(QtWidgets.QWidget):
     
     def __init__(self, parent):
         super(TaskLauncher, self).__init__(parent)

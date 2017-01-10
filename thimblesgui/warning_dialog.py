@@ -1,14 +1,14 @@
-from thimblesgui import QtGui
+from thimblesgui import QtGui, QtWidgets
 from thimblesgui.feedback import request_feedback
 import traceback
 
-class WarningDialog(QtGui.QDialog):
+class WarningDialog(QtWidgets.QDialog):
     stack_trace = None
     
     def __init__(self, message, error=None, parent=None):
         super(WarningDialog, self).__init__(parent)
-        layout = QtGui.QGridLayout()
-        self.message_label = QtGui.QLabel(message)
+        layout = QtWidgets.QGridLayout()
+        self.message_label = QtWidgets.QLabel(message)
         layout.addWidget(self.message_label, 0, 0, 1, 3)
         if error != None:
             self.stack_trace = traceback.extract_stack()
@@ -39,7 +39,7 @@ class WarningDialog(QtGui.QDialog):
         self.accept()
 
 if __name__ == "__main__":
-    qap = QtGui.QApplication([])    
+    qap = QtWidgets.QApplication([])    
     try:
         i, j = 1
     except TypeError as e:

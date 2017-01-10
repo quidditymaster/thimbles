@@ -1,10 +1,10 @@
 
-from thimblesgui import QtGui, Qt
+from thimblesgui import QtGui, QtWidgets, Qt
 from thimblesgui.expressions import PythonExpressionLineEdit
 
 import thimbles as tmb
 
-class OpenFileWidget(QtGui.QWidget):
+class OpenFileWidget(QtWidgets.QWidget):
     
     def __init__(
             self,
@@ -32,7 +32,7 @@ class OpenFileWidget(QtGui.QWidget):
         return self.file_le.text()
 
 
-class LoadDialog(QtGui.QDialog):
+class LoadDialog(QtWidgets.QDialog):
     result = None
     
     def __init__(
@@ -56,11 +56,11 @@ class LoadDialog(QtGui.QDialog):
         self.status_label = QtGui.QLabel("")
         layout.addWidget(self.status_label)
         
-        control_group = QtGui.QWidget(parent=self)
+        control_group = QtWidgets.QWidget(parent=self)
         cglay = QtGui.QHBoxLayout()
         control_group.setLayout(cglay)
         
-        spacer = QtGui.QWidget()
+        spacer = QtWidgets.QWidget()
         cglay.addWidget(spacer)
         load_btn = QtGui.QPushButton("Load")
         load_btn.clicked.connect(self.on_load)

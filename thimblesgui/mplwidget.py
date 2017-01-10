@@ -2,13 +2,13 @@ import threading
 import numpy as np
 import matplotlib as mpl
 
-from thimblesgui import QtCore, QtGui, Qt
+from thimblesgui import QtCore, QtGui, QtWidgets, Qt
 
 from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT as NavigationToolbar
 from thimbles.charts import MatplotlibCanvas
 
 
-class MatplotlibWidget(QtGui.QWidget):
+class MatplotlibWidget(QtWidgets.QWidget):
     """
     Matplotlib widget
     
@@ -51,7 +51,7 @@ class MatplotlibWidget(QtGui.QWidget):
         self.fig = self.canvas.fig
         
         # create a vertical box layout
-        self.vboxlayout = QtGui.QVBoxLayout()
+        self.vboxlayout = QtWidgets.QVBoxLayout()
         self.vboxlayout.addWidget(self.canvas)
         if mpl_toolbar:
             self.mpl_toolbar = NavigationToolbar(self.canvas,self)

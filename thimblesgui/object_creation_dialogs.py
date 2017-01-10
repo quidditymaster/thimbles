@@ -1,10 +1,10 @@
-from thimblesgui import QtGui, Qt
+from thimblesgui import QtGui, QtWidgets, Qt
 from thimblesgui.expressions import PythonExpressionLineEdit
 import thimbles as tmb
 #import inspect
 
 
-class NewObjectDialog(QtGui.QDialog):
+class NewObjectDialog(QtWidgets.QDialog):
     obj = None
     
     def __init__(
@@ -17,7 +17,7 @@ class NewObjectDialog(QtGui.QDialog):
         self.setWindowTitle("Create Object")
         self.factory = factory
         self.fields = fields
-        layout = QtGui.QVBoxLayout()
+        layout = QtWidgets.QVBoxLayout()
         
         #self.kwarg_dict = {}
         self.expr_dict = {}
@@ -27,9 +27,9 @@ class NewObjectDialog(QtGui.QDialog):
             self.expr_dict[field_name] = pele
             layout.addWidget(pele)
         
-        control_group = QtGui.QWidget()
+        control_group = QtWidgets.QWidget()
         cg_lay = QtGui.QHBoxLayout()
-        cg_lay.addWidget(QtGui.QWidget())
+        cg_lay.addWidget(QtWidgets.QWidget())
         control_group.setLayout(cg_lay)
         self.create_btn = QtGui.QPushButton("create")
         cg_lay.addWidget(self.create_btn)

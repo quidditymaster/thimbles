@@ -2,12 +2,9 @@ import threading
 import numpy as np
 import matplotlib
 
-from PySide import QtCore
-from PySide import QtGui
-from PySide.QtCore import Signal, Slot
-Qt = QtCore.Qt
+from thimblesgui import QtWidgets, QtCore, Qt
 
-class FloatSlider(QtGui.QWidget):
+class FloatSlider(QtWidgets.QWidget):
     valueChanged = Signal(float)
     
     def __init__(
@@ -112,7 +109,7 @@ class FloatSlider(QtGui.QWidget):
             print("failed slider value setting resulted in error %s" % e)
 
 
-class SliderCascade(QtGui.QWidget):
+class SliderCascade(QtWidgets.QWidget):
     slidersChanged = Signal(int)
     
     def __init__(self, sliders, parent=None):

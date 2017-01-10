@@ -1,9 +1,9 @@
 from thimblesgui.models import ObjectTree
 import thimbles as tmb
 
-from thimblesgui import QtGui, QtCore, Qt
+from thimblesgui import QtGui, QtWidgets, QtCore, Qt
 
-class LineListView(QtGui.QTableView):
+class LineListView(QtWidgets.QTableView):
     
     def __init__(self, parent):
         super(LineListView, self).__init__(parent)
@@ -11,7 +11,7 @@ class LineListView(QtGui.QTableView):
     def minimumSizeHint(self):
         return QtCore.QSize(500, 150)
 
-class NameTypeTableView(QtGui.QTableView):
+class NameTypeTableView(QtWidgets.QTableView):
     
     def __init__(self, parent):
         super(NameTypeTableView, self).__init__(parent)
@@ -24,21 +24,21 @@ class RepresentationEngine(object):
     def __init__(self):
         pass
 
-class ObjectTreeWidget(QtGui.QWidget):
+class ObjectTreeWidget(QtWidgets.QWidget):
     
     def __init__(self, obj, parent):
         super(ObjectTreeWidget, self).__init__(parent=parent)
         
-        self.layout = QtGui.QGridLayout()
+        self.layout = QtWidgets.QGridLayout()
         self.setLayout(self.layout)
         self.tree_model = ObjectTree(obj)
         
-        self.tree_view = QtGui.QTreeView()
+        self.tree_view = QtWidgets.QTreeView()
         self.tree_view.setModel(self.tree_model)
         self.layout.addWidget(self.tree_view, 0, 0, 1, 2)
         self.tree_view.doubleClicked.connect(self.on_double_click)
         
-        self.refresh_btn = QtGui.QPushButton("refresh")
+        self.refresh_btn = QtWidgets.QPushButton("refresh")
         self.refresh_btn.clicked.connect(self.on_refresh)
         self.layout.addWidget(self.refresh_btn, 1, 1, 1, 1)
     

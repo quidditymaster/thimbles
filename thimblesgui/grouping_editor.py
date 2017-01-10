@@ -1,7 +1,7 @@
 from copy import copy
 import thimblesgui as tmbg
 
-from thimblesgui import QtGui, QtCore, Qt
+from thimblesgui import QtGui, QtWidgets, QtCore, Qt
 Signal = QtCore.Signal
 Slot = QtCore.Slot
 QModelIndex = QtCore.QModelIndex
@@ -31,7 +31,7 @@ bk_color = "#708080"
 focus_color = "#F0DB62"
 
 
-class TransitionExpressionWidget(QtGui.QWidget):
+class TransitionExpressionWidget(QtWidgets.QWidget):
     xExpressionChanged = Signal(str)
     yExpressionChanged = Signal(str)
     
@@ -342,7 +342,7 @@ class TransitionGroupListModel(MappedListModel):
         super(TransitionGroupListModel, self).__init__(groups, cols)
 
 
-class BackgroundTransitionListWidget(QtGui.QWidget):
+class BackgroundTransitionListWidget(QtWidgets.QWidget):
     
     def __init__(self, grouping_standard_editor, parent=None):
         self.selection=grouping_standard_editor.selection
@@ -373,7 +373,7 @@ class BackgroundTransitionListWidget(QtGui.QWidget):
         self.selection.transitions.background.set_values(trans)
         self.table_model.endResetModel()
 
-class ForegroundTransitionListWidget(QtGui.QWidget):
+class ForegroundTransitionListWidget(QtWidgets.QWidget):
     
     def __init__(self, grouping_standard_editor, parent=None):
         self.parent_editor = grouping_standard_editor
@@ -495,7 +495,7 @@ class ForegroundTransitionListWidget(QtGui.QWidget):
         self.selection.transitions.foreground.set_focus(focus_idxs)
 
 
-class GroupSelectionWidget(QtGui.QWidget):
+class GroupSelectionWidget(QtWidgets.QWidget):
     
     def __init__(self, grouping_standard_editor, parent=None):
         self.selection = grouping_standard_editor.selection
@@ -565,7 +565,7 @@ class NearestDataSpacePicker(object):
             return False, None
 
 
-class GroupingStandardEditor(QtGui.QMainWindow):
+class GroupingStandardEditor(QtWidgets.QMainWindow):
     _redraw_all = False
     
     def __init__(

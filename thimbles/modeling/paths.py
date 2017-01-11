@@ -73,23 +73,45 @@ def find_all_paths(source, target, influence_graph=None):
         influence_graph = extract_influence_graph(target, direction="upstream")
     return nx.algorithms.simple_paths.all_simple_paths(influence_graph, source, target)
 
+def model_type_labeler(model):
+    return model.model_class
 
-def influence_graph_gv(influence_graph):
-    gv = ["digraph influence"]
+def parameter_type_labeler(param):
+    return param.parameter_class
+
+def downstream_parameter_labeler(param):
+    dsmods = param.models
+    if len(param.models._aliases) > 0:
+        return param.models._aliases[0].name
+    else:
+        return parameter_type_labeler(param)
+
+def influence_graph_gv(
+        influence_graph,
+        model_labeler=None,
+        parameter_labeler=None,
+        graph_name="influence",
+):
+    if model_labeler is None:
+        model_labeler = model_type_labeler
+    if parameter_labeler is None:
+        parameter_labeler = downstream_parameter_labeler
+    
+    gv = ["digraph {}".format(graph_name) +  " {"]
     nodes = influence_graph.nodes()
     node_ids = {nodes[i]:"{}".format(i) for i in range(len(nodes))}
     node_labels = {}
-    nodestr = "{node_id} [shape={shape}];\n"
+    nodestr = '{node_id} [shape={shape} label="{label}"];'
     for node in influence_graph.nodes():
+        node_id = node_ids[node]
         if isinstance(node, Parameter):
             shape = "oval"
-            label="Parameter"
+            label = parameter_labeler(node)
         elif isinstance(node, Model):
             shape = "box"
-            label = "Model"
+            label = model_labeler(node)
         
-        node_id = node_ids[node]
-        gv.append(nodestr.format(shape=shape, node_id=node_id))
+        gv.append(nodestr.format(shape=shape, node_id=node_id, label=label))
     ###
     for n1, n2 in influence_graph.edges():
         n1id = node_ids[n1]

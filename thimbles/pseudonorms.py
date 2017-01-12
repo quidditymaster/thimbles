@@ -1,3 +1,6 @@
+"""
+The pseudonorms module is intended as a quick means of providing robust normalizations of spectra.
+"""
 
 import numpy as np
 import scipy
@@ -5,11 +8,61 @@ from scipy.special import erf, erfinv
 from scipy import ndimage
 import thimbles as tmb
 
-def max_norm(spectrum):
-    return np.repeat(np.max(spectrum.flux), len(spectrum))
+def hints_to_flux(
+        x_spec,
+        hints,
+        rbf,
+):
+    x_hints = hints[:, 0]
+    y_hints = hints[:, 1]
+    x_sigs = hints[:, 2]
+    y_sigs = hints[:, 3]
+    
+    x_dists = scipy.spatial.distance_matrix(
+        x_spec,
+        x_hints,
+    )
+    scaled_dists /= x_sigs
+    x_weights = rbf(scaled_dists)
+    
+    y_weights = 1.0/y_sigs**2
+    weight_matrix = x_weights*y_weights
+    
+    weight_sum = np.sum(weight_matrix, axis=1)
+    y_fill = np.dot(weight_matrix, y_hints)/weight_sum
+    
+    return y_fill, weight_sum
+
+
+def apply_hints(
+        spectrum,
+        hints,
+        rbf=lambda x: np.exp(-np.abs(x)),
+):
+    if hasattr(spectrum, "flux"):
+        y_spec = spectrum.flux
+        x_spec = spectrum.wvs
+        spec_weights = spectrum.ivar
+    else:
+        y_spec = spectrum
+        x_spec = np.arange(len(y_spec)) 
+        spec_weights = 1.0/(1e-5+np.std(y_spec))**2
+    
+    y_fill, fill_weight = hints_to_flux(x_spec, hints, rbf)
+    weight_sum = spec_weights + fill_weight
+    y_out = (y_fill*fill_weight + y_spec*spec_weights)/weight_sum
+    return y_out
+
+
+def max_norm(spectrum, hints=None):
+    if not norm_hints is None:
+        spectrum = apply_hints(spectrum, hints=hints)
+    return np.repeat(np.max(spectrum), len(spectrum))
+
 
 def mean_norm(spectrum):
     return np.repeat(np.mean(spectrum.flux), len(spectrum))
+
 
 def median_norm(spectrum):
     return np.repeat(np.median(spectrum.flux), len(spectrum))

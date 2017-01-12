@@ -48,30 +48,9 @@ def dense_irls(
         **kwargs
 ):
     target = np.asarray(target)
-    target_shape = target.shape
-    if len(target_shape) == 1:
-        target = target.reshape((-1, 1))
-    n_targ = target.shape[1]
-    
-    fit_dict = {
-        "coeffs":np.zeros((design_matrix.shape[1], n_targ)),
-    }
-    for col_idx in range(n_targ):
-        res = dense_irls_1d(design_matrix, target[:, col_idx], *args, **kwargs)
-        fit_dict["coeffs"][:, col_idx] = res
-    
-    return fit_dict
-
-def dense_irls(
-        design_matrix,
-        target,
-        *args,
-        **kwargs
-):
-    target = np.asarray(target)
     if len(target.shape) == 1:
         return dense_irls_1d(design_matrix, target, *args, **kwargs)
-    
+
 
 def irls(
         design_matrix,

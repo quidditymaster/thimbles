@@ -13,11 +13,13 @@ def running_ccorr(
         kernel_width=20,
         order=0,
         edge_mode="reflect",
+        cut_incomplete=True,
 ):
     """calculate a running cross correlation between two vectors.
     """
     npts = len(arr1)
-    assert npts == len(arr2)
+    if not npts == len(arr2):
+        raise NotImplementedError("I'm getting to it!")
     
     if hasattr(avg1, "__call__"):
         avg1 = avg1(arr1)
@@ -34,25 +36,24 @@ def running_ccorr(
     lags = np.asarray(lags, dtype=int)
     
     n_lags = len(lags)
-    corr_out = np.zeros((n_lags, npts))
+    corr_out = np.zeros((n_lags, npts+n_lags-1))
     
     cc_filter = lambda x: ndimage.filters.gaussian_filter(x, sigma=kernel_width, mode=edge_mode, order=order)
     
     for lag_idx in range(n_lags):
         clag = lags[lag_idx]
         if clag == 0:
-            acorr_out[lag_idx] = cc_filter(arr1*arr2)
-        else:
-            ccor = cc_filter(arr1[clag:]*arr2[:-clag])
-            lb = clag//2
-            ub = npts - clag//2
-            if clag % 2 == 1:
-                if clag % 4 == 1:
-                    ub += 1
-                else:
-                    lb -= 1
-            acorr_out[lag_idx, lb:ub] = ccor
-    return acorr_out
+            cres = cc_filter(arr1*arr2)
+            corr_out[lag_idx, lag_idx:lag_idx+len(cres)] = cres
+        elif clag < 0:
+            ccor = cc_filter(arr1[-clag:]*arr2[:clag])
+        elif clag > 0:
+            ccor = cc_filter(arr1[:-clag]*arr2[clag:])
+        corr_out[lag_idx, lag_idx:lag_idx+len(ccor)] = ccor
+    
+    if cut_incomplete:
+        return corr_out[:, n_lags:-n_lags]
+    return corr_out
 
 
 def running_acorr(arr, avg=None, weights=None, window_sigma=5, ncorr=21, mode="reflect"):

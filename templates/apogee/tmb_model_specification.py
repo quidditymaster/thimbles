@@ -11,7 +11,7 @@ lsf_degree = 1
 normalization_degree=5
 min_model_wv = 15140
 max_model_wv = 16970
-model_resolution = 3e5
+model_resolution = 1e6
 npts_model = int(model_resolution*np.log(max_model_wv/min_model_wv))+1
 
 gamma_coeff_dict = {

@@ -48,13 +48,13 @@ def read_vald_linelist(fname, list_medium="air", target_medium=None, ion_dict=No
             proton_number = 100*proton1+proton2
         spl = line.split(",")
         wv, loggf, elow, jlo, eup, jup = list(map(float, spl[1:7]))
-        l_lande, u_lande, m_lande = list(map(float_or_nan, spl[8:11]))
-        rad_damp, stark_damp, waals_damp = list(map(float_or_nan, spl[12:15]))
+        l_lande, u_lande, m_lande = list(map(float_or_nan, spl[7:10]))
+        rad_damp, stark_damp, waals_damp = list(map(float_or_nan, spl[10:13]))
         wv = medium_converter(wv)
         cur_ion = ion_dict.get((proton_number, charge))
         if cur_ion is None:
             cur_ion = tmb.abundances.Ion(z=proton_number, charge=charge)
-            ion_dict[(proton_numbr, charge)] = cur_ion
+            ion_dict[(proton_number, charge)] = cur_ion
         trans = Transition(
             wv=wv, 
             ion=cur_ion,

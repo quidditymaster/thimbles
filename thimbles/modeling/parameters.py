@@ -33,7 +33,7 @@ class Parameter(ThimblesTable, Base):
     distributions = relationship(
         "DistributionAlias",
         collection_class = NamedContexts,
-    )   
+    )
     
     _setting_callbacks = None
     _invalidation_callbacks = None

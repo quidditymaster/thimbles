@@ -15,22 +15,11 @@ def float_or_nan(val):
     except ValueError:
         return np.nan
 
-def read_vald_linelist(fname, list_medium="air", target_medium=None, ion_dict=None):
+def read_vald_linelist(fname, ion_dict=None):
     file = open(fname)
     lines = file.readlines()
     file.close()
     input_re = re.compile(r"'([A-Z][a-z]{0,1})([A-Z][a-z]{0,1}){0,1} {1,4}([12])'")
-    if target_medium == None:
-        target_medium = tmb.opts["wavelengths.medium"]
-    if list_medium == target_medium:
-        medium_converter = lambda x : x
-    elif (list_medium == "air") and (target_medium == "vacuum"):
-        medium_converter = tmb.utils.misc.air_to_vac
-    elif (list_medum == "vacuum") and (target_medium == "air"):
-        medium_converter = tmb.utils.misc.vac_to_air
-    else:
-        raise ValueError("can only convert between air and vacuum wvs")
-    
     ldat = []
     
     if ion_dict is None:
@@ -50,7 +39,6 @@ def read_vald_linelist(fname, list_medium="air", target_medium=None, ion_dict=No
         wv, loggf, elow, jlo, eup, jup = list(map(float, spl[1:7]))
         l_lande, u_lande, m_lande = list(map(float_or_nan, spl[7:10]))
         rad_damp, stark_damp, waals_damp = list(map(float_or_nan, spl[10:13]))
-        wv = medium_converter(wv)
         cur_ion = ion_dict.get((proton_number, charge))
         if cur_ion is None:
             cur_ion = tmb.abundances.Ion(z=proton_number, charge=charge)

@@ -32,7 +32,7 @@ def voigt_feature_matrix(
         wv_indexer=None,
         n_gamma=60.0,
         n_sigma=6.0,
-        sigma_proportional=True,
+        normalization="integral",
 ):
     indexes = []
     profiles = []
@@ -60,17 +60,20 @@ def voigt_feature_matrix(
         local_wv_grad = wvs_grad[lb:ub+1]
         prof = voigt(local_wvs, ccent, csig, cgam)
         csat = saturations[col_idx]
-        if True:#csat > -3:
-            csat = min(csat, 9.0)
+        if csat > 1e-3:
             #generate the saturated profile
-            ctau = np.power(10.0, csat)
-            prof = np.power(10.0, -ctau*prof)-1.0
+            prof = np.exp(-csat*prof)-1.0
             #and normalize to have equivalent width == 1 angstrom
             prof /= np.sum(prof*local_wv_grad)
-        if sigma_proportional:
-            prof *= csig
-        #if np.sum(np.isnan(prof)) > 0:
-        #    import pdb; pdb.set_trace()    
+        if normalization == "wavelength":
+            prof /= ccent
+        elif normalization == "sigma":
+            prof /= csig
+        elif normalization == "integral":
+            #already done
+            pass
+        else:
+            raise ValueError("profile normalization option {} not recognized.".format(normalization))
         indexes.append(np.array([np.arange(lb, ub+1), np.repeat(col_idx, len(prof))]))
         profiles.append(prof)
     indexes = np.hstack(indexes)
@@ -202,10 +205,34 @@ class IonWeightVectorModel(Model):
         return weights
 
 
-class GammaModel(Model):
+class RatioGammaModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__={
-        "polymorphic_identity":"GammaModel"
+        "polymorphic_identity":"RatioGammaModel",
+    }
+
+    def __init__(
+            self,
+            output_p,
+            gamma_ratio,
+            sigmas,
+    ):
+        self.output_p = output_p
+        self.add_parameter("gamma_ratio", gamma_ratio)
+        self.add_parameter("sigmas", sigmas)
+    
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
+        gamma_ratio = vdict[self.inputs["gamma_ratio"]]
+        sigmas = vdict[self.inputs["sigmas"]]
+        
+        return np.clip(gamma_ratio, 0, 3)*sigmas
+
+
+class StellarParameterGammaModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"StellarParameterGammaModel"
     }
     
     def __init__(

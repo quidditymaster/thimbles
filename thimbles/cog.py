@@ -71,6 +71,61 @@ def voigt_saturation_curve(
     )
     return cog
 
+class InterpolatedSCoG(object):
+    
+    def __init__(
+        self,
+        min_log_gamma_ratio=-4,
+        max_log_gamma_ratio=1,
+        n_curves=4,
+    ):
+        lgrats = np.linspace(min_log_gamma_ratio, max_log_gamma_ratio, n_curves)
+        grats = np.power(10, lgrats)
+        self.scogs = [voigt_saturation_curve(cgr) for cgr in grats]
+        self.lgr_delta = lgrats[1]-lgrats[0]
+        self.n_curves = n_curves
+        self.min_log_gamma_ratio = min_log_gamma_ratio
+        self.max_log_gamma_ratio = max_log_gamma_ratio
+    
+    def __call__(self, log_tau, gamma_ratio):
+        log_gratio = np.log10(gamma_ratio)
+        output = np.zeros(log_tau.shape)
+        gratio_frac_idx = (log_gratio-self.min_log_gamma_ratio)/self.lgr_delta
+        #deal with the gamma ratios off the small end
+        mask = gratio_frac_idx <= 0
+        output[mask] = self.scogs[0](log_tau[mask])
+        for i in range(self.n_curves-1):
+            mask = (gratio_frac_idx >= i) * (gratio_frac_idx < i+1)
+            alphas = gratio_frac_idx[mask]-i
+            cltau = log_tau[mask]
+            output[mask] = (1-alphas)*self.scogs[i](cltau) + alphas*self.scogs[i+1](cltau)
+        #deal with gamma ratios off the big end
+        mask = gratio_frac_idx >= (self.n_curves - 1)
+        lg_delta_mag = log_gratio[mask] - self.max_log_gamma_ratio
+        gam_adjust = 0.5*lg_delta_mag/(1.0+np.power(10.0, -(log_tau[mask]-lg_delta_mag)))
+        output[mask] = self.scogs[-1](log_tau[mask]) + gam_adjust
+        return output
+    
+    def inverse(self, log_tau, gamma_ratio):
+        log_gratio = np.log10(gamma_ratio)
+        output = np.zeros(log_tau.shape)
+        gratio_frac_idx = (log_gratio-self.min_log_gamma_ratio)/self.lgr_delta
+        #deal with the gamma ratios off the small end
+        mask = gratio_frac_idx <= 0
+        output[mask] = self.scogs[0].inverse(log_tau[mask])
+        for i in range(self.n_curves-1):
+            mask = (gratio_frac_idx >= i) * (gratio_frac_idx < i+1)
+            alphas = gratio_frac_idx[mask]-i
+            cltau = log_tau[mask]
+            output[mask] = (1-alphas)*self.scogs[i].inverse(cltau) + alphas*self.scogs[i+1].inverse(cltau)
+        #deal with gamma ratios off the big end
+        mask = gratio_frac_idx >= (self.n_curves - 1)
+        lg_delta_mag = log_gratio[mask] - self.max_log_gamma_ratio
+        gam_adjust = 0.5*lg_delta_mag/(1.0+np.power(10.0, -(log_tau[mask]-lg_delta_mag)))
+        output[mask] = self.scogs[-1].inverse(log_tau[mask]- gam_adjust)
+        return output
+
+
 
 class PseudoStrengthModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
@@ -112,7 +167,7 @@ class SaturationOffsetModel(Model):
     __mapper_args__={
         "polymorphic_identity":"SaturationOffsetModel",
     }
-
+    
     def __init__(
             self,
             output_p,
@@ -134,7 +189,7 @@ class SaturationOffsetModel(Model):
             offset = teff_coeffs[i]*teff**(i+1)
         return offset
 
-    
+
 class SaturationModel(Model):
     _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
     __mapper_args__={
@@ -179,3 +234,59 @@ class SaturationCurveModel(Model):
         gammas = vdict[self.inputs["gammas"]]
         mean_gamma_ratio = np.mean(gammas/sigmas)
         return voigt_saturation_curve(mean_gamma_ratio)
+
+class SimpleCog(object):
+    
+    def __init__(
+            self,
+            saturation_curve,
+            squeeze_factor,
+    ):
+        self.sat_curve = saturation_curve
+        self.squeeze_factor = squeeze_factor
+    
+    def __call__(
+            self,
+            pseudostrengths,
+    ):
+        return self.sat_curve(pseudostrengths) - self.squeeze_factor
+    
+    def inverse(
+            self,
+            log_rews,
+    ):
+        return self.sat_curve.inverse(log_rews+self.squeeze_factor)
+    
+    def deriv(
+            self,
+            *args,
+            **kwargs
+    ):
+        return self.sat_curve.deriv(*args, **kwargs)
+
+
+class SimpleCogModel(Model):
+    _id = Column(Integer, ForeignKey("Model._id"), primary_key=True)
+    __mapper_args__={
+        "polymorphic_identity":"SimpleCogModel",
+    }
+    
+    def __init__(
+            self,
+            output_p,
+            gamma_ratio,
+            squeeze_factor,
+    ):
+        self.output_p = output_p
+        self.add_parameter("gamma_ratio", gamma_ratio)
+        self.add_parameter("squeeze_factor", squeeze_factor)
+    
+    def __call__(self, override=None):
+        vdict = self.get_vdict(override)
+        gamma_ratio = vdict[self.inputs["gamma_ratio"]]
+        squeeze_factor = vdict[self.inputs["squeeze_factor"]]
+
+        return SimpleCog(
+            saturation_curve=voigt_saturation_curve(gamma_ratio),
+            squeeze_factor=squeeze_factor,
+        )

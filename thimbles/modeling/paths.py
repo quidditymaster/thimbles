@@ -116,7 +116,7 @@ def influence_graph_gv(
     for n1, n2 in influence_graph.edges():
         n1id = node_ids[n1]
         n2id = node_ids[n2]
-        gv.append("{} -> {};\n".format(n1id, n2id))
+        gv.append("{} -> {};".format(n1id, n2id))
     gv.append("}")
     return "\n".join(gv)
 

@@ -681,131 +681,12 @@ class ModelNetworkTemplate(object):
             )
 
 
-class JModelComponentTemplate(object):
-
-    def __init__(self, *args, **kwargs):
-        pass
-
-global_mct = JModelComponentTemplate(
-    parameter_classes = {
-        "min_wv":FloatParameter,
-        "max_wv":FloatParameter,
-        "model_wvs":Parameter,
-        "molecular_weights":Parameter,
-        "model_lsf":FloatParameter,
-        "transition_indexer":tmb.transitions.TransitionIndexerParameter,
-        "measurement_indexer":tmb.transitions.TransitionIndexerParameter,
-        "primary_indexer":tmb.transitions.TransitionIndexerParameter,
-        "transition_wvs":Parameter,
-        "measurement_grouping":tmb.transitions.ExemplarGroupingParameter,
-        "primary_grouping":tmb.transitions.ExemplarGroupingParameter,
-    },
-    parameter_kwargs = {
-        "min_wv":{"value":lambda x: tmb.opts["modeling.min_wv"]},
-        "max_wv":{"value":lambda x: tmb.opts["modeling.max_wv"]},
-        "model_lsf":{"value":0.0},
-    },
-    model_classes={
-        "wavelength_solution":tmb.coordinatization.LogLinearCoordinatizationModel,
-        "wv_vectorizer":tmb.features.TransitionWavelengthVectorModel,
-        "molecular_weight_vectorizer":tmb.features.IonWeightVectorModel,
-    },
-    input_edges = {
-        "wavelength_solution":[
-            ["min_wv", "min", False],
-            ["max_wv", "max", False],
-        ],
-        "wv_vectorizer":[
-            ["transition_indexer", "indexer", False],
-        ],
-        "molecular_weight_vectorizer":[
-            ["transition_indexer", "indexer", False]
-        ],
-    },
-    model_kwargs = {
-        "wavelength_solution":{
-            "npts":lambda x: int(np.log(opts["modeling.max_wv"]/opts["modeling.min_wv"])*opts["modeling.resolution"])+1
-        }
-    },
-    output_edges = {
-        "wavelength_solution":"model_wvs",
-        "wv_vectorizer":"transition_wvs",
-        "molecular_weight_vectorizer":"molecular_weights"
-    },
-    fetched_parameters={},
-    pushed_parameters={
-        "global":[
-            ["min_wv", "min_wv", False],
-            ["max_wv", "max_wv", False],
-            ["model_wvs", "model_wvs", False],
-            ["model_lsf", "model_lsf", False],
-            ["transition_wvs", "transition_wvs", False],
-            ["molecular_weights", "molecular_weights", False],
-            ["transition_indexer", "transition_indexer", False],
-            ["measurement_indexer", "measurement_indexer", False],
-            ["primary_indexer", "primary_indexer", False],
-        ],
-    }
-)
-#component_templates.register_template("global", "ew_base", global_mct)
 
 def dirac_vec(n, i):
     vec = np.zeros(n, dtype=float)
     vec[i] = 1.0
     return vec
 
-default_sampling_mct = JModelComponentTemplate(
-    parameter_classes = {
-        "lsf":None, 
-        "lsf_coeffs":PickleParameter, 
-        "sampling_matrix":Parameter, 
-        "model_wvs":None,
-        "model_lsf":None,
-        "spectrum_wvs":None
-    },
-    parameter_kwargs={
-        "lsf_coeffs":{"value":lambda x: dirac_vec(4, -1)}
-    },
-    model_classes={
-        "lsf_poly":tmb.modeling.PixelPolynomialModel, 
-        "sampling_matrix":tmb.spectrographs.SamplingModel,
-    },
-    input_edges = {
-        "lsf_poly":[["lsf_coeffs", "coeffs", False]],
-        "sampling_matrix":[
-            ["model_wvs", "input_wvs", False],
-            ["model_lsf", "input_lsf", False],
-            ["spectrum_wvs", "output_wvs", False],
-            ["lsf", "output_lsf", False],
-        ]
-    },
-    model_kwargs={
-        "lsf_poly":{
-            "npts":lambda x: len(x["spectrum"].flux)
-        },
-    },
-    output_edges = {
-        "lsf_poly":"lsf",
-        "sampling_matrix":"sampling_matrix",
-    },
-    fetched_parameters = {
-        "lsf":["spectrum", "lsf"],
-        "spectrum_wvs":["spectrum", "rest_wvs"],
-        "model_wvs":["global", "model_wvs"],
-        "model_lsf":["global", "model_lsf"],
-    },
-    pushed_parameters = {
-        "spectrum":[
-            ["lsf_coeffs", "lsf_coeffs", False],
-            ["sampling_matrix", "sampling_matrix", False],
-        ],
-    },
-)
-#component_templates.register_template(
-#    "sampling",
-#    "default",
-#    default_sampling_mct
-#)
 
 def extract_pseudonorm_coeffs(spec_context):
     spec = spec_context['spectrum']
@@ -814,334 +695,6 @@ def extract_pseudonorm_coeffs(spec_context):
     xvals = (np.arange(npts) - 0.5*npts)/(0.5*npts)
     pseudonorm_coeffs = np.polyfit(xvals, psnorm)
     return pseudonorm_coeffs
-
-
-default_normalization_mct = JModelComponentTemplate(
-    parameter_classes = {
-        "norm":Parameter, 
-        "norm_coeffs":PickleParameter, 
-    },
-    parameter_kwargs={
-        "norm_coeffs":{"value":extract_pseudonorm_coeffs}
-    },
-    model_classes={
-        "norm_poly":tmb.modeling.PixelPolynomialModel, 
-    },
-    input_edges = {
-        "norm_poly":[["lsf_coeffs", "coeffs", False]],
-    },
-    model_kwargs={
-        "norm_poly":{
-            "npts":lambda x: len(x["spectrum"])
-        },
-    },
-    output_edges = {
-        "norm_poly":"norm",
-    },
-    fetched_parameters = {
-    },
-    pushed_parameters = {
-        "spectrum":[
-            ["norm", "norm", False],
-            #["norm_coeffs", "norm_coeffs", False],
-        ],
-    },
-)
-#component_templates.register_template("normalization", "default", default_normalization_mct)
-
-
-fluxed_source_mct = JModelComponentTemplate(
-    parameter_classes = {
-        "source_features":None,
-        "continuum_shape":None,
-        "central_flux":Parameter,
-        "broadening_matrix":None,
-        "source_flux":Parameter,
-    },
-    parameter_kwargs = {},
-    model_classes={
-        "flux_multiplier":tmb.modeling.MultiplierModel,
-        "broadener":tmb.modeling.MatrixMultiplierModel
-    },
-    input_edges={
-        "flux_multiplier":[
-            ["features", "factors", True],
-            ["continuum_shape", "factors", True],
-        ],
-        "broadener":[
-            ["central_flux", "vector", False],
-            ["broadening_matrix", "matrix", True],
-        ],
-    },
-    model_kwargs={},
-    output_edges={
-        "flux_multiplier":"central_flux",
-        "broadener":"source_flux",
-    },
-    fetched_parameters = {
-        "continuum_shape":["source", "continuum_shape"],
-        "source_features":["source", "source_features"],
-        "broadengin_matrix":["source", "broadening_matrix"],
-    },
-    pushed_parameters = {
-        "source":[
-            ["central_flux", "central_flux", False],
-            ["source_flux", "source_flux", True],
-        ],
-    }
-)
-#component_templates.register_template("source", "fluxed source", fluxed_source_mct)
-
-
-bare_source_mct = JModelComponentTemplate(
-    parameter_classes = {
-        "source_flux":Parameter,
-    },
-    parameter_kwargs = {},
-    model_classes={
-        "flux_multiplier":tmb.modeling.MultiplierModel,
-        "broadener":tmb.modeling.MatrixMultiplierModel
-    },
-    input_edges={
-        "flux_multiplier":[
-            ["features", "factors", True],
-            ["continuum_shape", "factors", True],
-        ],
-        "broadener":[
-            ["central_flux", "vector", False],
-            ["broadening_matrix", "matrix", True],
-        ],
-    },
-    model_kwargs={},
-    output_edges={
-        "flux_multiplier":"central_flux",
-        "broadener":"source_flux",
-    },
-    fetched_parameters = {
-        "continuum_shape":["source", "continuum_shape"],
-        "source_features":["source", "source_features"],
-        "broadengin_matrix":["source", "broadening_matrix"],
-    },
-    pushed_parameters = {
-        "source":[
-            ["source_flux", "source_flux", True],
-        ],
-    }
-)
-#component_templates.register_template("source", "source flux", fluxed_source_mct)
-
-
-star_mct = JModelComponentTemplate(
-    parameter_classes = {
-        "central_features":Parameter,
-        "features":Parameter,
-        "broadening_matrix":Parameter,
-        "sigma_vec":Parameter,
-        "gamma_vec":Parameter,
-        "pseudostrength":Parameter,
-        "reference_gamma":FloatParameter,
-        "relative_ion_density":tmb.abundances.IonMappedParameter,
-        "cog":Parameter,
-        "teff":None,
-        "vmicro":None,
-        "vsini":None,
-        "vmacro":None,
-        "ldark":None,
-        "model_wvs":None,
-        "transition_wvs":None,
-        "molecular_weights":None,
-        "transition_indexer":None,
-        "measurement_indexer":None,
-        "measurement_grouping":None,
-        "primary_indexer":None,
-        "feature_matrix":Parameter,
-        "measurement_rsm":Parameter,
-        "primary_rsm":Parameter,
-        "condensed_feature_matrix":Parameter,
-        "saturation_offset":FloatParameter,
-        "saturation":Parameter,
-        "measured_ews":tmb.transitions.TransitionMappedParameter,
-        "measured_ew_vec":Parameter,
-    },
-    parameter_kwargs={
-        "reference_gamma":{"value":0.02},
-        "saturation_offset":{"value":-1.0},
-    },
-    model_classes={
-        "broadening_matrix_model":tmb.rotation.BroadeningMatrixModel,
-        "broadener":tmb.modeling.MatrixMultiplierModel,
-        "sigma_model":tmb.features.SigmaModel,
-        "gamma_model":tmb.features.GammaModel,
-        "pseudostrength_model":tmb.cog.PseudoStrengthModel,
-        "cog_model":tmb.cog.SaturationCurveModel,
-        "saturation_model":tmb.cog.SaturationModel,
-        "feature_matrix_model":tmb.features.ProfileMatrixModel,
-        #"primary_grouping_matrix_model":tmb.features.RelativeStrengthMatrixModel,
-        "measurement_rsm_model":tmb.features.RelativeStrengthMatrixModel,
-        "feature_condenser":tmb.features.CollapsedFeatureMatrixModel,
-        "feature_model":tmb.modeling.MatrixMultiplierModel,
-        "ew_vectorizer":tmb.transitions.TransitionMappedVectorizerModel,
-    },
-    input_edges = {
-        "sigma_model":[
-            ["teff", "teff", False],
-            ["vmicro", "vmicro", False],
-            ["transition_wvs", "transition_wvs", False],
-            ["molecular_weights", "molecular_weights", False],
-        ],
-        "gamma_model":[
-            ["reference_gamma", "gamma", False],
-            ["transition_wvs", "transition_wvs", False],
-        ],
-        "pseudostrength_model":[
-            ["transition_indexer", "transition_indexer", False,],
-            ["relative_ion_density", "ion_correction", False,],
-            ["teff", "teff", False],
-        ],
-        "saturation_model":[
-            ["pseudostrength", "pseudostrength", False,],
-            ["saturation_offset", "offset", False],
-        ],
-        "feature_matrix_model":[
-            ["model_wvs", "model_wvs", False],
-            ["transition_wvs", "centers", False],
-            ["sigma_vec", "sigma", False],
-            ["gamma_vec", "gamma", False],
-            ["saturation", "saturation", False],
-        ],
-        "measurement_rsm_model":[
-            ["measurement_grouping", "measurement_grouping", False],
-            ["transition_indexer", "transition_indexer", False],
-            ["measurement_indexer","exemplar_indexer", False],
-            ["pseudostrength", "pseudostrength", False],
-            ["cog", "cog", False],
-        ],
-        "cog_model":[
-            ["gamma_vec", "gamma", False],
-            ["sigma_vec", "sigma", False],
-        ],
-        "broadening_matrix_model":[
-            ["model_wvs", "model_wvs", False],
-            ["vsini", "vsini", False],
-            ["vmacro", "vmacro", False],
-            ["ldark", "ldark", False],
-        ],
-        "broadener":[
-            ["broadening_matrix", "matrix", False],
-            ["central_features", "vector", False],
-        ],
-        "feature_condenser":[
-            ["feature_matrix", "feature_matrix", False],
-            ["measurement_rsm", "grouping_matrix", False],
-        ],
-        "feature_model":[
-            ["condensed_feature_matrix", "matrix", False],
-            ["measured_ew_vec", "vector", False],
-        ],
-        "ew_vectorizer":[
-            ["measured_ews", "mapped_values", False],
-            ["measurement_indexer", "indexer", False],
-        ],
-    },
-    model_kwargs={},
-    output_edges = {
-        "sigma_model":"sigma_vec",
-        "gamma_model":"gamma_vec",
-        "pseudostrength_model":"pseudostrength",
-        "saturation_model":"saturation",
-        "broadener":"features",
-        "broadening_matrix_model":"broadening_matrix",
-        "cog_model":"cog",
-        "measurement_rsm_model":"measurement_rsm",
-        "primary_rsm_model":"primary_rsm",
-        "feature_condenser":"condensed_feature_matrix",
-        "feature_model":"central_features",
-        "feature_matrix_model":"feature_matrix",
-        "ew_vectorizer":"measured_ew_vec",
-    },
-    fetched_parameters = {
-        "teff":["star", "teff"],
-        "vmicro":["star", "vmicro"],
-        "vmacro":["star", "vmacro"],
-        "vsini":["star", "vsini"],
-        "ldark":["star", "ldark"],
-        "measurement_indexer":["global", "measurement_indexer"],
-        "measurement_grouping":["global", "measurement_grouping"],
-        "primary_grouping":["global", "primary_grouping"],
-        "transition_indexer": ["global", "transition_indexer"],
-        "primary_indexer":["global", "primary_indexer"],
-        "transition_wvs":["global", "transition_wvs"],
-        #"primary_associator": ["global", "primary_map"],
-        #"measurement_associator": ["global"
-        "molecular_weights":["global", "full_molecular_weights"],
-        "model_wvs":["global", "model_wvs"],
-    },
-    pushed_parameters = {
-        "star":[
-            #["features", "features", False],
-            #["full_ews", "full_ews", False],
-            #["measured_ews", "measured_ews", False],
-            #["sigma_vec", "sigma_vec", False],
-            #["gamma_vec", "gamma_vec", False],
-            #["relative_ion_density", "relative_ion_density", False],
-            #["broadening_matrix", "broadening_matrix", False],
-            #["feature_matrix", "feature_matrix", False],
-            #["pseudostrengths", "pseudostrengths", False],
-        ],
-    },
-)
-#component_templates.register_template("stars", "default", star_mct)
-
-
-plain_ew_mct = JModelComponentTemplate(
-    parameter_classes = {
-        "synthetic_ews":tmb.transitions.TransitionMappedParameter,
-        "measurement_ews":Parameter,
-        "spectrum_ews":Parameter,
-        "lsf_coeffs":PickleParameter, 
-        "sampling_matrix":Parameter, 
-        "model_wvs":None,
-        "model_lsf":None,
-        "spectrum_wvs":None
-    },
-    parameter_kwargs={
-        "lsf_coeffs":{"value":lambda x: dirac_vec(4, -1)}
-    },
-    model_classes={
-        "lsf_poly":tmb.modeling.PixelPolynomialModel, 
-        "sampling_matrix":tmb.spectrographs.SamplingModel,
-    },
-    input_edges = {
-        "lsf_poly":[["lsf_coeffs", "coeffs", False]],
-        "sampling_matrix":[
-            ["model_wvs", "input_wvs", False],
-            ["model_lsf", "input_lsf", False],
-            ["spectrum_wvs", "output_wvs", False],
-            ["lsf", "output_lsf", False],
-        ]
-    },
-    model_kwargs={
-        "lsf_poly":{
-            "npts":lambda x: len(x["spectrum"].flux)
-        },
-    },
-    output_edges = {
-        "lsf_poly":"lsf",
-        "sampling_matrix":"sampling_matrix",
-    },
-    fetched_parameters = {
-        "lsf":["spectrum", "lsf"],
-        "spectrum_wvs":["spectrum", "rest_wvs"],
-        "model_wvs":["global", "model_wvs"],
-        "model_lsf":["global", "model_lsf"],
-    },
-    pushed_parameters = {
-        "spectrum":[
-            ["lsf_coeffs", "lsf_coeffs", False],
-            ["sampling_matrix", "sampling_matrix", False],
-        ],
-    },
-)
 
 
 standard_config_head = \
@@ -1187,4 +740,58 @@ def newproject(projname, flavor="standard", create_moog_wdir=False):
         print("writing configuration into local file tmb_config.py")
         with open("tmb_config.py", "w") as f:
             f.write(config_str)
+
+
+def mct_to_gv(
+        mct,
+        graph_name,
+        join=True,
+):
+    gv = ["digraph " + graph_name + "{"]
+    param_nodes = sorted(mct.param_specs.keys())
+    model_nodes = sorted(mct.model_specs.keys())
+    
+    param_to_idx = {param_nodes[i]:i for i in range(len(param_nodes))}
+    
+    #write the nodes out
+    nodestr = '{node_id} [shape={shape} label="{label}"];'
+    for p_idx in range(len(param_nodes)):
+        p_name = param_nodes[p_idx]
+        gv.append(nodestr.format(shape="oval", node_id="p_{}".format(p_idx), label=p_name))
+    
+    for m_idx in range(len(model_nodes)):
+        m_name = model_nodes[m_idx]
+        gv.append(nodestr.format(shape="box", node_id="m_{}".format(m_idx), label=m_name))
+    
+    for m_idx in range(len(model_nodes)):
+        mod_name = model_nodes[m_idx]
+        cmspec = mct.model_specs[mod_name]
+        #write the input edges to models
+        for param in cmspec.inputs.values():
+            if isinstance(param, list):
+                for compound_param in param:
+                    p_idx = param_to_idx[compound_param]
+                    gv.append("p_{} -> m_{};".format(p_idx, m_idx))
+            else:
+                p_idx = param_to_idx[param]
+                gv.append("p_{} -> m_{};".format(p_idx, m_idx))
+        #write output edge
+        gv.append("m_{} -> p_{};".format(m_idx, param_to_idx[cmspec.output]))
+    
+    gv.append("}")
+    
+    if join:
+        gv = "\n".join(gv)
+    return gv
+
+
+def model_net_template_to_gv(
+        net_template,
+):
+    gv_list = []
+    for i, component in enumerate(net_template.components):
+        cname = "component_{}".format(i)
+        gv_list.append(mct_to_gv(component, graph_name=cname))
+    
+    return "\n".join(gv_list)
 

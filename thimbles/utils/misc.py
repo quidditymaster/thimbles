@@ -502,44 +502,53 @@ def detect_features(
 
 
 def smoothed_mad_error(
-        values, 
-        smoothing_scale=3.0, 
+        values,
+        smoothing_scale=3, 
         median_scale = 200,
-        apply_poisson=True, 
-        post_smooth=5.0,
+        apply_poisson=True,
+        rejection_threshold=1e-5,
+        post_smooth=0,
         max_snr=1000.0,
     ):
     """estimate the noise characteristics of an input data vector under the assumption
     that the underlying "true" value is slowly varying and the high frequency fluctuations
     are representative of the level of the noise.
     """
+    
     good_mask = np.ones(len(values), dtype=bool)
     if hasattr(values, "ivar") and hasattr(values, "flux"):
         if not values.ivar is None:
             good_mask *= values.ivar > 0
-        good_mask *= values.flux > 0
         values = values.flux
     
-    #detect and reject perfectly flat regions and 2 pixels outside them
-    sec_der = scipy.gradient(scipy.gradient(values))
-    good_mask *= filters.uniform_filter(np.abs(sec_der) > 0, 3) > 0
+    #detect and reject perfectly flat regions
+    #sec_der = scipy.gradient(scipy.gradient(values))
+    #good_mask *= filters.uniform_filter(np.abs(sec_der) > 0, 2) > 0
+    good_mask *= values > rejection_threshold
     
     #smooth the flux accross the accepted fluxes
-    smfl = values.copy()
-    smfl[good_mask] = filters.gaussian_filter(values[good_mask], smoothing_scale)
+    smfl = np.where(good_mask, values, 0)
+    num_fr = filters.uniform_filter(smfl, smoothing_scale)
+    denom_fr = filters.uniform_filter(smfl, smoothing_scale)
+    smfl = np.where(denom_fr > 0, num_fr/denom_fr, 0)
+    
+    #smfl[good_mask] = filters.gaussian_filter(values[good_mask], smoothing_scale)
     diffs = values - smfl
     
     #use the running median change to protect ourselves from outliers
-    mad = filters.median_filter(np.abs(diffs), median_scale)
+    mad = np.repeat(np.inf, len(values))
+    mad[good_mask] = filters.median_filter(np.abs(diffs)[good_mask], median_scale)
     eff_width = 2.0*smoothing_scale #effective filter width
     #need to correct for loss of variance from the averaging
     correction_factor = eff_width/max(1, (eff_width-1))
     char_sigma = correction_factor*1.48*mad #the characteristic noise level
     #smooth the running median filter so we don't have wildly changing noise levels
-    char_sigma = filters.gaussian_filter(char_sigma, post_smooth)
+
+    if post_smooth > 0:
+        char_sigma = filters.gaussian_filter(char_sigma, post_smooth)
     if apply_poisson:
         #scale the noise at each point to be proportional to its value
-        var = (smfl/np.median(smfl[good_mask]))*char_sigma**2
+        var = ((smfl+1e-10)/np.median(smfl[good_mask]))*char_sigma**2
     else:
         var = char_sigma**2
     #put an upper limit on detected snr
